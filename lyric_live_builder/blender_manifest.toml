@@ -1,0 +1,21 @@
+schema_version = "1.0.0"
+
+id = "lyric_live_builder"
+version = "0.1.0"
+name = "LyricLive Builder"
+tagline = "Lyric motion, particles and stage for VRChat ParticleLive worlds"
+maintainer = "ZuQ9Nn"
+type = "add-on"
+
+tags = ["Animation", "Import-Export"]
+
+blender_version_min = "5.0.0"
+
+license = ["SPDX:MIT"]
+copyright = ["2026 ZuQ9Nn", "2026 hakoniwa (JIZURA, ported logic)"]
+
+[permissions]
+files = "Read lyrics, fonts and audio; write export files for Unity"
+
+[build]
+paths_exclude_pattern = ["__pycache__/", "*.pyc"]

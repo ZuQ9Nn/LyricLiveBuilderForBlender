@@ -142,11 +142,11 @@ tests/
 
 | PropertyGroup | 主なプロパティ |
 |---|---|
-| `LLBProject` | `lyrics_text`（Text への参照）、`fonts`（`LLBFontRole` × 4）、`audio_path`、`bpm`、`beat_offset`、`tap_latency_ms`、`seed`、`mood`、`style`、`fx`（`LLBFx`）、`extra`、`wa`、`sections`（Collection）、`lines`（Collection）、`enabled`（部品の ON/OFF：Collection）、`history`（おまかせの履歴：Collection）、`history_index`、`export`（`LLBExportSettings`） |
-| `LLBFontRole` | `role`（display/serif/body/mono）、`filepath`、`font`（VectorFont への参照） |
+| `LLBProject` | `lyrics_text`（Text への参照）、`font_display` / `font_serif` / `font_body` / `font_mono`（`LLBFontRole`）、`audio_path`、`audio_duration`、`duration`、`bpm`、`beat_offset`、`tap_latency_ms`、`latency_measured`、`sections_from_headings`、`seed`、`mood`、`style`、`fx`（`LLBFx`）、`extra`、`wa`、`sections`（Collection）、`lines`（Collection）、`enabled`（部品の ON/OFF：Collection）、`history`（おまかせの履歴：Collection）、`history_index`、`export`（`LLBExportSettings`） |
+| `LLBFontRole` | `filepath`（VectorFont への参照は、段階 2 の字形メッシュで読み込むときに作る） |
 | `LLBFx` | `motion`、`particles`、`decor`、`density`、`world_switch`、`koma`（0/12/8） |
-| `LLBSection` | `kind`、`label`、`start`、`end`、`theme`、`locked` |
-| `LLBLine` | `index`、`text`（表示用）、`start`、`end`、`char_times`（文字単位の時刻。JSON 文字列）、`section_index`、`is_3d`、`depth`、`bevel`、`layout`、`enter`、`hold`、`exit`、`distance_layer`、`persist`（次の行で消える/セクション末まで残る）、`particle_override`、`background_override`、`transition`、`gimmick`、`locked`、`seed_offset` |
+| `LLBSection` | `kind`、`user_kind`（手で変えた種別。開始時刻が同じ間は、読み直しても残す）、`label`、`start`、`end`、`theme`、`locked` |
+| `LLBLine` | `index`、`text`（表示用）、`start`、`end`（決定した時刻）、`source`（auto/tap/lrc/manual）、`tap_time`（遅延を補正したタップの時刻。負の値＝未タップ）、`use_manual`・`manual_start`（手動の時刻）、`char_times`（文字単位の時刻。JSON 文字列）、`section_index`、`is_3d`、`depth`、`bevel`、`layout`、`enter`、`hold`、`exit`、`distance_layer`、`persist`（次の行で消える/セクション末まで残る）、`particle_override`、`background_override`、`transition`、`gimmick`、`locked`、`seed_offset` |
 | `LLBExportSettings` | `project_path`、`folder_name`、`use_tmp`、`use_mobile`、`use_udon_sync`、`material_mode`（VRCHAT/STANDARD）、`allow_other_2022_3` |
 
 - 計算結果の Plan は、隠しテキストデータブロック `.llb_plan.json` に JSON で保存します。.blend を開き直しても、プレビューの作り直しと出力ができます。
@@ -220,21 +220,25 @@ BakedScene
 
 ### 5.3 タイミング（`timing.py`）とセクション推定（`sections.py`）
 
-- 行の時刻：優先順位は「手動入力 > LRC > タップ同期 > 文字数と BPM からの推定」（JIZURA の `computeTiming` を移植）。タップの時刻からは `tap_latency_ms` を差し引きます。
+- 行の時刻：優先順位は「手動入力 > LRC > タップ同期 > 文字数と BPM からの推定」（JIZURA の `computeTiming` を移植。JIZURA は全行に LRC がある場合だけ LRC を使うが、本アドオンは行ごとに判定する）。`tap_latency_ms` は、タップを記録するときに差し引いて `tap_time` に保存します（マーカーの位置と行の開始時刻を一致させるため。遅延を測り直しても、記録済みのタップは補正し直さない）。
+- 歌詞を読み直したときは、前後の行の文字列を `difflib.SequenceMatcher` で照合し、タップと手動の時刻を同じ文字列の行に引き継ぎます（行を挿入・削除しても、以降の行の時刻がずれない）。行数の変わらない書き換え（誤字の修正など）は、順番どおりに引き継ぎます。行番号が変わったときは、マーカー `LLB:<行番号>` を付け直します（動かしたまま取り込んでいないマーカーの位置は失われる）。
 - 文字単位の時刻：文字ごとの重み（かな 1.0、小書き 0.5、漢字 1.6、英数 0.6、記号 0.2、長音 0.8）で、行の歌い始めから「次の行の開始、または行の推定の長さ」までを配分します。文字単位のタップがあれば、それで上書きします。
 - セクション推定（見出しが無い場合）：
-  1. 候補の区切り＝空行、行の間の空きが 2 拍以上の位置。
-  2. 各区切りの前後 4 秒の音量の平均の比を計算し、比が 1.35 以上の区切りを「盛り上がり」とする。
-  3. 同じ歌詞の行の並び（2 行以上）が2回以上現れる範囲を、サビの候補とする。
-  4. サビの候補 → `chorus`、その直前の区切り → `prechorus`、最初の行より前 → `intro`、最後の行より後 → `outro`、残り → `verse`。
-  5. 最短 8 秒より短いセクションは、前のセクションに統合する。
+  1. 区切り＝空行、行の間の空き（行の開始から推定の歌う長さを引いた残り）が「2 拍」かつ「その曲の空きの中央値 + 2 拍」以上の位置、各行の開始の前後 4 秒の音量の平均の比が 1.35 以上の位置（盛り上がり）。空きの基準を相対にしたのは、推定の歌う長さが実際より短く、固定の 2 拍ではほぼ全行が区切りになったため。
+  2. 同じ歌詞の行の並び（2 行以上）が 2 回以上現れる行を、サビの候補とする。区切りの間の行の半分以上がサビの候補ならサビ。繰り返しが無い曲では、盛り上がりで始まった区間をサビとし、音量が開始時の 1/1.35 を下回るまで続ける。
+  3. サビの直前に `verse` が 2 つ続く場合、直前の 1 つを `prechorus` にする。最初の行より前 → `intro`、行の間の空きが 8 秒以上 → `interlude`、最後の行を歌い終えた後 → `outro`、残り → `verse`。同じ種別が隣り合う区間はまとめる。
+  4. 最短 8 秒より短いセクションは、先頭なら次のセクションに、それ以外は前のセクションに統合する。
+- 見出しから作る場合：見出しごとに、その行の最初の開始時刻から始める。行の無い見出し（`[間奏]` 等）は、前の行を歌い終える推定の時刻から始める。最初の見出しより前の行は、暗黙の `verse` にする。開始時刻が同じになったセクションは、後の見出しを残す。
 - セクションは、曲の 0 秒から終わりまで、隙間なく並べます（Unity のクリップ分割の前提：§10.5）。
 
 ### 5.4 音声解析（`audio.py`）
 
 - 入力：`aud.Sound(path).data()` で得た PCM の numpy 配列（形 [サンプル数, チャンネル数]）と、サンプリング周波数。読み込みは `ui` 側（bpy に依存するため）で行い、`core.audio` には配列だけを渡します。
 - JIZURA の `analyzeAudio` を numpy でベクトル化して移植します（50Hz の音量、高域のオンセット、自己相関で BPM、位相探索）。
-- 追加：帯域別の簡易スペクトラム。50Hz のフレームごとに FFT（2048 点）を取り、対数間隔の 24 帯域に集約して、0..1 に正規化します。ギミックのスペクトラムバーと、パーティクルの強さに使います。
+  - JIZURA の高域フィルター（1 次の再帰型 `y = a·(y' + x − x')`、a=0.92）は、サンプルごとの計算になり numpy で一括処理できません。そのため、50Hz のフレームごとに FFT を取り、フィルターの振幅特性 |H|² を掛けてエネルギーを求めます（パーセバルの定理。フレーム内の循環の誤差は、オンセットの検出には影響しない）。
+  - テンポの自己相関は、探索範囲（70〜180 BPM）の外側にも 1 つずつ値を計算し、範囲の端の山も放物線で補間します（JIZURA では 174 BPM が 176.5 になっていた）。
+  - 歌詞の時刻は、曲の再生位置からの秒です。
+- 追加（段階 3 で実装。使うのはパーティクルとギミックのため）：帯域別の簡易スペクトラム。50Hz のフレームごとに FFT（2048 点）を取り、対数間隔の 24 帯域に集約して、0..1 に正規化します。ギミックのスペクトラムバーと、パーティクルの強さに使います。
 - 長い曲（10 分）でも数秒で終わることを目標にします。PCM はモノラル化してから処理します。
 
 ### 5.5 プランナー（`planner.py`）
@@ -669,8 +673,12 @@ def bake_palette_material(objects, *, max_colors=64) -> PaletteResult
 | 9. Unity 出力 | プロジェクト、エディタ、オプション、出力、状態とログ |
 | 最適化 | mesh_optimizer のパネル（独立） |
 
-- タップ同期（`tap_sync.py`）：モーダルオペレーターです。開始時に `screen.animation_play` で再生し、`T` キーのイベントで `scene.frame_current + 小数（frame_float）` から時刻を求めて記録し、マーカーを置きます。`Esc` で終了、`Backspace` で取り消し。
-- 遅延の測定：拍のクリック音のサウンドストリップを作って再生し、利用者に拍に合わせて 16 回タップしてもらいます。理論上の拍の時刻との差の中央値を `tap_latency_ms` にします。
+- タップ同期（`tap_sync.py`）：モーダルオペレーターです。開始時に `screen.animation_play` で再生し、`T` キーのイベントの時刻を記録します（時刻の求め方は下の「遅延の測定」と同じ）。記録中は仮のマーカー、終了時に行ごとのマーカー `LLB:<行番号>` を置きます。`Esc` で終了、`Backspace` で取り消し。
+- 案内の表示（`ui/overlay.py`）：タップ同期中は次の行の歌詞と行番号を、遅延の測定中は「予備拍 n/4：聞くだけ」「クリックに合わせて T（n/16）」を、3D ビューの上部中央に大きく表示します。ステータスバーの文字は小さく、Blender 5 の「アニメプレイ」の表示に紛れて見落とされたため（段階 1 の確認で判明）。
+- マーカーから取り込む：`LLB:<行番号>` のマーカーのうち、タップの時刻のフレームから動いたものだけを取り込みます（動かしていないマーカーは、フレームより細かいタップの時刻を保つ）。
+- 再生の終わり：再生は最後のフレームから先頭に戻って繰り返し、モーダルはイベントが来たときしか動きません。そのため、0.05 秒のタイマーイベントで定期的に判定し、フレームが先頭に戻ったことも終わりとみなします（2 周目のフレームが時刻の換算に混ざるのを防ぐ）。
+- 遅延の測定：拍のクリック音のサウンドストリップを一時的に作って再生し（他のストリップは消音。終了後にシーンの範囲・消音・同期の設定を元に戻す）、利用者に拍に合わせて 16 回タップしてもらいます（4 拍の予備拍の後）。測った値は、ファイル（`tap_latency_ms`）とプリファレンスの両方に保存し、測っていないファイルではプリファレンスの値を使います。手で入力した値も、そのファイルの値として使います。
+  - フレームが切り替わった瞬間を基準にするため、最大 1 フレームの一定の偏りがあります。測定とタップ同期が同じ fps なら打ち消されるので、測定時の fps（`latency_fps`）を記録し、違う fps でタップ同期を始めたら警告を出します。理論上の拍の時刻との差の中央値を `tap_latency_ms` にします。
   - キーリピート（`event.is_repeat`）は無視します。拍から 150 ms を超えてずれたタップは外れ値として除き、その回数を表示します。ばらつきは中央絶対偏差（MAD）で表示します（標準偏差は、最後のクリックの後のタップや二度押しで大きく膨らむため。S0-08）。
   - タップの時刻は `time.perf_counter()` で記録し、`frame_change_post` で記録した「フレームと実時間の組」の差の中央値で、曲の時刻に直します。AUDIO_SYNC では、フレームが 1 つおきに進んだり止まったりする（±17 ms の揺れ）ため、最後のフレームを基準にするより正確です。タップ同期でも同じ方法を使います。
 - 長い処理（解析・おまかせ・プレビュー生成）は `wm.progress_begin/update/end` で進捗を出します。
@@ -703,7 +711,9 @@ def bake_palette_material(objects, *, max_colors=64) -> PaletteResult
 
 | 対象 | 方法 |
 |---|---|
-| `core/` | `python -m unittest discover tests/core`（Blender 不要。numpy は必要） |
+| `core/`・`text/fontinfo.py` | `tests/run_core.sh`（Blender 同梱の Python で `python -m unittest discover -s tests/core -t .` を実行。Blender 自体は不要。numpy が必要なため、WSL 等の Python に numpy が無くても動くように同梱の Python を使う） |
+| フォント解析 | フォントファイルはリポジトリに置かず、テストの中で最小構成の TTF・OTF・TTC を組み立てて検証する |
+| モーダル操作 | `tests/blender/test_tap_modal.py`：`--enable-event-simulate` 付きの GUI の Blender で、キー入力を送ってタップ同期と遅延の測定を確かめる（約 30 秒、ウィンドウが開く） |
 | `text/fontinfo.py` | テスト用の OFL フォント（リポジトリに置けるライセンスのもの）で、送り幅・cmap を検証 |
 | 部品の契約 | 全部品について、登場の p=1・退場の p=0 で恒等になること、例外を出さないこと |
 | Blender 側 | `blender --background --factory-startup --python tests/blender/run_all.py`：フォント → 文字メッシュ → プレビュー → 出力 |
@@ -729,3 +739,17 @@ def bake_palette_material(objects, *, max_colors=64) -> PaletteResult
 ### 17.1 試作（段階 0）による確定事項
 
 試作の結果は [05_prototype_results.md](05_prototype_results.md) にまとめています。本設計書では、§6.2・§8.2・§8.3・§9.5・§10.7・§10.8・§11.2・§12 に反映しました。
+
+### 17.2 段階 1 の実装による変更
+
+| 箇所 | 変更 | 理由 |
+|---|---|---|
+| §4.1 | フォントの役割を、4 つの `PointerProperty` にした。行に `source`・`tap_time`・手動の時刻を追加した | 4 つ固定の役割は、コレクションより扱いが単純。時刻の出どころを区別しないと、優先順位を守れない |
+| §5.3 | タップの遅延は、記録するときに差し引く | マーカーの位置と行の開始時刻を一致させるため |
+| §5.3 | セクション推定の区切りを相対的な基準にし、サビの継続・同じ種別の結合・先頭の統合方向を決めた | 固定の 2 拍では、ほぼ全行が区切りになった（単体テストで確認） |
+| §5.4 | 高域フィルターを周波数領域で計算し、テンポの範囲の端も補間する | numpy で一括処理するため。端のテンポの誤差を ±1 BPM 以内にするため |
+| §5.4 | スペクトラムは段階 3 で実装する | 使うのは段階 3 以降（パーティクル・ギミック）のため |
+| §5.3 | 歌詞を読み直したときの行の対応を、行番号から文字列の照合に変えた | 行を挿入すると、以降の行のタップの時刻がずれたため（改善メモ） |
+| §13 | 遅延を測ったときと違う fps でタップしたら警告する | フレームの時計の偏りは、同じ fps でしか打ち消されないため（改善メモ） |
+| 全体 | Python 3.11・numpy 1.26（Blender 5.0）でも動くように書く | Blender 5.0 の同梱の Python は 3.11、numpy は 1.26。numpy 1.x では uint64 の配列と Python の整数のビット演算ができない（5.0 での確認で発見） |
+| §13 | モーダルにタイマーを付け、再生が先頭に戻ったら終える | 最後のタップの後に入力が無いと、終わりを見逃して 2 周目に入った（自動テストで発見） |

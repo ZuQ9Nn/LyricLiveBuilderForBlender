@@ -26,7 +26,8 @@
 | Unity | Unity Hub と Unity 2022.3.22f1 |
 | Unity のテスト用プロジェクト | VRChat Creator Companion で作ったワールドのプロジェクト（Worlds SDK・UdonSharp 入り）。**参考用の購入アセットが入ったプロジェクトとは別にする** |
 | Unity MCP | 段階 0・4・5 で使う。テスト用プロジェクトにつなぎ替えて使う |
-| Python（Blender の外） | `core/` の単体テスト用。Blender 同梱の Python と同じ系統の版（5.1 なら 3.13）と numpy |
+| Python（Blender の外） | `core/` の単体テスト用。Blender 同梱の Python（`<Blender>/5.x/python/bin/python.exe`。numpy 入り）を使う（`tests/run_core.sh`。別の Python は環境変数 `LLB_PY` で指定）。Blender 5.0 の同梱は Python 3.11・numpy 1.26、5.2 は Python 3.13・numpy 2.3 なので、両方で単体テストを行う |
+| Blender 5.0（最低対応の確認用） | blender.org の zip 版を展開し、`portable` フォルダを作って使う（設定がそのフォルダに閉じ、普段の Blender に影響しない）。各段階の終わりに、拡張機能の検証・単体テスト・統合テスト・拡張機能としての導入を行う |
 | 実機 | PC VR（任意）、Meta Quest（段階 5 の確認に必要） |
 | テスト用素材 | フォントは、リポジトリに置けるライセンス（OFL 等）のものを `tests/assets/fonts/` に置く。曲は自作、または権利上問題の無い短い音源を使う |
 
@@ -126,7 +127,7 @@
 
 | # | 操作 | 期待する結果 |
 |---|---|---|
-| 1 | 「編集 → プリファレンス → 拡張機能」で、開発版のアドオンを入れて有効にする | エラーが出ず、3D ビューのサイドバー（`N`）に「LyricLive」タブが出る |
+| 1 | 「編集 → プリファレンス → 拡張機能」の右上の「∨」→「ディスクからインストール」で、開発版の zip（`dist/lyric_live_builder-<版>.zip`。`blender --command extension build --source-dir lyric_live_builder --output-dir dist` で作る）を入れて有効にする | エラーが出ず、3D ビューのサイドバー（`N`）に「LyricLive」タブが出る |
 | 2 | 「歌詞」パネルの「歌詞を開く」を押し、`lyrics_sample.txt` の内容を貼り付ける | テキストエディタが開き、貼り付けられる |
 | 3 | 「フォント」パネルで、本文と見出しに手元のフォントを指定する | ファイル名が表示される。歌詞に字形の無い文字があれば、その文字の一覧が警告として出る |
 | 4 | 「曲」パネルで曲を読み込む | タイムラインに曲が置かれ、シーンの長さが曲に合う。BPM が表示される（手元の曲の BPM と大きく違わない） |
@@ -303,8 +304,17 @@
 ### 4.1 単体テスト（Blender なし）
 
 ```
-python -m unittest discover -s tests/core -t .
+tests/run_core.sh            # Blender 同梱の Python で python -m unittest discover -s tests/core -t . を実行
 ```
+
+段階 1 からは、次のテストも行います（Blender の実行ファイルのパスは環境に合わせる）。
+
+```
+blender --background --factory-startup --python tests/blender/test_phase1.py
+blender --factory-startup --enable-event-simulate tests/manual/check_phase1.blend --python tests/blender/test_tap_modal.py -- <結果のファイル>
+```
+
+2 つ目は、キー入力を送ってモーダル操作を確かめます。ウィンドウが開き、約 30 秒クリック音が鳴ります。
 
 ### 4.2 Blender での統合テスト
 

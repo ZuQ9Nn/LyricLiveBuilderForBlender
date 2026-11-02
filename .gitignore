@@ -33,7 +33,7 @@ develop-eggs/
 downloads/
 eggs/
 .eggs/
-parts/
+/parts/
 sdist/
 var/
 wheels/

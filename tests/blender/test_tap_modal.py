@@ -1,0 +1,181 @@
+"""Tap Sync / Measure Latency modal operators driven by simulated key events (GUI Blender).
+
+  blender --factory-startup --enable-event-simulate tests/manual/check_phase1.blend
+          --python tests/blender/test_tap_modal.py -- <result file>
+
+Opens a window for ~30 s and plays clicks; it never saves the file or the preferences.
+"""
+import os
+import statistics
+import sys
+import time
+import traceback
+
+import bpy
+
+ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
+sys.path.insert(0, ROOT)
+OUT = sys.argv[sys.argv.index("--") + 1]
+bpy.context.preferences.use_preferences_save = False
+
+import lyric_live_builder as llb                   # noqa: E402
+from lyric_live_builder.ui import project         # noqa: E402
+
+TAPS = [1.0, 2.5, 4.25, 6.0]                       # seconds after Tap Sync starts; the 4th is undone
+log = []
+failures = []
+pressed = []                                       # wall clock of each simulated T
+
+
+def check(cond, msg):
+    log.append(("OK   " if cond else "FAIL ") + msg)
+    if not cond:
+        failures.append(msg)
+
+
+def finish():
+    log.append("RESULT " + ("PASS" if not failures else f"FAIL {failures}"))
+    with open(OUT, "w", encoding="utf-8") as f:
+        f.write("\n".join(log) + "\n")
+    os._exit(0 if not failures else 1)
+
+
+def ctx():
+    win = bpy.context.window_manager.windows[0]
+    area = max((a for a in win.screen.areas if a.type == "VIEW_3D"), key=lambda a: a.width * a.height)
+    region = next(r for r in area.regions if r.type == "WINDOW")
+    return win, area, region
+
+
+def press(key):
+    if key == "T":
+        pressed.append(time.perf_counter())
+    win = bpy.context.window_manager.windows[0]
+    win.event_simulate(type=key, value="PRESS")
+    win.event_simulate(type=key, value="RELEASE")
+
+
+class FrameClock:
+    """The test's own (frame, wall clock) samples, independent of the operators' handler."""
+
+    def __init__(self):
+        self.samples = []
+        self.last = None
+
+    def sample(self):
+        """Record when a new frame is first seen (polled every 5 ms), like frame_change_post."""
+        scene = bpy.context.scene
+        f = scene.frame_current
+        if f > scene.frame_start and (self.last is None or f > self.last):
+            self.samples.append(time.perf_counter() - (f - scene.frame_start) / project.fps(scene))
+        self.last = f if self.last is None else max(self.last, f)
+
+    def start(self):
+        return statistics.median(self.samples)
+
+    def wait(self, until=None, seconds=None):
+        """Generator: sample frames while waiting for a wall clock time or a duration."""
+        until = until if until is not None else time.perf_counter() + seconds
+        while time.perf_counter() < until:
+            self.sample()
+            yield min(0.005, max(0.0, until - time.perf_counter()))
+
+    def wait_playing(self, settle=1.0):
+        """Generator: wait until playback moves (starting the audio can take seconds the first
+        time a sound file is read), then sample for a while; returns the scene start wall time."""
+        scene = bpy.context.scene
+        t = time.perf_counter()
+        for _ in range(2000):
+            if scene.frame_current > scene.frame_start:
+                break
+            yield 0.005
+        log.append(f"     playback started after {time.perf_counter() - t:.2f} s (playing={bpy.context.screen.is_animation_playing}, frame={scene.frame_current})")
+        yield from self.wait(seconds=settle)
+        return self.start()
+
+
+def script():
+    """Generator: yields seconds to wait; runs inside a timer."""
+    llb.register()
+    scene = bpy.context.scene
+    proj = scene.llb
+    txt = bpy.data.texts.new("LLB_Lyrics")
+    with open(os.path.join(ROOT, "tests", "manual", "lyrics_sample.txt"), encoding="utf-8") as f:
+        txt.write(f.read())
+    proj.lyrics_text = txt
+    win, area, region = ctx()
+    with bpy.context.temp_override(window=win, area=area, region=region):
+        bpy.ops.llb.refresh()
+        bpy.ops.llb.load_audio(filepath=os.path.join(ROOT, "tests", "manual", "click_120bpm.wav"))
+    yield 1.0
+
+    # ---- Tap Sync ----
+    with bpy.context.temp_override(window=win, area=area, region=region):
+        bpy.ops.llb.tap_sync("INVOKE_DEFAULT")
+    clock = FrameClock()
+    t0 = yield from clock.wait_playing(settle=0.5)
+    for t in TAPS:
+        yield from clock.wait(until=t0 + t)
+        press("T")
+    yield 0.3
+    check(len([m for m in scene.timeline_markers if m.name.endswith("*")]) == 4, "a live marker per tap")
+    press("BACK_SPACE")
+    yield 0.3
+    press("ESC")
+    yield 0.5
+    taps = [ln.tap_time for ln in proj.lines]
+    check(all(t >= 0 for t in taps[:3]) and all(t < 0 for t in taps[3:]), f"3 taps kept after one undo {taps[:5]}")
+    # compare with when the keys were really sent (the timer itself can run late)
+    gaps = [b - a for a, b in zip(taps, taps[1:3])]
+    want = [b - a for a, b in zip(pressed, pressed[1:3])]
+    check(all(abs(g - w) < 0.025 for g, w in zip(gaps, want)), f"tap spacing matches within 25 ms {gaps} vs {want}")
+    check(abs(taps[0] - TAPS[0]) < 0.3, f"first tap near its playback time ({taps[0]:.3f} s)")
+    names = sorted(m.name for m in scene.timeline_markers)
+    check(names == ["LLB:1", "LLB:2", "LLB:3"], f"final markers {names}")
+    check([ln.source for ln in proj.lines[:4]] == ["tap", "tap", "tap", "auto"], "tapped lines use the tap times")
+    check(not bpy.context.screen.is_animation_playing, "playback stopped")
+    yield 0.5
+
+    # ---- Measure Latency ----
+    # a strip whose name differs only in case (left by the phase 0 prototype) must not break the cleanup
+    scene.sequence_editor.strips.new_sound("LLB_click", os.path.join(ROOT, "tests", "manual", "click_120bpm.wav"), 5, 1).mute = True
+    frame_end, strips, frame_now = scene.frame_end, len(scene.sequence_editor.strips), scene.frame_current
+    with bpy.context.temp_override(window=win, area=area, region=region):
+        bpy.ops.llb.measure_latency("INVOKE_DEFAULT")
+    clock = FrameClock()
+    t0 = yield from clock.wait_playing(settle=1.0)
+    first = len(pressed)
+    for k in range(4, 20):
+        yield from clock.wait(until=t0 + k * 0.5 + 0.04)          # ~40 ms after each click
+        press("T")
+    while bpy.context.screen.is_animation_playing:             # the click track ends by itself
+        yield from clock.wait(seconds=0.1)
+    check(scene.frame_current == frame_now, "measurement stopped at the end instead of looping")
+    yield 0.5
+    # what the keys really were against the test's own frame clock
+    t0 = clock.start()
+    offs = sorted((p - t0 - k * 0.5) * 1000 for k, p in zip(range(4, 20), pressed[first:]))
+    want = statistics.median(offs)
+    check(proj.latency_measured and abs(proj.tap_latency_ms - want) < 10,
+          f"latency {proj.tap_latency_ms:.1f} ms matches the keys sent ({want:.1f} ms)")
+    check(scene.frame_end == frame_end and len(scene.sequence_editor.strips) == strips
+          and not scene.sequence_editor.strips[project.SONG_STRIP].mute, "scene restored after measuring")
+    finish()
+
+
+def run():
+    gen = script()
+
+    def step():
+        try:
+            return next(gen)
+        except StopIteration:
+            finish()
+        except Exception:
+            log.append(traceback.format_exc())
+            failures.append("exception")
+            finish()
+    bpy.app.timers.register(step, first_interval=2.0)
+
+
+run()
