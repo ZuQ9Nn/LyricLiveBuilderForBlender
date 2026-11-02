@@ -7,13 +7,13 @@ from bpy.app.translations import pgettext_iface as iface_
 from ..props import FONT_ROLES, SECTION_KIND_ITEMS
 from . import project
 
-ROLE_LABELS = {"display": "Display", "serif": "Serif", "body": "Body", "mono": "Mono"}
+ROLE_LABELS = {"display": "Heading Font", "serif": "Serif Font", "body": "Body Font", "mono": "Mono Font"}
 KIND_LABELS = {k: name for k, name, _ in SECTION_KIND_ITEMS}
 NOTATION = (
     ("A/B", "Chunk break"),
     ("*word*", "Emphasis"),
     ("line!", "Strong accent"),
-    ("line|note", "Annotation"),
+    ("line|note", "Small Annotation"),
     ("[01:23.45]line", "LRC time"),
     ("[A] [Chorus] [サビ]", "Section heading"),
     ("# ...", "Comment"),
@@ -183,7 +183,36 @@ class LLB_PT_sections(_Panel, bpy.types.Panel):
             sub = row.row()
             sub.active = ln.use_manual
             sub.prop(ln, "manual_start", text="")
+            box.separator()
+            box.prop(ln, "is_3d")
+            if ln.is_3d:
+                row = box.row(align=True)
+                row.prop(ln, "depth")
+                row.prop(ln, "bevel", text="")
+            box.prop(ln, "layout")
+            if not ln.is_3d and ln.bl_rna.properties["layout"].enum_items[ln.layout].description:
+                labels(box, "This layout is for 3D lines.\nIt is chosen automatically", "ERROR")
+            box.prop(ln, "enter")
+            box.prop(ln, "hold")
+            box.prop(ln, "exit")
+            box.prop(ln, "distance_layer")
+            box.prop(ln, "persist")
+
+
+class LLB_PT_preview(_Panel, bpy.types.Panel):
+    bl_label = "Preview"
+    bl_order = 8
+
+    def draw(self, context):
+        proj = context.scene.llb
+        col = self.layout.column()
+        row = col.row(align=True)
+        row.scale_y = 1.4
+        row.operator("llb.preview_build", icon="PLAY")
+        row.operator("llb.preview_clear", text="", icon="TRASH")
+        col.operator("llb.view_audience", icon="CAMERA_DATA")
+        col.prop(proj, "seed")
 
 
 CLASSES = (LLB_PT_lyrics, LLB_PT_lyrics_notation, LLB_PT_fonts, LLB_PT_song, LLB_PT_sync,
-           LLB_UL_sections, LLB_UL_lines, LLB_PT_sections)
+           LLB_UL_sections, LLB_UL_lines, LLB_PT_sections, LLB_PT_preview)

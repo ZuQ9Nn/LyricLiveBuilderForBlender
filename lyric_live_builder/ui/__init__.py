@@ -1,8 +1,8 @@
 import bpy
 
-from . import operators_input, panels, tap_sync
+from . import operators_input, operators_preview, panels, tap_sync
 
-CLASSES = operators_input.CLASSES + tap_sync.CLASSES + panels.CLASSES
+CLASSES = operators_input.CLASSES + operators_preview.CLASSES + tap_sync.CLASSES + panels.CLASSES
 
 
 def register():

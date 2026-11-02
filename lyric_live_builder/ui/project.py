@@ -10,6 +10,11 @@ from ..props import FONT_ROLES
 from ..text import fontinfo
 
 SONG_STRIP = "LLB_Song"
+# per-line settings made by the user; they follow their line when the lyrics are edited
+LINE_DEFAULTS = {"tap_time": -1.0, "use_manual": False, "manual_start": 0.0, "is_3d": False, "depth": 0.15,
+                 "bevel": "0.015", "layout": "AUTO", "enter": "AUTO", "hold": "AUTO", "exit": "AUTO",
+                 "distance_layer": "AUTO", "persist": "AUTO"}
+LINE_USER_FIELDS = tuple(LINE_DEFAULTS)
 _busy = False
 _audio_cache = {}          # abs path -> (mtime, AudioInfo)
 
@@ -120,7 +125,7 @@ def recompute(scene):
 def _recompute(scene):
     proj = scene.llb
     parsed = lyrics.parse(lyrics_source(proj))
-    old = [(ln.text, ln.tap_time, ln.use_manual, ln.manual_start) for ln in proj.lines]
+    old = [(ln.text, {f: getattr(ln, f) for f in LINE_USER_FIELDS}) for ln in proj.lines]
     match = lyrics.match_lines([o[0] for o in old], [ln.text for ln in parsed.lines])
     while len(proj.lines) > len(parsed.lines):
         proj.lines.remove(len(proj.lines) - 1)
@@ -128,10 +133,9 @@ def _recompute(scene):
         proj.lines.add()
     manual, taps = {}, {}
     for i, ln in enumerate(proj.lines):
-        if i in match:
-            _, ln.tap_time, ln.use_manual, ln.manual_start = old[match[i]]
-        else:
-            ln.tap_time, ln.use_manual, ln.manual_start = -1.0, False, 0.0
+        values = old[match[i]][1] if i in match else LINE_DEFAULTS
+        for f, v in values.items():
+            setattr(ln, f, v)
         if ln.use_manual:
             manual[i] = ln.manual_start
         if ln.tap_time >= 0:
@@ -227,3 +231,73 @@ def import_markers(scene):
     if changed:
         recompute(scene)
     return changed
+
+
+# ---- preview inputs ----
+
+def font_paths(proj, role):
+    """Font files to try for a role, in fallback order (the role, then body, then the rest)."""
+    order = [role, "body"] + [r for r in FONT_ROLES if r not in (role, "body")]
+    out = []
+    for r in order:
+        fp = proj.font(r).filepath
+        if fp:
+            p = bpy.path.abspath(fp)
+            if p not in out and os.path.isfile(p):
+                out.append(p)
+    return out
+
+
+class _Metrics:
+    """Advances of a role, taking each character from the first font that has it."""
+
+    def __init__(self, infos):
+        self.infos = infos
+
+    def _info(self, ch):
+        for info in self.infos:
+            if info.has_char(ch):
+                return info
+        return self.infos[0]
+
+    def advance_em(self, ch):
+        return self._info(ch).advance_em(ch)
+
+    def vadvance_em(self, ch):
+        return self._info(ch).vadvance_em(ch)
+
+
+def metrics(proj):
+    cache = {}
+
+    def get(role):
+        if role not in cache:
+            infos = []
+            for p in font_paths(proj, role):
+                try:
+                    infos.append(fontinfo.load(p))
+                except (OSError, ValueError):
+                    pass
+            if not infos:
+                raise ValueError("no usable font")
+            cache[role] = _Metrics(infos)
+        return cache[role]
+    return get
+
+
+def line_inputs(proj):
+    """Scene lines -> core LineInputs (notation flags re-read from the lyrics)."""
+    from ..core.model import LineInput
+    parsed = lyrics.parse(lyrics_source(proj)).lines
+    out = []
+    for i, ln in enumerate(proj.lines):
+        src = parsed[i] if i < len(parsed) else None
+        auto = lambda v: "" if v == "AUTO" else v
+        out.append(LineInput(
+            index=i, text=ln.text, start=ln.start, end=ln.end, section_index=ln.section_index,
+            char_times=json.loads(ln.char_times) if ln.char_times else None,
+            emph_words=list(src.emph) if src else [], impact=bool(src and src.impact),
+            chunks=list(src.manual) if src and src.manual else None,
+            is_3d=ln.is_3d, depth=ln.depth, bevel=float(ln.bevel), layout=auto(ln.layout), enter=auto(ln.enter),
+            hold=auto(ln.hold), exit=auto(ln.exit), distance=auto(ln.distance_layer), persist=auto(ln.persist)))
+    return out
