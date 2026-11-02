@@ -217,3 +217,7 @@ $RECYCLE.BIN/
 reference/
 # 内部的な資料 — 絶対にコミットしない（著作物を含む）
 internal-docs/
+
+# Generated check files (rebuild with prototypes/phase0/build_check_blend.py)
+tests/manual/*.blend
+tests/manual/*.wav

@@ -292,7 +292,8 @@ class FrontLayout(LayoutPart):
 - 一時的なテキストカーブを作り（`body=1文字`、`size=1`、`align_x='LEFT'`、`align_y='TOP_BASELINE'`）、`resolution_u`（既定 6、モバイル時 4）を設定して、評価済みのメッシュ（`evaluated_get().to_mesh()`）を取り出します。
   - 2D：`extrude=0`、`fill_mode='BOTH'`。
   - 3D：`extrude = 厚み/2`、`bevel_depth`、`bevel_resolution=1`。
-- 原点の合わせ方：送り幅（fontinfo）の中心と、`OS/2` の字面の上下の中心を原点にします。Blender のテキストの em の大きさと、fontinfo の unitsPerEm の対応は**要検証**です（試作で測って係数を決める）。
+- 原点の合わせ方：送り幅（fontinfo）の中心と、`OS/2` の字面の上下の中心を原点にします。
+- 大きさ：Blender はフォントの head 表のバウンディングボックスの高さを 1 として拡大します。そのため、Blender の 1em ＝ `unitsPerEm / (head.yMax − head.yMin)` です（試作 S0-01 で確認）。em 基準の大きさ E で出すときは、`size = E / (unitsPerEm / (yMax − yMin))` にします。送り幅は hmtx の値にこの係数を掛ければ、Blender 自身の並びと一致します。
 - キャッシュ：キーは `(フォントのパス, 文字, 2D/3D, 厚み, ベベル, 解像度, 最適化の有無)` です。メッシュのデータブロックを共有します。
 - 部品分解：2D 面を bmesh で連結成分（島）に分け、島ごとのメッシュ（原点＝島の重心）を作ります。分解→集合・爆散の動きで使います。
 - 縦書き：送りは `vmtx`。長音・括弧などは JIZURA の `VERT_ROTATE` に従って 90° 回し、小書きの文字はずらします。
@@ -342,6 +343,7 @@ class FrontLayout(LayoutPart):
 ### 8.2 背景ドーム
 
 - メッシュ：アイコスフィア（細分化 3、半径 60 m）の法線を内側に向けたもの。UV は正距円筒（パノラマ画像用）。
+- シェーダーは不透明・`Cull Front`・**`ZWrite On`** にします。Unity は不透明物の後に、深度が最も遠いままの画素へ Skybox を描きます。そのため、深度を書かないドームは Skybox に上書きされて見えなくなります（試作 S0-07 で確認）。
 - シェーダーのパラメータ（A と B の2組＋進行度）
 
 | パラメータ | 内容 |
@@ -365,7 +367,7 @@ class FrontLayout(LayoutPart):
   2. 内蔵の基本形の表（`core/parts/gimmicks.py`。生成は `text/`・`preview/` 側の bmesh 関数）
   3. 紋章（キーワードを 3D 文字で作り、台座の円盤と組み合わせる）
 - **同義語辞書**（`synonyms.py`）：`{tag: [語, ...]}` の形にします。照合は、歌詞のチャンクをひらがな・カタカナに正規化してから、部分一致で行います。利用者の追加分は、プリファレンスに JSON で保存します。
-- **タグ索引**：「ライブラリを更新」で、指定したアセットライブラリの .blend をすべて調べます。調べ方は `bpy.data.libraries.load(path, link=True, assets_only=True)` でオブジェクトを一時的にリンクし、`asset_data.tags` を読んで、すぐライブラリを外す、です。結果（ファイル・名前・タグ）を、Extension のユーザーディレクトリの JSON に保存します。読み込みの方法は**要検証**です（一時リンクの重さと、後始末の確実さ）。
+- **タグ索引**：「ライブラリを更新」で、指定したアセットライブラリの .blend をすべて調べます。調べ方は `bpy.data.libraries.load(path, link=True, assets_only=True)` でオブジェクトを一時的にリンクし、`asset_data.tags` を読んで、すぐライブラリを外す、です。結果（ファイル・名前・タグ）を、Extension のユーザーディレクトリの JSON に保存します。100 個で 0.02 秒です（試作 S0-10）。後始末はライブラリを外すだけにし、`bpy.data.orphans_purge()` は使いません（利用者の未使用データまで消すため）。利用者のファイルが既に同じライブラリをリンクしている場合は、ライブラリを外しません。
 - **取り込みと正規化**：使うときに append し、評価済みのメッシュを1つにまとめます。そのうえで、高さを既定の大きさ（1.5 m）に、原点を底面の中心に、正面を +Y にそろえます。テクスチャ付きのマテリアルは、ベースカラーのテクスチャと色だけを引き継ぎます（Unity では lit / unlit に置き換える）。
 - **出し方**：出し方ごとに、時刻の関数でトラックを作ります（床から：Z を -高さ → 0、空から：Z を +5 m → 0 で弾む、壁から：半径 6 m → 配置半径、ポップ：拡大率 0 → 1.15 → 1、ひっくり返る：床の板の X 回転 180°、開く：シェイプキー、溶けて消える：ドームと同じディゾルブのパラメータを物体のマテリアルで使う）。
 - **スペクトラムバー**：24 本を半径 4 m の円に並べ、`audio.py` のスペクトラムから拡大率の Z のトラックを作ります（間引きつき）。
@@ -464,7 +466,7 @@ Shape :=
 1. プリファレンスで指定したパス
 2. `C:\Program Files\Unity\Hub\Editor\2022.3.22f1\Editor\Unity.exe`
 3. `%APPDATA%\UnityHub\secondaryInstallPath.json` に書かれたフォルダ ＋ `\2022.3.22f1\Editor\Unity.exe`
-4. `%APPDATA%\UnityHub\` の editors 系の JSON（Hub の版で形式が変わるので、寛容に読む。**要検証**）
+4. `%APPDATA%\UnityHub\` の editors 系の JSON（Hub の版によっては存在しない。試作 S0-04 の環境には無かった。見つかれば使う補助の手段とし、寛容に読む）
 5. macOS：`/Applications/Unity/Hub/Editor/<ver>/Unity.app/Contents/MacOS/Unity`、Linux：`~/Unity/Hub/Editor/<ver>/Editor/Unity`
 
 - 見つからなければエラーダイアログ（`invoke_popup`）を出します。2022.3.22f1 が無く、他の 2022.3 系がある場合は、確認ダイアログで続行するかを選ばせます。
@@ -516,6 +518,8 @@ Unity.exe -batchmode -nographics -quit -projectPath "<Project>"
 7. Timeline の生成（§10.6）。ルートに PlayableDirector と AudioSource を付け、バインドする。
 8. オプション：TMP 変換、Udon 同期。
 9. Prefab として保存し、`_pending.llb` を削除する。`[LLB] done` をログに出す。
+
+組み立ては、作業用の一時オブジェクトだけで行い、開いているシーンのオブジェクトには触れません。シーンに置いた Prefab のインスタンスは、Prefab の上書きで自動的に更新されます（S0-03 の試作で、名前でシーンを検索して削除する処理が、シーンに置いたインスタンスまで消した）。
 
 ### 10.3 マテリアルの対応
 
@@ -572,12 +576,15 @@ Unity.exe -batchmode -nographics -quit -projectPath "<Project>"
   1. `LLBSync.cs.txt` を `Generated/LLBSync_<曲名>.cs` にコピーし、`_pending_udon.llb` を置く。
   2. スクリプトの再読み込み後、`LLBAutoBuild` が UdonSharpProgramAsset を作り、Prefab に U# の部品を付けて、PlayableDirector と開始ボタンをつなぐ。
 - 同期の内容：オーナーが「開始」を押す → 同期変数 `startServerTime`（`Networking.GetServerTimeInSeconds()`）と `isPlaying` を送る → 各クライアントは `director.time = now - startServerTime` にして `Play()` します。後から入室した人も、受信時に同じ計算で再生位置を合わせます。Udon からは再生速度を変えられないので、ずれが 0.2 秒を超えたときだけ `time` を設定し直します。
-- UdonSharp の API で部品を付ける方法は、U# の版によって違います。**要検証**。
+- U# の部品の付け方（試作 S0-11 で確立）：`UdonSharpProgramAsset` を `ScriptableObject.CreateInstance` で作って `sourceCsScript` を設定・保存 → `UdonSharpProgramAsset.CompileAllCsPrograms(forceCompile, editorBuild)` → `UdonSharpEditor.UdonSharpUndo.AddComponent(GameObject, Type)` → フィールドを設定して `UdonSharpEditorUtility.CopyProxyToUdon` で反映。U# の版の差を吸収するため、これらはリフレクションで呼び、見つからない場合は警告を出して同期を付けずに続けます。
 
 ### 10.8 TextMesh Pro
 
 - 対象：2D 文字の行のうち、TMP 変換が ON の行（3D 文字の行はメッシュのまま）。
-- フォントアセット：フォントファイルを一時的に `Generated/Fonts/` にコピーし、`TMP_FontAsset.CreateFontAsset` で作ります。歌詞で使う文字だけを `TryAddCharacters` で追加したら、`atlasPopulationMode = Static` にして、元のフォントへの参照を外します。最後にコピーしたフォントファイルを削除します（仕様書 §9.5）。手順は**要検証**。
+- フォントアセット：フォントファイルを一時的に `Generated/Fonts/` にコピーし、`TMP_FontAsset.CreateFontAsset` で作ります。歌詞で使う文字だけを `TryAddCharacters` で追加したら、`atlasPopulationMode = Static` にして、元のフォントへの参照を外します。最後にコピーしたフォントファイルを削除します（仕様書 §9.5）。
+  - 外す参照は `m_SourceFontFile`・`m_SourceFontFileGUID`・**`m_SourceFontFile_EditorRef`** の 3 つです（`SerializedObject` で設定）。3 つめを外さないと、フォントファイルが依存に残ります（試作 S0-06）。
+  - TMP の基本リソース（`Assets/TextMesh Pro`）が無いプロジェクトでは、TMP のシェーダーが無いためフォントアセットを作れません。無い場合は、`TMPro.TMP_PackageResourceImporter.ImportResources(true, false, false)` で自動的に取り込みます。
+  - 作成したアトラスのテクスチャとマテリアルは、`AssetDatabase.AddObjectToAsset` でフォントアセットのサブアセットとして保存します。
 - 文字ごとに TMP（`TextMeshPro`、1 文字）を作り、メッシュのノードの代わりに置きます。アニメーションのパスは同じにします（ノード名を変えない）。
 
 ---
@@ -601,15 +608,20 @@ def bake_palette_material(objects, *, max_colors=64) -> PaletteResult
 
 参考記事の手作業を、bmesh で次のように自動化します。
 
-1. 2D 面のメッシュに対して `remove_doubles(dist=merge_dist)` を行う。
-2. 境界の辺（輪郭）だけを残し、面と内部の辺を削除する。
-3. 輪郭のループを、外周（反時計回り）と穴（時計回り）に分類する（符号付き面積）。
-4. 外周ごとに、それに含まれる穴を割り当てる（点の包含判定）。
-5. 外周と穴から、`bmesh.ops.triangle_fill`（`use_beauty=True`）で面を張る。
-6. `dissolve_limited(angle_limit=dissolve_angle)` で同一平面の三角形を多角形にまとめ、Unity 向けに `triangulate(quad_method='BEAUTY', ngon_method='BEAUTY')` で三角形化し直す（細長い三角形を減らす）。
-7. 輪郭の頂点数は、曲線の解像度（§6.2）で決まるので、ここでは減らさない。
+1. テキストの曲線の解像度を下げてメッシュにする（§6.2）。
+2. `bmesh.ops.remove_doubles(dist=1e-5)` で近接頂点を結合する。
+3. `bmesh.ops.dissolve_limit(angle_limit=1°, use_dissolve_boundaries=False)` で、同一平面の三角形を多角形にまとめ、ほぼ直線上の頂点を取り除く。
+4. `bmesh.ops.triangulate(quad_method='BEAUTY', ngon_method='BEAUTY')` で三角形化し直す（細長い三角形を減らす）。
 
-- 角度・距離の既定値は試作で決めます（仕様書 §16）。かな・漢字・英数字・記号の代表 100 字で、三角形の数と見た目を比べます。
+- 試作 S0-09 で、限定的溶解だけで穴が保たれることを確認しました（代表 100 字 × 2 書体 × 20 通りで、壊れた字は 0）。そのため、輪郭のループを取り出して面を張り直す手順は使いません。
+- 既定値（試作 S0-09 で決定）
+
+| 用途 | 曲線の解像度 | 角度 | 1 字の平均三角形数（ゴシック / 明朝） |
+|---|---|---|---|
+| 通常 | 6 | 1° | 100 / 303 |
+| モバイル最適化 | 4 | 1° | 74 / 210 |
+
+- 角度を 5° 以上にすると、明朝体で形の誤差が大きくなる（面積で最大 8%）ため、角度の上限は 3° にします。
 
 ### 11.3 行メッシュへの切り替え
 
@@ -632,7 +644,8 @@ def bake_palette_material(objects, *, max_colors=64) -> PaletteResult
 - アニメーションの書き込み（`animation.py`）：Blender 5.x のレイヤードアクションの API を使います。
   - オブジェクトごとにアクションを作り、`fcurve_ensure_for_datablock` または `layers → strips → channelbag(slot)` の `fcurves.new()` で F カーブを作ります。
   - `keyframe_points.add(n)` と `foreach_set('co', ...)` でまとめて書き込み、補間を一括で設定します。
-  - 大量に書き込むときの速さは**要検証**です（目標：6 万キーで数秒）。
+  - 実際の書き込み手順（試作 S0-02 で確定）：`action.slots.new(id_type='OBJECT')` → `action.layers.new()` → `layer.strips.new(type='KEYFRAME')` → `strip.channelbag(slot, ensure=True)` → `fcurves.new(data_path, index)` → `keyframe_points.add(n)` → `foreach_set('co', …)` と `foreach_set('interpolation', …)`（整数 1 ＝ LINEAR、0 ＝ CONSTANT）→ `fcurve.update()`。最後に `animation_data.action` と `animation_data.action_slot` を設定する。
+  - 速さ：6 万キーで 0.04 秒、300 万キーで 2.8 秒（試作 S0-02）。
 - マテリアル：文字は「Object Info の Color/Alpha × 発光」の共有マテリアル（オブジェクトごとのマテリアルを作らない）。透明は、マテリアルのレンダリング方法を Blended にします。
 - 観客カメラ：原点・目線の高さ・正面 +Y・視野角 90°。
 - 色の管理：シーンの色変換を Standard にします（作り直しの時に確認し、違えば変更を提案する）。
@@ -658,6 +671,8 @@ def bake_palette_material(objects, *, max_colors=64) -> PaletteResult
 
 - タップ同期（`tap_sync.py`）：モーダルオペレーターです。開始時に `screen.animation_play` で再生し、`T` キーのイベントで `scene.frame_current + 小数（frame_float）` から時刻を求めて記録し、マーカーを置きます。`Esc` で終了、`Backspace` で取り消し。
 - 遅延の測定：拍のクリック音のサウンドストリップを作って再生し、利用者に拍に合わせて 16 回タップしてもらいます。理論上の拍の時刻との差の中央値を `tap_latency_ms` にします。
+  - キーリピート（`event.is_repeat`）は無視します。拍から 150 ms を超えてずれたタップは外れ値として除き、その回数を表示します。ばらつきは中央絶対偏差（MAD）で表示します（標準偏差は、最後のクリックの後のタップや二度押しで大きく膨らむため。S0-08）。
+  - タップの時刻は `time.perf_counter()` で記録し、`frame_change_post` で記録した「フレームと実時間の組」の差の中央値で、曲の時刻に直します。AUDIO_SYNC では、フレームが 1 つおきに進んだり止まったりする（±17 ms の揺れ）ため、最後のフレームを基準にするより正確です。タップ同期でも同じ方法を使います。
 - 長い処理（解析・おまかせ・プレビュー生成）は `wm.progress_begin/update/end` で進捗を出します。
 
 ---
@@ -710,3 +725,7 @@ def bake_palette_material(objects, *, max_colors=64) -> PaletteResult
 | 7 | タップの遅延補正を追加 | Blender のイベント処理と音声出力の遅れを補正するため |
 | 8 | .ttc は先頭の書体のみ | Blender のフォント読み込みの制約 |
 | 9 | ステージの大きな変形はボーンを使わない | 独自形式のメッシュでボーンを扱わないため。部品の動きとシェイプキーで作る |
+
+### 17.1 試作（段階 0）による確定事項
+
+試作の結果は [05_prototype_results.md](05_prototype_results.md) にまとめています。本設計書では、§6.2・§8.2・§8.3・§9.5・§10.7・§10.8・§11.2・§12 に反映しました。
