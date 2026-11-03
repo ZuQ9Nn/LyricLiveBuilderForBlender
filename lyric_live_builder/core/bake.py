@@ -3,9 +3,10 @@ import math
 
 import numpy as np
 
-from . import model, registry, xform
+from . import bake_world, guide, model, registry, xform
 from .lyrics import chunk_text
 from .model import BakedScene, MeshSource, Node, Track
+from .parts.common import in_out_sine, out_cubic
 
 RATE = 30.0                                      # samples per second
 TOL = {"location": 0.001, "rotation": 0.2 * math.pi / 180 / 2, "scale": 0.005, "color": 1 / 255}
@@ -38,13 +39,35 @@ def rdp(times, values, tol):
     return np.flatnonzero(keep)
 
 
-def _track(node, prop, times, values, rest):
-    """A decimated linear track, or None when it never leaves the rest value."""
+def _track(node, prop, times, values, rest, interp="linear"):
+    """A decimated track, or None when it never leaves the rest value. Constant tracks (frame
+    stepping) keep a key wherever the value moved by more than the tolerance."""
     values = np.asarray(values, dtype=np.float64)
     if np.abs(values - np.asarray(rest)).max() <= TOL[prop]:
         return None
-    idx = rdp(times, values, TOL[prop])
-    return Track(node, prop, "linear", times[idx].astype(np.float32), values[idx].astype(np.float32))
+    if interp == "constant":
+        idx, last = [0], values[0]
+        for i in range(1, len(values)):
+            if np.abs(values[i] - last).max() > TOL[prop]:
+                idx.append(i)
+                last = values[i]
+        idx = np.array(idx)
+    else:
+        idx = rdp(times, values, TOL[prop])
+    return Track(node, prop, interp, times[idx].astype(np.float32), values[idx].astype(np.float32))
+
+
+def _scaled(d, k):
+    """A motion delta made stronger / weaker by k (the motion strength); identity stays identity."""
+    d.loc = d.loc * k
+    w = np.clip(d.rot[..., 0], -1, 1)
+    half = np.arccos(np.abs(w)) * k
+    axis = d.rot[..., 1:] * np.sign(w + (w == 0))[..., None]
+    n = np.linalg.norm(axis, axis=-1, keepdims=True)
+    d.rot = np.concatenate([np.cos(half)[..., None], np.where(n > 1e-12, axis / np.maximum(n, 1e-12), 0) *
+                            np.sin(half)[..., None]], axis=-1)
+    d.scale = 1 + (d.scale - 1) * k
+    return d
 
 
 def _push_out(world, eye):
@@ -53,6 +76,15 @@ def _push_out(world, eye):
     d = np.linalg.norm(v, axis=-1, keepdims=True)
     far = np.maximum(d, model.MIN_EYE_DISTANCE)
     return eye + v / np.maximum(d, 1e-9) * far
+
+
+def _glide(anchor, window, times):
+    """(T, 4) rotation about the eye that carries a line from straight ahead to its slot.
+    Elevation settles early so a line bound for a far slot passes between the nearer slots."""
+    az, el = anchor
+    u = (times - window[0]) / (window[1] - window[0])
+    now = xform.facing(az * in_out_sine(u), el * out_cubic(u / 0.5))
+    return xform.mul(now, xform.facing(az, el) * np.array([1, -1, -1, -1]))
 
 
 def mesh_key(line, ch):
@@ -65,6 +97,12 @@ def bake(plan, metrics, eye=model.EYE_HEIGHT, rate=RATE):
     """metrics(role) -> object with advance_em(ch) / vadvance_em(ch)."""
     nodes, meshes, tracks = [], {}, []
     eye_pt = np.array([0.0, 0.0, eye])
+    fx = plan.fx or model.FX_DEFAULTS
+    koma = int(fx.get("koma", 0) or 0)                   # 12 / 8 = frame stepping (constant keys)
+    interp = "constant" if koma else "linear"
+    rate = koma or rate
+    motion = fx.get("motion", model.FX_DEFAULTS["motion"])
+    k_motion = 0.55 + 0.65 * motion                       # 0.7 -> about 1 (the parts' own amplitude)
     for ln in plan.lines:
         lp = registry.get("layout", ln.layout)
         m = metrics(ln.font_role)
@@ -89,7 +127,8 @@ def bake(plan, metrics, eye=model.EYE_HEIGHT, rate=RATE):
 
         # motion windows
         mctx = registry.MotionCtx(n=g, rest=rest_loc, em=pl.em, start=ln.start, end=ln.end,
-                                  char_times=np.array([ln.char_times[i] for i in ci]), bpm=plan.bpm, seed=ln.seed)
+                                  char_times=np.array([ln.char_times[i] for i in ci]), bpm=plan.bpm, seed=ln.seed,
+                                  strength=motion)
         enter, hold, exit_ = (registry.get(k, n) for k, n in (("enter", ln.enter), ("hold", ln.hold), ("exit", ln.exit)))
         in_start = np.asarray(enter.windows(mctx, ln.enter_dur), dtype=np.float64)
         in_start = np.clip(in_start, ln.start, ln.end - ln.exit_dur - ln.enter_dur)
@@ -99,36 +138,43 @@ def bake(plan, metrics, eye=model.EYE_HEIGHT, rate=RATE):
         out_dur = np.maximum(ln.end - out_start, 1e-3)
 
         t0, t1 = float(in_start.min()), ln.end
-        times = np.unique(np.concatenate([np.arange(t0, t1, 1.0 / rate), [t1], in_end, out_start]))
+        # keys at least 0.1 ms apart: closer ones meet as float32 frame numbers and Blender merges them
+        extra = [[t1]] if koma else [[t1], in_end, out_start]
+        times = np.unique(np.round(np.concatenate([np.arange(t0, t1, 1.0 / rate)] + extra), 4))
         T = times[None, :]
         p_in = np.clip((T - in_start[:, None]) / max(ln.enter_dur, 1e-3), 0, 1)
         held = np.maximum(T - in_end[:, None], 0)
         p_out = np.clip((T - out_start[:, None]) / out_dur[:, None], 0, 1)
-        d = enter.evaluate(mctx, p_in).then(hold.evaluate(mctx, held)).then(exit_.evaluate(mctx, p_out))
+        d = _scaled(enter.evaluate(mctx, p_in), k_motion).then(hold.evaluate(mctx, held)).then(
+            _scaled(exit_.evaluate(mctx, p_out), k_motion))
 
         loc = rest_loc[:, None, :] + xform.rotate(rest_rot[:, None, :], d.loc) * 1.0
         rot = xform.continuous(xform.mul(d.rot, rest_rot[:, None, :]))
         scale = d.scale * pl.em
 
-        # group motion (approach, cube) and the eye-distance rule work in world space
+        # group motion (approach, cube), the glide of kept lines and the eye-distance rule work in world space
         gm = lp.group_motion(ctx, params, pl, times)
-        if gm is not None:
-            g_loc, g_rot = gm
-            g_rot = xform.continuous(np.asarray(g_rot))
-            world = g_loc[None] + xform.rotate(g_rot[None], loc)
-            t_g = _track(gid, "location", times, g_loc, pl.loc)
-            r_g = _track(gid, "rotation", times, g_rot, pl.rot)
-            tracks += [t for t in (t_g, r_g) if t is not None]
+        if gm is None:
+            g_loc = np.broadcast_to(np.asarray(pl.loc, dtype=np.float64), (len(times), 3))
+            g_rot = np.broadcast_to(np.asarray(pl.rot, dtype=np.float64), (len(times), 4))
         else:
-            g_rot = np.broadcast_to(pl.rot, (len(times), 4))
-            world = pl.loc + xform.rotate(np.asarray(pl.rot)[None, None], loc)
+            g_loc, g_rot = np.asarray(gm[0], dtype=np.float64), xform.continuous(np.asarray(gm[1]))
+        if ln.glide:
+            q = _glide(ln.anchor, ln.glide, times)
+            g_loc = eye_pt + xform.rotate(q, g_loc - eye_pt)
+            g_rot = xform.continuous(xform.mul(q, g_rot))
+        for prop, vals, rest in (("location", g_loc, pl.loc), ("rotation", g_rot, pl.rot)):
+            tr = _track(gid, prop, times, vals, rest, interp)
+            if tr:
+                tracks.append(tr)
+        world = g_loc[None] + xform.rotate(g_rot[None], loc)
         pushed = _push_out(world, eye_pt)
         if not np.allclose(pushed, world):
-            inv = np.asarray(g_rot) * np.array([1, -1, -1, -1])
-            g_loc_arr = gm[0] if gm is not None else np.asarray(pl.loc)[None]
-            loc = xform.rotate(inv[None], pushed - g_loc_arr[None])
+            inv = g_rot * np.array([1, -1, -1, -1])
+            loc = xform.rotate(inv[None], pushed - g_loc[None])
 
-        base = [ACCENT if ln.emph_mask[i] else WHITE for i in ci]
+        fg, accent = (ln.colors["fg"], ln.colors["accent"]) if ln.colors else (WHITE, ACCENT)
+        base = [tuple(accent) if ln.emph_mask[i] else tuple(fg) for i in ci]
         narrow = lp.shown(ctx, params, pl)
         for k in range(g):
             i = ci[k]
@@ -152,14 +198,31 @@ def bake(plan, metrics, eye=model.EYE_HEIGHT, rate=RATE):
                                 np.array([[k_[1]] for k_ in keys], dtype=np.float32)))
             for prop, vals, rest in (("location", loc[k], rest_loc[k]), ("rotation", rot[k], rest_rot[k]),
                                      ("scale", scale[k], (pl.em,) * 3)):
-                tr = _track(nid, prop, times, vals, rest)
+                tr = _track(nid, prop, times, vals, rest, interp)
                 if tr:
                     tracks.append(tr)
             col = np.concatenate([np.broadcast_to(base[k], (len(times), 3)), d.alpha[k][:, None]], axis=1)
-            tr = _track(nid, "color", times, col, color)
+            tr = _track(nid, "color", times, col, color, interp)
             if tr:
                 tracks.append(tr)
-    return BakedScene(duration=plan.duration, nodes=nodes, meshes=meshes, tracks=tracks, sections=plan.sections)
+    # gaze guidance needs the text's world positions; the dome takes its cues
+    text = BakedScene(duration=plan.duration, nodes=nodes, meshes=meshes, tracks=tracks, sections=plan.sections)
+    by_key = {(t.node, t.prop): t for t in tracks}
+    guides = guide.plan_guides(plan, lambda t: world_positions(text, t), by_key)
+    g_nodes, g_tracks, g_meshes = guide.bake_guides(guides, _track)
+    nodes, tracks = nodes + g_nodes, tracks + g_tracks
+    meshes.update(g_meshes)
+    emitters = []
+    if plan.world:
+        d_node, d_tracks = bake_world.dome(plan, guides)
+        f_nodes, f_tracks, f_meshes = bake_world.far_objects(plan)
+        e_nodes, e_tracks, emitters = bake_world.emitters(plan)
+        nodes += [d_node] + f_nodes + e_nodes
+        tracks += d_tracks + f_tracks + e_tracks
+        meshes.update(f_meshes)
+        meshes[bake_world.DOME] = MeshSource(bake_world.DOME, "dome", {})
+    return BakedScene(duration=plan.duration, nodes=nodes, meshes=meshes, tracks=tracks, sections=plan.sections,
+                      emitters=emitters, guides=guides)
 
 
 def world_positions(baked, t):

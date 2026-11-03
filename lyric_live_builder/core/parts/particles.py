@@ -1,0 +1,317 @@
+"""Particle presets and their closed-form state (spec §8.1, design §8.1).
+
+Every particle is a pure function of time: particle i of a continuous emitter is reborn every
+lifetime L_i, with a new random spawn per generation. The preview evaluates this each frame;
+the Unity export maps the same preset fields to ParticleSystem modules (Unity simulates it
+itself, so the two only look alike)."""
+import math
+
+import numpy as np
+
+from ..rng import h_np
+
+SHAPES_2D = ("circle_dot", "soft_dot", "triangle", "square", "cross", "hexagon", "octagon", "bubble", "star",
+             "sparkle", "petal", "heart", "note", "snowflake", "ring")          # atlas tile = index
+SHAPES_3D = ("cube", "hexprism", "octahedron", "icosahedron", "shard", "tetra")
+EYE = np.array([0.0, 0.0, 1.5])
+MIN_EYE_DISTANCE = 0.6
+_ALL = ("glitch", "calm", "pop", "graphic", "editorial", "emotional")
+
+# rate / max_particles are at strength 1; colours are style roles (core.styles.palette)
+PRESETS = {
+    "motes": dict(name="Light Motes", tags=_ALL, shape="soft_dot", emitter="sphere", radius=(2.0, 9.0),
+                  rate=40, life=(4, 7), speed=(0.05, 0.2), direction="random", size=(0.03, 0.08), noise=0.4,
+                  noise_freq=0.3, size_life="twinkle", fade=(0.2, 0.4), colors=("ghostA", "ghostB", "white"),
+                  blend="add", max=260, prewarm=True),
+    "stars": dict(name="Twinkling Stars", tags=("calm", "emotional", "editorial"), shape="sparkle", emitter="sky_shell",
+                  radius=(25.0, 35.0), rate=25, life=(8, 14), speed=(0.0, 0.0), direction="random", size=(0.15, 0.45),
+                  size_life="twinkle", fade=(0.15, 0.3), colors=("white", "sub"), blend="add", max=300, prewarm=True),
+    "shooting": dict(name="Shooting Stars", tags=("emotional", "calm", "pop"), shape="soft_dot", emitter="sky_shell",
+                     radius=(28.0, 32.0), rate=0.8, life=(0.6, 1.0), speed=(18.0, 26.0), direction="fall",
+                     size=(0.18, 0.3), trail=0.25, fade=(0.1, 0.5), colors=("white", "accent2"), blend="add", max=6),
+    "snow": dict(name="Snowfall", tags=("calm", "emotional"), shape="snowflake", emitter="sky_disc", radius=(1.2, 14.0),
+                 height=(8.0, 10.0), rate=30, life=(12, 16), speed=(0.4, 0.8), direction="down", size=(0.05, 0.12),
+                 noise=0.6, noise_freq=0.25, spin=(-60, 60), fade=(0.1, 0.2), colors=("white", "sub"), blend="alpha",
+                 max=400, prewarm=True),
+    "petals": dict(name="Falling Petals", tags=("calm", "emotional", "pop"), shape="petal", emitter="sky_disc",
+                   radius=(1.2, 12.0), height=(6.0, 8.0), rate=18, life=(8, 11), speed=(0.6, 1.0), direction="down",
+                   size=(0.06, 0.12), noise=0.8, noise_freq=0.3, spin=(-120, 120), fade=(0.1, 0.2),
+                   colors=("accent", "ghostA"), blend="alpha", max=200, prewarm=True),
+    "bubbles": dict(name="Rising Bubbles", tags=("calm", "pop"), shape="bubble", emitter="floor_disc", radius=(1.2, 10.0),
+                    height=(0.0, 0.3), rate=22, life=(6, 10), speed=(0.4, 0.9), direction="up", size=(0.05, 0.2),
+                    noise=0.3, noise_freq=0.4, fade=(0.1, 0.3), colors=("white", "ghostB"), blend="add", max=220,
+                    prewarm=True),
+    "fireworks": dict(name="Fireworks", tags=("pop", "emotional", "glitch"), shape="circle_dot", emitter="burst",
+                      burst=dict(interval=(1.2, 2.2), count=48, speed=(4.0, 7.0), life=(1.2, 1.8),
+                                 sub=dict(count=3, speed=1.5, life=0.5)),
+                      gravity=2.0, size=(0.06, 0.1), trail=0.12, fade=(0.0, 0.5),
+                      colors=("accent", "ghostA", "ghostB"), blend="add", max=600),
+    "hearts": dict(name="Floating Hearts", tags=("pop",), shape="heart", emitter="floor_disc", radius=(1.5, 8.0),
+                   height=(0.0, 0.5), rate=8, life=(5, 8), speed=(0.3, 0.6), direction="up", size=(0.1, 0.22),
+                   noise=0.3, noise_freq=0.3, size_life="grow", fade=(0.15, 0.3), colors=("accent", "ghostA"),
+                   blend="alpha", max=80),
+    "notes": dict(name="Music Notes", tags=("pop", "graphic"), shape="note", emitter="ring", radius=(3.0, 6.0),
+                  height=(0.5, 2.5), rate=7, life=(5, 8), speed=(0.2, 0.5), direction="orbit", rise=0.2,
+                  size=(0.12, 0.25), fade=(0.15, 0.3), colors=("fg", "accent2"), blend="alpha", max=70),
+    "cubes": dict(name="Floating Cubes", tags=("graphic", "glitch", "editorial"), shape="cube", emitter="sphere",
+                  radius=(3.0, 10.0), rate=6, life=(8, 12), speed=(0.05, 0.15), direction="random", size=(0.08, 0.24),
+                  spin=(-40, 40), fade=(0.15, 0.2), colors=("ghostA", "ghostB", "sub"), blend="alpha", max=80,
+                  prewarm=True),
+    "shard_ring": dict(name="Orbiting Shards", tags=("graphic", "glitch"), shape="shard", emitter="ring",
+                       radius=(2.5, 3.5), height=(0.2, 3.2), height_pick=True, rate=10, life=(10, 14),
+                       speed=(0.6, 1.0), direction="orbit", size=(0.1, 0.25), spin=(-90, 90), fade=(0.1, 0.2),
+                       colors=("accent", "sub"), blend="alpha", max=140, prewarm=True),
+    "warp": dict(name="Warp Streaks", tags=("glitch", "pop"), shape="soft_dot", emitter="tunnel", radius=(3.0, 9.0),
+                 rate=30, life=(3.5, 4.0), speed=(12.0, 15.0), direction="toward", size=(0.04, 0.08), trail=0.3,
+                 fade=(0.1, 0.2), colors=("white", "ghostB"), blend="add", max=130),
+    # for lines: a short burst around the text (impact lines, line overrides)
+    "sparkle_burst": dict(name="Sparkle Burst", tags=_ALL, shape="sparkle", emitter="burst",
+                          burst=dict(interval=None, count=36, speed=(1.0, 2.2), life=(0.8, 1.4), sub=None),
+                          gravity=0.3, size=(0.04, 0.09), fade=(0.0, 0.6), colors=("accent", "white"), blend="add",
+                          max=120),
+}
+AMBIENT = [k for k in PRESETS if k != "sparkle_burst"]          # the 12 section presets
+
+
+def _u(seed, i, gen, k):
+    """Uniform 0..1 per particle and generation (vectorized hash)."""
+    return h_np(seed, i, gen, k) / 4294967296.0
+
+
+def _rng(lohi, u):
+    lo, hi = lohi
+    return lo + (hi - lo) * u
+
+
+def _unit(u1, u2):
+    z = 2 * u1 - 1
+    a = 2 * math.pi * u2
+    r = np.sqrt(np.maximum(0.0, 1 - z * z))
+    return np.stack([r * np.cos(a), r * np.sin(a), z], axis=-1)
+
+
+def scale(preset, strength):
+    """Preset fields scaled by the particles strength (0..1): rate and count."""
+    k = 0.35 + 1.3 * strength
+    out = dict(preset)
+    out["rate"] = preset.get("rate", 0) * k
+    out["max"] = max(4, int(round(preset["max"] * k)))
+    if preset.get("burst"):
+        b = dict(preset["burst"])
+        b["count"] = max(6, int(round(b["count"] * (0.5 + 0.5 * k))))
+        out["burst"] = b
+    return out
+
+
+def continuous_count(p):
+    if p["emitter"] == "burst":
+        return 0
+    return int(min(p["max"], math.ceil(p["rate"] * (p["life"][0] + p["life"][1]) / 2)))
+
+
+def burst_capacity(p, bursts):
+    """Most burst particles alive at once (primaries + their secondaries)."""
+    if not bursts:
+        return 0
+    b = p["burst"]
+    span = b["life"][1] + (b["sub"]["life"] if b.get("sub") else 0)
+    per = b["count"] * (1 + (b["sub"]["count"] if b.get("sub") else 0))
+    times = sorted(x["t"] for x in bursts)
+    most = max(sum(1 for u in times if t <= u < t + span) for t in times)
+    return min(p["max"], most * per)
+
+
+def _spawn(p, seed, i, gen):
+    u = [_u(seed, i, gen, k) for k in range(6)]
+    kind = p["emitter"]
+    r_in, r_out = p.get("radius", (1.0, 2.0))
+    if kind in ("sphere", "sky_shell"):
+        r = _rng((r_in, r_out), u[0])
+        d = _unit(u[1], u[2])
+        if kind == "sky_shell":
+            d[..., 2] = 0.08 + 0.85 * np.abs(d[..., 2])
+            d /= np.linalg.norm(d, axis=-1, keepdims=True)
+        pos = EYE + d * r[..., None]
+        pos[..., 2] = np.maximum(pos[..., 2], 0.1)
+        return pos
+    if kind in ("sky_disc", "floor_disc", "ring"):
+        r = np.sqrt(_rng((r_in ** 2, r_out ** 2), u[0])) if kind != "ring" else _rng((r_in, r_out), u[0])
+        a = 2 * math.pi * u[1]
+        lo, hi = p.get("height", (0.0, 0.0))
+        z = np.where(u[2] < 0.5, lo, hi) if p.get("height_pick") else _rng((lo, hi), u[2])
+        return np.stack([np.sin(a) * r, np.cos(a) * r, z], axis=-1)
+    if kind == "tunnel":
+        r = _rng((r_in, r_out), u[0])
+        a = 2 * math.pi * u[1]
+        return np.stack([np.cos(a) * r, np.full(r.shape, 40.0), EYE[2] + np.sin(a) * r], axis=-1)
+    raise KeyError(kind)
+
+
+def _velocity(p, seed, i, gen, spawn):
+    u = [_u(seed, i, gen, 10 + k) for k in range(3)]
+    speed = _rng(p.get("speed", (0.0, 0.0)), u[0])[..., None]
+    d = p.get("direction", "random")
+    if d == "random":
+        v = _unit(u[1], u[2])
+    elif d == "up":
+        v = np.broadcast_to([0.0, 0.0, 1.0], spawn.shape).copy()
+    elif d == "down":
+        v = np.broadcast_to([0.0, 0.0, -1.0], spawn.shape).copy()
+    elif d == "toward":
+        v = np.broadcast_to([0.0, -1.0, 0.0], spawn.shape).copy()
+    elif d == "fall":                                   # across the sky and slightly down
+        a = 2 * math.pi * u[1]
+        v = np.stack([np.cos(a), np.sin(a), np.full(a.shape, -0.35)], axis=-1)
+        v /= np.linalg.norm(v, axis=-1, keepdims=True)
+    else:                                               # orbit: handled as an angle in _position
+        v = np.zeros(spawn.shape)
+    return v * speed
+
+
+def _position(p, spawn, vel, age, seed, i, gen):
+    if p.get("direction") == "orbit":
+        r = np.linalg.norm(spawn[..., :2], axis=-1)
+        omega = _rng(p["speed"], _u(seed, i, gen, 10)) / np.maximum(r, 0.1)
+        a = np.arctan2(spawn[..., 0], spawn[..., 1]) + omega * age
+        pos = np.stack([np.sin(a) * r, np.cos(a) * r, spawn[..., 2] + p.get("rise", 0.0) * age], axis=-1)
+        tangent = np.stack([np.cos(a), -np.sin(a), np.zeros_like(a)], axis=-1) * (omega * r)[..., None]
+        return pos, tangent
+    pos = spawn + vel * age[..., None]
+    g = p.get("gravity", 0.0)
+    pos[..., 2] -= 0.5 * g * age ** 2
+    v_now = vel.copy()
+    v_now[..., 2] -= g * age
+    amp = p.get("noise", 0.0)
+    if amp:
+        f = 2 * math.pi * p.get("noise_freq", 0.3)
+        ph = np.stack([_u(seed, i, gen, 20 + k) * 2 * math.pi for k in range(3)], axis=-1)
+        rate = np.array([1.0, 1.3, 0.7])
+        pos += amp * (np.sin(f * rate * age[..., None] + ph) - np.sin(ph))
+    return pos, v_now
+
+
+def _look(p, age, life, seed, i, gen, colors):
+    """size, alpha, colour, spin of particles of the given age."""
+    x = np.clip(age / life, 0, 1)
+    size = _rng(p["size"], _u(seed, i, gen, 30))
+    sl = p.get("size_life", "flat")
+    if sl == "grow":
+        size = size * (0.3 + 0.7 * (1 - (1 - x) ** 3))
+    elif sl == "shrink":
+        size = size * (1 - 0.8 * x)
+    elif sl == "twinkle":
+        size = size * (0.6 + 0.4 * np.sin(age * 5.0 + _u(seed, i, gen, 31) * 6.283))
+    fi, fo = p.get("fade", (0.1, 0.3))
+    alpha = np.ones_like(x)
+    if fi > 0:
+        alpha = np.minimum(alpha, x / fi)
+    if fo > 0:
+        alpha = np.minimum(alpha, (1 - x) / fo)
+    cols = np.asarray(colors, dtype=np.float64)
+    col = cols[(h_np(seed, i, gen, 32) % len(cols)).astype(np.int64)]
+    lo, hi = p.get("spin", (0.0, 0.0))
+    spin = _u(seed, i, gen, 33) * 6.283 + np.radians(_rng((lo, hi), _u(seed, i, gen, 34))) * age
+    return size, np.clip(alpha, 0, 1), col, spin
+
+
+def _interp(keys, t):
+    if not keys:
+        return np.ones_like(np.asarray(t, dtype=np.float64))
+    ts, vs = zip(*keys)
+    return np.interp(t, ts, vs)
+
+
+def envelope(spec, t):
+    """Emitter-wide alpha: fades in after start and out after end (exported as the emitter's colour track)."""
+    a = np.clip((t - spec["start"]) / spec.get("fade_in", 0.8), 0, 1)
+    return float(np.minimum(a, np.clip(1 - (t - spec["end"]) / spec.get("fade_out", 1.0), 0, 1)))
+
+
+def state(spec, t):
+    """Particles of an emitter spec at time t -> dict of arrays (capacity long); dead ones have alpha 0."""
+    p = spec["preset"]
+    seed = spec["seed"]
+    n = spec["count"]
+    cap = n + spec["pool"]
+    out = {"pos": np.zeros((cap, 3)), "vel": np.zeros((cap, 3)), "size": np.zeros(cap), "alpha": np.zeros(cap),
+           "color": np.ones((cap, 3)), "spin": np.zeros(cap)}
+    env = envelope(spec, t)
+    if env <= 0 or cap == 0:
+        return out
+    if n:
+        i = np.arange(n)
+        life = _rng(p["life"], _u(seed, i, 0, 40))
+        phase = _u(seed, i, 0, 41)
+        u = (t - spec["start"]) / life + phase
+        gen = np.floor(u).astype(np.int64)
+        age = (u - gen) * life
+        birth = t - age
+        alive = birth < spec["end"]
+        if not p.get("prewarm"):
+            alive &= birth >= spec["start"]
+        want = _interp(spec.get("intensity"), np.maximum(birth, spec["start"]))
+        alive &= _u(seed, i, gen + 7, 42) < want
+        gen_u = gen & 0x7FFFFFFF
+        spawn = _spawn(p, seed, i, gen_u)
+        vel = _velocity(p, seed, i, gen_u, spawn)
+        pos, v_now = _position(p, spawn, vel, age, seed, i, gen_u)
+        size, alpha, col, spin = _look(p, age, life, seed, i, gen_u, spec["colors"])
+        out["pos"][:n], out["vel"][:n], out["size"][:n] = pos, v_now, size
+        out["alpha"][:n] = alpha * alive * env
+        out["color"][:n], out["spin"][:n] = col, spin
+    if spec["pool"]:
+        _bursts(spec, t, env, out, n)
+    v = out["pos"] - EYE                                   # nothing comes closer than 0.6 m (design §7.2)
+    d = np.linalg.norm(v, axis=1, keepdims=True)
+    out["pos"] = EYE + v / np.maximum(d, 1e-9) * np.maximum(d, MIN_EYE_DISTANCE)
+    return out
+
+
+def _bursts(spec, t, env, out, offset):
+    p = spec["preset"]
+    b = p["burst"]
+    sub = b.get("sub")
+    span = b["life"][1] + (sub["life"] if sub else 0)
+    chunks = []
+    for k, ev in enumerate(spec["bursts"]):
+        age0 = t - ev["t"]
+        if not 0 <= age0 < span:
+            continue
+        seed = spec["seed"] + 7919 * (k + 1)
+        j = np.arange(b["count"])
+        life = _rng(b["life"], _u(seed, j, 0, 50))
+        d = _unit(_u(seed, j, 0, 51), _u(seed, j, 0, 52))
+        speed = _rng(b["speed"], _u(seed, j, 0, 53))
+        origin = np.asarray(ev["origin"], dtype=np.float64)
+
+        def at(age):
+            drag = 1.5
+            s = (1 - np.exp(-drag * age)) / drag
+            pos = origin + d * (speed * s)[..., None]
+            pos[..., 2] -= 0.5 * p.get("gravity", 0.0) * age ** 2
+            v = d * (speed * np.exp(-drag * age))[..., None]
+            v[..., 2] -= p.get("gravity", 0.0) * age
+            return pos, v
+        age = np.full(b["count"], age0)
+        pos, v = at(age)
+        size, alpha, col, spin = _look(p, age, life, seed, j, 0, spec["colors"])
+        chunks.append((pos, v, size, alpha * (age < life), col, spin))
+        if sub:
+            m = sub["count"]
+            jj = np.repeat(j, m)
+            kk = np.tile(np.arange(m), b["count"])
+            age2 = age0 - life[jj]
+            p0, _ = at(life)
+            d2 = _unit(_u(seed, jj, kk + 1, 54), _u(seed, jj, kk + 1, 55))
+            pos2 = p0[jj] + d2 * (sub["speed"] * np.clip(age2, 0, None))[..., None]
+            alive2 = (age2 >= 0) & (age2 < sub["life"])
+            a2 = np.clip(1 - age2 / sub["life"], 0, 1) * alive2
+            chunks.append((pos2, d2 * sub["speed"], size[jj] * 0.6, a2, col[jj], spin[jj]))
+    if not chunks:
+        return
+    cat = [np.concatenate(c) for c in zip(*chunks)]
+    keep = np.flatnonzero(cat[3] > 0)[:spec["pool"]]
+    m = len(keep)
+    s = slice(offset, offset + m)
+    out["pos"][s], out["vel"][s], out["size"][s] = cat[0][keep], cat[1][keep], cat[2][keep]
+    out["alpha"][s], out["color"][s], out["spin"][s] = cat[3][keep] * env, cat[4][keep], cat[5][keep]

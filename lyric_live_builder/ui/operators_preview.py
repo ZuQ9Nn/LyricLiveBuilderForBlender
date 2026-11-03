@@ -1,12 +1,9 @@
 """Preview operators: generate / delete / audience camera."""
-import time
-
 import bpy
 from bpy.app.translations import pgettext_iface as iface_
 
-from ..core import bake, planner
 from ..preview import scene as preview_scene
-from . import project
+from . import planning
 
 
 class LLB_OT_preview_build(bpy.types.Operator):
@@ -20,29 +17,12 @@ class LLB_OT_preview_build(bpy.types.Operator):
         return len(context.scene.llb.lines) > 0
 
     def execute(self, context):
-        scene = context.scene
-        proj = scene.llb
-        if not project.has_any_font(proj):
-            self.report({"ERROR"}, iface_("Set at least the Body font"))
-            return {"CANCELLED"}
-        t0 = time.perf_counter()
-        wm = context.window_manager
-        wm.progress_begin(0, 3)
         try:
-            lines = project.line_inputs(proj)
-            secs = [(s.start, s.end) for s in proj.sections]
-            plan = planner.plan(lines, secs, proj.duration, proj.seed, bpm=proj.bpm)
-            wm.progress_update(1)
-            baked = bake.bake(plan, project.metrics(proj))
-            wm.progress_update(2)
-            obs = preview_scene.build(scene, baked, lambda role: project.font_paths(proj, role))
+            n, dt = planning.build_preview(context)
         except ValueError as e:
-            self.report({"ERROR"}, str(e))
+            self.report({"ERROR"}, iface_(str(e)))
             return {"CANCELLED"}
-        finally:
-            wm.progress_end()
-        n = sum(1 for ob in obs.values() if ob.type == "MESH")
-        self.report({"INFO"}, iface_("{} characters in {:.1f} s").format(n, time.perf_counter() - t0))
+        self.report({"INFO"}, iface_("{} characters in {:.1f} s").format(n, dt))
         return {"FINISHED"}
 
 

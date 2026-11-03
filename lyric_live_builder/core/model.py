@@ -34,6 +34,43 @@ class LineInput:
     exit: str = ""
     distance: str = ""
     persist: str = ""                # "" | "next" | "section"
+    particle: str = ""               # particle preset added while the line is on stage
+    background: str = ""             # background preset from this line on
+    transition: str = ""             # transition into that background
+    guide: str = ""                  # "" (auto) | "on" | "off"
+    seed_offset: int = 0             # per-line re-roll count
+
+
+FX_DEFAULTS = {"motion": 0.7, "particles": 0.6, "decor": 0.5, "density": 0.5, "world_switch": 0.6, "koma": 0,
+               "guide": 0.7, "flash": True}
+
+
+@dataclass
+class SectionInput:
+    start: float
+    end: float
+    kind: str = "verse"
+    theme: str = ""                  # overrides ("" = planner)
+    background: str = ""
+    transition: str = ""
+
+
+@dataclass
+class Settings:
+    """Everything おまかせ decides besides the per-line choices (spec §6.1)."""
+    mood: str = ""
+    style: str = ""
+    fx: dict = field(default_factory=dict)
+    disabled: dict = field(default_factory=dict)     # kind -> keys turned off in the effects panel
+    stage_offsets: dict = field(default_factory=dict)  # stage -> re-roll count ("change only this")
+    accent: str = ""                 # '#RRGGBB' replacing the style accent
+    energy: object = None            # loudness envelope (0..1) at energy_rate, or None
+    energy_rate: float = 50.0
+    beats: object = None             # beat times (seconds) or None
+    panorama: bool = False           # a panorama image is set (the image background may be used)
+
+    def fx_value(self, key):
+        return self.fx.get(key, FX_DEFAULTS[key])
 
 
 @dataclass
@@ -61,6 +98,23 @@ class LinePlan:
     anchor: tuple                     # (azimuth, elevation) in radians chosen by the planner
     emphasis: bool
     seed: int
+    glide: tuple = None               # (start, end): a kept line appears in front and moves to its slot
+    colors: dict = None               # {"fg": linear rgb, "accent": linear rgb}; None = white / gold
+    guide: str = ""
+    particle: str = ""
+    impact: bool = False
+
+
+@dataclass
+class SectionPlan:
+    index: int
+    kind: str
+    start: float
+    end: float
+    theme: str
+    background: dict                  # resolved background spec at the section start
+    particles: list                   # preset keys
+    palette: dict                     # role -> '#RRGGBB' for the section's backdrop
 
 
 @dataclass
@@ -71,6 +125,13 @@ class Plan:
     lines: list
     sections: list                    # [(start, end)]
     version: int = 1
+    mood: str = ""
+    style: str = ""
+    fx: dict = field(default_factory=dict)
+    section_plans: list = field(default_factory=list)
+    world: list = field(default_factory=list)       # background changes: {t, dur, spec, transition}
+    emitters: list = field(default_factory=list)    # particle emitter specs (core/parts/particles.py)
+    events: list = field(default_factory=list)      # {type: flash|pulse, t, amp, dur, color}
 
 
 @dataclass
@@ -112,3 +173,5 @@ class BakedScene:
     meshes: dict
     tracks: list
     sections: list
+    emitters: list = field(default_factory=list)    # {node, spec}
+    guides: list = field(default_factory=list)      # {line, t_on, t_hit, from, to, kinds}

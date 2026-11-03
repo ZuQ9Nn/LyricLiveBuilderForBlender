@@ -4,8 +4,10 @@ import os
 import bpy
 from bpy.app.translations import pgettext_iface as iface_
 
+from ..core import registry
 from ..props import FONT_ROLES, SECTION_KIND_ITEMS
 from . import project
+from .lists import fmt_time
 
 ROLE_LABELS = {"display": "Heading Font", "serif": "Serif Font", "body": "Body Font", "mono": "Mono Font"}
 KIND_LABELS = {k: name for k, name, _ in SECTION_KIND_ITEMS}
@@ -21,14 +23,18 @@ NOTATION = (
 )
 
 
-def fmt_time(t):
-    return f"{int(t // 60)}:{t % 60:05.2f}"
-
-
 def labels(layout, msg, icon="NONE"):
     """A translated message on several rows (split at '\n'), so the narrow sidebar does not cut it."""
     for i, line in enumerate(iface_(msg).split("\n")):
         layout.label(text=line, icon=icon if i == 0 else "BLANK1", translate=False)
+
+
+def prop_above(layout, data, name):
+    """A property with its name on its own row (long names would be cut in the narrow sidebar)."""
+    col = layout.column(align=True)
+    col.label(text=data.bl_rna.properties[name].name)
+    col.prop(data, name, text="")
+    return col
 
 
 class _Panel:
@@ -133,21 +139,32 @@ class LLB_PT_sync(_Panel, bpy.types.Panel):
             col.label(text="Entered by hand", icon="CHECKMARK")
 
 
-class LLB_UL_sections(bpy.types.UIList):
-    def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
-        row = layout.row()
-        row.label(text=f"{index + 1}. {item.label or iface_(KIND_LABELS[item.kind])}", translate=False)
-        sub = row.row()
-        sub.alignment = "RIGHT"
-        sub.label(text=fmt_time(item.start), translate=False)
+class LLB_PT_omakase(_Panel, bpy.types.Panel):
+    bl_label = "Auto Compose"
+    bl_order = 5
 
-
-class LLB_UL_lines(bpy.types.UIList):
-    def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
-        split = layout.split(factor=0.38)
-        split.label(text=fmt_time(item.start), translate=False,
-                    icon={"tap": "REC", "lrc": "TIME", "manual": "GREASEPENCIL"}.get(item.source, "BLANK1"))
-        split.label(text=item.text, translate=False)
+    def draw(self, context):
+        proj = context.scene.llb
+        col = self.layout.column()
+        row = col.row()
+        row.scale_y = 1.6
+        row.operator("llb.omakase", icon="SHADERFX")
+        row = col.row(align=True)
+        sub = row.row(align=True)
+        sub.enabled = proj.history_index > 0
+        sub.operator("llb.history_step", text="Previous Proposal", icon="TRIA_LEFT").step = -1
+        row.label(text=f"{proj.history_index + 1} / {len(proj.history)}" if len(proj.history) else "–",
+                  translate=False)
+        sub = row.row(align=True)
+        sub.enabled = proj.history_index < len(proj.history) - 1
+        sub.operator("llb.history_step", text="Next Proposal", icon="TRIA_RIGHT").step = 1
+        col.separator()
+        col.prop(proj, "mood")
+        col.prop(proj, "style")
+        col.separator()
+        row = col.row(align=True)
+        row.prop(proj, "reroll_target", text="")
+        row.operator("llb.reroll", icon="FILE_REFRESH")
 
 
 class LLB_PT_sections(_Panel, bpy.types.Panel):
@@ -163,6 +180,13 @@ class LLB_PT_sections(_Panel, bpy.types.Panel):
             sec = proj.sections[proj.section_active]
             col.prop(sec, "kind")
             col.label(text=f"{fmt_time(sec.start)} – {fmt_time(sec.end)}", translate=False)
+            box = col.box()
+            box.enabled = not sec.locked
+            box.prop(sec, "theme")
+            box.prop(sec, "background")
+            prop_above(box, sec, "transition")
+            col.operator("llb.section_lock", text="Unlock Section" if sec.locked else "Lock Section",
+                         icon="UNLOCKED" if sec.locked else "LOCKED", depress=sec.locked)
         col.separator()
         col.template_list("LLB_UL_lines", "", proj, "lines", proj, "line_active", rows=6)
         if 0 <= proj.line_active < len(proj.lines):
@@ -183,20 +207,59 @@ class LLB_PT_sections(_Panel, bpy.types.Panel):
             sub = row.row()
             sub.active = ln.use_manual
             sub.prop(ln, "manual_start", text="")
+            row = box.row(align=True)
+            row.operator("llb.line_lock", text="Unlock Line" if ln.locked else "Lock Line",
+                         icon="UNLOCKED" if ln.locked else "LOCKED", depress=ln.locked)
+            sub = row.row(align=True)
+            sub.enabled = not ln.locked
+            sub.operator("llb.line_reroll", icon="FILE_REFRESH")
             box.separator()
             box.prop(ln, "is_3d")
             if ln.is_3d:
                 row = box.row(align=True)
                 row.prop(ln, "depth")
                 row.prop(ln, "bevel", text="")
-            box.prop(ln, "layout")
-            if not ln.is_3d and ln.bl_rna.properties["layout"].enum_items[ln.layout].description:
+            prop_above(box, ln, "layout")
+            if not ln.is_3d and ln.layout != "AUTO" and getattr(registry.get("layout", ln.layout), "only_3d", False):
                 labels(box, "This layout is for 3D lines.\nIt is chosen automatically", "ERROR")
             box.prop(ln, "enter")
             box.prop(ln, "hold")
             box.prop(ln, "exit")
             box.prop(ln, "distance_layer")
             box.prop(ln, "persist")
+            prop_above(box, ln, "guide")
+            box.separator()
+            prop_above(box, ln, "particle")
+            prop_above(box, ln, "background")
+            prop_above(box, ln, "transition").active = ln.background != "AUTO"
+            if ln.background == "panorama" and not proj.panorama_path:
+                labels(box, "Set the panorama image\nin the Effects panel", "ERROR")
+
+
+class LLB_PT_effects(_Panel, bpy.types.Panel):
+    bl_label = "Stage Effects"
+    bl_order = 7
+
+    def draw(self, context):
+        proj = context.scene.llb
+        col = self.layout.column()
+        for k in ("motion", "particles", "decor", "density", "world_switch", "guide"):
+            col.prop(proj.fx, k, slider=True)
+        col.prop(proj.fx, "koma")
+        col.prop(proj.fx, "flash")
+        row = col.row(align=True)
+        row.prop(proj, "use_accent")
+        sub = row.row()
+        sub.active = proj.use_accent
+        sub.prop(proj, "accent", text="")
+        prop_above(col, proj, "panorama_path")
+        col.separator()
+        labels(col, "Parts used by Make It for Me", "INFO")
+        col.prop(proj, "parts_kind", text="")
+        col.template_list("LLB_UL_parts", "", proj, "parts", proj, "parts_active", rows=6)
+        row = col.row(align=True)
+        row.operator("llb.parts_set", text="All On").enable = True
+        row.operator("llb.parts_set", text="All Off").enable = False
 
 
 class LLB_PT_preview(_Panel, bpy.types.Panel):
@@ -212,7 +275,10 @@ class LLB_PT_preview(_Panel, bpy.types.Panel):
         row.operator("llb.preview_clear", text="", icon="TRASH")
         col.operator("llb.view_audience", icon="CAMERA_DATA")
         col.prop(proj, "seed")
+        if context.scene.view_settings.view_transform != "Standard":
+            labels(col, "Colors differ from Unity\n(view transform is not Standard)", "ERROR")
+            col.operator("llb.view_standard", icon="COLOR")
 
 
-CLASSES = (LLB_PT_lyrics, LLB_PT_lyrics_notation, LLB_PT_fonts, LLB_PT_song, LLB_PT_sync,
-           LLB_UL_sections, LLB_UL_lines, LLB_PT_sections, LLB_PT_preview)
+CLASSES = (LLB_PT_lyrics, LLB_PT_lyrics_notation, LLB_PT_fonts, LLB_PT_song, LLB_PT_sync, LLB_PT_omakase,
+           LLB_PT_sections, LLB_PT_effects, LLB_PT_preview)

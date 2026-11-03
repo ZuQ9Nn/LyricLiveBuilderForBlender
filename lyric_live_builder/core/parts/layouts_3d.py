@@ -51,6 +51,7 @@ class Floor(_Layout3D):
     tags = ("calm", "emotional", "graphic")
     weight = 0.8
     fixed_distance = "near"
+    keepable = False                   # ignores the slot elevation: two slots on one side meet on the floor
 
     def plan(self, rng, ctx):
         return {"distance": rng.range(1.6, 2.4)}

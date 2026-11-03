@@ -77,13 +77,19 @@ lyric_live_builder/
     timing.py                    # 行・文字の時刻、拍スナップ
     sections.py                  # セクションの自動推定
     audio.py                     # PCM（numpy 配列）→ BPM・拍・音量・スペクトラム
-    model.py                     # dataclass 定義（Plan・BakedScene ほか）
+    model.py                     # dataclass 定義（Plan・BakedScene・Settings ほか）
+    color.py                     # 色の変換、コントラストの補正、ランダムな配色（JIZURA から移植）
     styles.py / moods.py / themes.py   # 配色・雰囲気・テーマのデータ
+    world.py                     # テーマ・背景・トランジション・パーティクル・フラッシュの計画（§5.5）
+    meshes.py                    # 内蔵メッシュ（ドーム・遠景・3D パーティクル・光の玉）の numpy データ
+    atlas.py                     # パーティクルの 2D テクスチャのアトラス（符号付き距離から描画）と PNG 出力
     synonyms.py                  # キーワード → タグの同義語辞書
     registry.py                  # 部品のレジストリ（§5.6）
     planner.py                   # 構成の決定
     omakase.py                   # おまかせ・ここだけ変える
     bake.py                      # Plan → BakedScene（トラックのサンプリングと間引き）
+    bake_world.py                # ドーム・遠景・パーティクルの発生源のノードとトラック
+    guide.py                     # 視線の誘導（判定と、光の筋・灯り・ドームのトラック。§8.4）
     parts/
       layouts_basic.py           # 正面・見上げ・円弧・螺旋・互い違い・柱・散らし
       layouts_3d.py              # 斜めの壁・階段・床・立ち並ぶ・迫ってくる・立方体
@@ -99,7 +105,7 @@ lyric_live_builder/
     objects.py                   # BakedScene のオブジェクト → Blender のオブジェクト
     animation.py                 # トラック → F カーブ（レイヤードアクション）
     materials.py                 # 文字・ドーム・ギミックのマテリアル（ノード）
-    particles_gn.py              # パーティクルの近似表示（Geometry Nodes）
+    particles.py                 # パーティクルの近似表示（毎フレーム core の式で計算してメッシュに書く。§8.1）
     gimmick_assets.py            # アセットライブラリのタグ索引・取り込み・正規化
   export_unity/
     exporter.py                  # 出力の全体制御
@@ -112,6 +118,7 @@ lyric_live_builder/
     templates/                   # Unity にコピーする C# とシェーダー（§10）
   ui/
     panels.py / lists.py / operators_*.py / tap_sync.py
+    planning.py                  # シーンのプロパティ ⇔ おまかせの状態・Settings、鍵、プレビューの生成
 mesh_optimizer/                  # 独立パッケージ（§11）
   blender_manifest.toml          # 単体の Extension としてビルドする場合に使う
   __init__.py                    # 単体インストール時の register
@@ -142,29 +149,35 @@ tests/
 
 | PropertyGroup | 主なプロパティ |
 |---|---|
-| `LLBProject` | `lyrics_text`（Text への参照）、`font_display` / `font_serif` / `font_body` / `font_mono`（`LLBFontRole`）、`audio_path`、`audio_duration`、`duration`、`bpm`、`beat_offset`、`tap_latency_ms`、`latency_measured`、`sections_from_headings`、`seed`、`mood`、`style`、`fx`（`LLBFx`）、`extra`、`wa`、`sections`（Collection）、`lines`（Collection）、`enabled`（部品の ON/OFF：Collection）、`history`（おまかせの履歴：Collection）、`history_index`、`export`（`LLBExportSettings`） |
+| `LLBProject` | `lyrics_text`（Text への参照）、`font_display` / `font_serif` / `font_body` / `font_mono`（`LLBFontRole`）、`audio_path`、`audio_duration`、`duration`、`bpm`、`beat_offset`、`tap_latency_ms`、`latency_measured`、`sections_from_headings`、`seed`、`mood`、`style`、`fx`（`LLBFx`）、`use_accent`・`accent`（独自のアクセント色）、`stage_offsets`（段階ごとの振り直しの回数。「ここだけ変える」）、`sections`（Collection）、`lines`（Collection）、`parts`（部品の ON/OFF：`LLBPartToggle` の Collection）、`parts_kind`、`history`（おまかせの履歴：Collection）、`history_index`、`reroll_target`、`panorama_path`、`export`（`LLBExportSettings`。段階 4） |
 | `LLBFontRole` | `filepath`（VectorFont への参照は、段階 2 の字形メッシュで読み込むときに作る） |
-| `LLBFx` | `motion`、`particles`、`decor`、`density`、`world_switch`、`koma`（0/12/8） |
-| `LLBSection` | `kind`、`user_kind`（手で変えた種別。開始時刻が同じ間は、読み直しても残す）、`label`、`start`、`end`、`theme`、`locked` |
-| `LLBLine` | `index`、`text`（表示用）、`start`、`end`（決定した時刻）、`source`（auto/tap/lrc/manual）、`tap_time`（遅延を補正したタップの時刻。負の値＝未タップ）、`use_manual`・`manual_start`（手動の時刻）、`char_times`（文字単位の時刻。JSON 文字列）、`section_index`、`is_3d`、`depth`、`bevel`、`layout`、`enter`、`hold`、`exit`、`distance_layer`、`persist`（次の行で消える/セクション末まで残る）、`particle_override`、`background_override`、`transition`、`gimmick`、`locked`、`seed_offset` |
+| `LLBFx` | `motion`、`particles`、`decor`、`density`、`world_switch`、`koma`（0/12/8）、`guide`（視線の誘導の強さ。0 で切）、`flash` |
+| `LLBSection` | `kind`、`user_kind`（手で変えた種別。開始時刻が同じ間は、読み直しても残す）、`label`、`start`、`end`、`theme`・`background`・`transition`（AUTO＝おまかせ）、`locked`・`lock_frozen`（鍵で埋めた項目。外すと自動に戻す）。手で決めた項目も、開始時刻が同じ間は読み直しても残す |
+| `LLBLine` | `index`、`text`（表示用）、`start`、`end`（決定した時刻）、`source`（auto/tap/lrc/manual）、`tap_time`（遅延を補正したタップの時刻。負の値＝未タップ）、`use_manual`・`manual_start`（手動の時刻）、`char_times`（文字単位の時刻。JSON 文字列）、`section_index`、`is_3d`、`depth`、`bevel`、`layout`、`enter`、`hold`、`exit`、`distance_layer`、`persist`（次の行で消える/セクション末まで残る）、`guide`（視線の誘導：自動/あり/なし）、`particle`、`background`、`transition`、`locked`・`lock_frozen`、`seed_offset`（この行だけ選び直した回数）。`gimmick` は段階 6 |
 | `LLBExportSettings` | `project_path`、`folder_name`、`use_tmp`、`use_mobile`、`use_udon_sync`、`material_mode`（VRCHAT/STANDARD）、`allow_other_2022_3` |
 
-- 計算結果の Plan は、隠しテキストデータブロック `.llb_plan.json` に JSON で保存します。.blend を開き直しても、プレビューの作り直しと出力ができます。
-- おまかせの履歴は、案ごとに「おまかせが変えた項目（雰囲気・スタイル・強さ・ON/OFF・配色・シード）」だけを JSON で持ちます。
+- Plan は保存しません。決定的なので、プロパティから毎回同じ Plan を作れます（段階 4 で必要になったら保存する。改善メモ #8）。
+- おまかせの履歴は、案ごとに「おまかせが変えた項目」の JSON（`{mood, style, fx, disabled, accent, seed, stage_offsets}`）を持ちます（最大 30 件）。「前の案」はこれをプロパティに戻して作り直します。
+- 鍵：行の鍵は、その時点の Plan の値で「おまかせ」の項目を埋めます（レイアウト・登場・保持・退場・距離の層・消え方）。埋めた項目名を `lock_frozen` に記録し、鍵を外すとその項目だけ「おまかせ」に戻します。手で指定した項目は、鍵が無くてもおまかせで変わりません（仕様書 §6.2）。セクションの鍵も同じ（テーマ・背景・トランジション）。
 
 ### 4.2 Plan（`core/model.py`、dataclass）
 
 ```
 Plan
-  version, seed, duration, bpm, beats[], style_key, mood, fx
-  sections[]  : SectionPlan(index, kind, start, end, theme_key, background, particles[], gimmicks[], transition_in)
-  lines[]     : LinePlan(index, text, start, end, char_times[], section_index, is_3d, depth, bevel,
-                         font_role, layout_key, layout_params, enter_key, enter_params, hold_key, exit_key,
-                         distance, persist_until, emphasis, impact, seed)
-  gimmicks[]  : GimmickPlan(source{kind: user|builtin|emblem, ref}, appear_key, at_time, until, position, scale, seed)
-  particles[] : ParticlePlan(preset_key, params, start, end, emitter_shape, radius, intensity_curve[])
-  events[]    : EventPlan(type: flash|burst|pulse, t, amp, dur)
+  version, seed, duration, bpm, mood, style, fx{motion, particles, decor, density, world_switch, koma, guide, flash}
+  sections[]      : (start, end)
+  section_plans[] : SectionPlan(index, kind, start, end, theme, background(spec), particles[], palette{role: hex})
+  world[]         : {t, dur, spec, transition}     背景の切り替え（最初の 1 件は t=0・トランジション無し）
+  lines[]         : LinePlan(index, text, start, end, char_times[], section_index, emph_mask, is_3d, depth, bevel,
+                             font_role, layout, layout_params, enter, hold, exit, enter_dur, exit_dur, distance,
+                             persist, anchor, emphasis, seed, glide, colors{fg, accent}, guide, particle, impact)
+  emitters[]      : {key, preset(強さで拡大縮小済み), start, end, seed, intensity[(t, v)], colors[], bursts[{t, origin}],
+                     count(連続の粒の数), pool(破裂の粒の最大同時数), fade_in, fade_out}
+  events[]        : {type: flash|pulse, t, amp, dur, color}
+  （gimmicks[] は段階 6）
 ```
+
+- 入力の `Settings`（`model.py`）：`mood`・`style`・`fx`・`disabled`（種類 → OFF の部品）・`stage_offsets`・`accent`・`energy`（音量の包絡）・`beats`・`panorama`（画像があるか）。おまかせの状態からは `core/omakase.settings()` で作ります。
 
 ### 4.3 BakedScene（`core/model.py`）
 
@@ -173,12 +186,14 @@ Plan
 ```
 BakedScene
   duration, fps_hint
-  nodes[] : Node(id, name, parent_id, category: text|particles|background|gimmicks,
-                 kind: group|glyph|line_mesh|dome|far|gimmick|emitter,
+  nodes[] : Node(id, name, parent_id, category: text|particles|background|guide|gimmicks,
+                 kind: group|glyph|line_mesh|dome|far|mote|glow|gimmick|emitter,
                  mesh_ref, material_ref, rest: Transform, default_active=False)
   meshes{} : MeshSource(key, kind: glyph2d|glyph3d|piece|line|dome|builtin|user, build_args)
   materials{} : MaterialSpec(key, shader: unlit|lit|matcap|dome|particle_add|particle_alpha, params)
   tracks[] : Track(node_id, prop, interp: linear|constant, times: float32[], values: float32[N, C])
+  emitters[] : {node, spec}     パーティクルの発生源（spec は Plan.emitters の 1 件）
+  guides[] : {line, t_on, t_hit, from, to, target, angle, kinds, color, motes}
   emitters[] : EmitterSpec(node_id, preset, params)
   sections[] : (index, label, start, end)
 ```
@@ -196,6 +211,8 @@ BakedScene
 | `shape:<name>` | 1 | linear | シェイプキーの `value` | `blendShape.<name>` |
 | `dome:<param>` | 1〜4 | linear/constant | ドームのカスタムプロパティ | `material._<Param>` |
 | `emit_rate` | 1 | linear | GN 入力（近似） | `EmissionModule.rateOverTime.scalar` |
+
+ノードの `category` には、視線の誘導の `guide` も加えます（§8.4）。
 
 ---
 
@@ -245,12 +262,15 @@ BakedScene
 
 JIZURA の `plan()` をもとに、次の順で決めます。乱数は「シード × 段階 × 行番号」で分けます。こうすると、1つの段階を振り直しても、他の段階の結果は変わりません（「ここだけ変える」の実現）。
 
-1. **テーマ**：セクションごとに、雰囲気とセクションの種別からテーマを重み付きで抽選します（同じ種別のセクションには、同じテーマを繰り返しやすくする：サビの反復の印象づけ）。テーマ＝{背景、パーティクルのプリセット 1〜3 個、ギミックの候補、配色の傾向}。
+段階の番号（`core/world.py`）：1 テーマ、2 文字の構成、3 パーティクル、4 背景。「ここだけ変える」は、その段階の振り直しの回数（`stage_offsets`）だけを増やし、段階のシードを `h(シード, 1000 + 段階, 回数)` に替えます（回数 0 なら元のシード）。
+
+1. **テーマ**（`world.pick_themes`）：セクションごとに、雰囲気とセクションの種別からテーマを重み付きで抽選します（同じ種別のセクションは 70% で同じテーマ：サビの反復の印象づけ）。テーマ＝{背景のプリセット、パーティクルのプリセット}（`core/themes.py`、12 種）。ギミックの候補は段階 6。
 2. **行の構成**：行ごとにレイアウト・登場・保持・退場・距離の層・蓄積の有無を抽選します（JIZURA の `pickLayout/pickEnter/...` を移植。直近の重複回避と強調の補正を含む）。3D 文字の行は、3D 専用のレイアウトにも重みを付けます。
 3. **ギミック**：行のチャンクに同義語辞書のキーワードが含まれれば、ギミックの候補にします（§8.3）。セクションごとの上限（既定 3）と、行の強調の度合いで出すかどうかを決めます。
-4. **パーティクル**：テーマのプリセットをセクションの範囲に置き、行の `!`（インパクト）と強調でバーストのイベントを追加します。強さは音量の包絡から作ります（盛り上がりで増える）。
-5. **背景の切り替え**：セクションの境目で背景を切り替え、テーマと雰囲気からトランジションを選びます。行の上書き（`background_override`）は、その行の開始で切り替えます。
-6. **イベント**：フラッシュ（ドームの白飛び）、拍の脈動など。点滅は 1 秒あたり 3 回以下に抑えます（仕様書 §7.5）。
+4. **パーティクル**（`world.plan_particles`）：テーマのプリセットから、強さに応じて 1〜3 個をセクションの範囲に置きます。行の `!`（インパクト）と強調（装飾の強さに応じた確率）で、文字の位置に「きらめきの破裂」を足します（文字が出た後に始める：仕様書 §7.6）。行の「この行のパーティクル」は、その行の表示中だけ足します。発生の多さは音量の包絡から作ります（1 秒ごと、0.45〜1.0。盛り上がりで増える）。
+5. **背景の切り替え**（`world.plan_world`）：セクションの境目で、テーマの背景から選んで切り替えます（テーマが同じなら、「背景の切り替え」の強さに応じて切り替えないこともある）。トランジションは雰囲気の好みから選び、境目を中心に置きます。行の「この行からの背景」は、その行の開始から切り替えます。トランジションは重ならないよう、前のものが終わるまで後ろにずらします。セクションと行の配色は、その時刻の背景に対して、スタイルの配色を補正して決めます（`styles.palette`。文字はコントラスト比 3 以上、強調は 2.4 以上）。基準の色は、山並み・街並みのシルエットがあればその色（目の高さの文字のすぐ後ろにあるため）、無ければ空の地平線の色です（`backgrounds.backdrop`）。
+6. **イベント**（`world.plan_events`）：インパクトの行とサビの始まりにフラッシュ（ドームの白飛び。演出の「フラッシュ」が入のとき）、ポップ系の雰囲気のサビでは拍の脈動（明るさ 6%）。強いフラッシュ（量 0.3 以上。ホワイトアウト・暗転のトランジションを含む）は 0.4 秒以上離し、1 秒あたり 3 回以下にします（仕様書 §7.5）。
+7. **視線の誘導**：文字のベイクの後に、行ごとに誘導を付けるかを決めます（§8.4）。乱数は文字の構成と同じ段階を使うので、パーティクルだけを振り直しても変わりません。
 
 ### 5.6 部品のレジストリ（`registry.py`）
 
@@ -290,6 +310,9 @@ class FrontLayout(LayoutPart):
 - `active` のトラックは「0 秒で非表示 → 登場で表示 → 退場の終わりで非表示」の一定補間です。
 - 目から 0.6 m より内側に入る位置は、目からの方向に沿って外へ押し出します（世界座標で判定し、行のローカル座標に戻す）。
 - プランナー（§5.5）：行ごとの乱数は `Rng(h(seed, 2, 行番号 + 1))`（段階 2 ＝文字の構成）。直近 6 行の重複を避ける重み（直前 2 行は ×0.2、それ以前は ×0.6。JIZURA の `novelty`）と、強調・3D 文字の補正を掛けて選びます。「セクションの終わりまで残る」行は、観客の左右（方位 ±62°・±105°、仰角 0°・22°・8°）の 6 つの位置を順に使い、正面を空けます。残る行がある間は、空間を大きく使うレイアウトを選びません。表示の終わりは、次の行の開始か、`開始 + max(3.6, 文字数 × 0.5 + 1.2)` 秒の早いほうです（JIZURA の `visEnd`）。
+- 残る行の移動（`LinePlan.glide`）：残る行は、まず正面（方位 0°・仰角 0°）に出て、次の行の開始の 0.9 秒前から 1.0 秒かけて、割り当てた位置へ移ります。ベイクでは、行の静止姿勢を割り当てた位置で作り、目を中心にした回転 `facing(方位(t), 仰角(t)) ⊗ facing(方位, 仰角)⁻¹` を行の親に掛けます。方位は in-out sine、仰角は前半で先に合わせます（奥の位置へ行く行が、手前の 2 つの位置の間を通るように）。セクションの最後に残る行は、位置を使わず正面のまま残します。
+- 残る行には、床のレイアウト（位置の仰角を無視し、同じ側の 2 つの位置が床で重なる）を使いません。退場は、その場で消える種類（フェード・粒になって散る・奥へ飛び去る・縮小）に限ります。
+- キーの時刻は 0.1 ms 単位にそろえてから重複を除きます。近すぎる時刻は、float32 のフレーム番号で同じ値になり、Blender が 2 つのキーを 1 つにまとめてしまうためです（その手前の区間の位置がずれた）。
 
 ---
 
@@ -345,36 +368,43 @@ class FrontLayout(LayoutPart):
 | プリセットの項目 | Unity |
 |---|---|
 | `shape`（circle_dot/soft_dot/triangle/square/cross/hexagon/octagon/bubble/star/sparkle/petal/heart/note/snowflake/ring、または cube/hexprism/octahedron/icosahedron/shard/tetra） | 2D：Renderer=Billboard、アトラスの UV（TextureSheetAnimation の Sprite モード、タイル固定）／3D：Renderer=Mesh |
-| `emitter`（cone_floor/hemisphere_sky/ring/box/sphere/text_mesh）、`radius`、`height` | ShapeModule |
-| `rate`、`burst` | EmissionModule |
-| `lifetime`、`speed`、`size`、`gravity`（範囲） | MainModule（MinMaxCurve の TwoConstants） |
-| `color`（スタイルの配色の役割名）、`color_over_life` | MainModule.startColor、ColorOverLifetime |
-| `noise`、`rotation`、`size_over_life`、`trail`、`sub_burst` | 各 Module |
+| `emitter`（sphere/sky_shell/sky_disc/floor_disc/ring/tunnel/burst）、`radius`、`height` | ShapeModule |
+| `rate`、`burst`（間隔・数・速さ・寿命・`sub`） | EmissionModule（バーストは、発生源の位置のトラックとバーストの時刻） |
+| `life`、`speed`、`size`、`gravity`（範囲） | MainModule（MinMaxCurve の TwoConstants） |
+| `colors`（スタイルの配色の役割名）、`fade`（寿命の初めと終わりの透明度） | MainModule.startColor、ColorOverLifetime |
+| `direction`、`noise`・`noise_freq`、`spin`、`size_life`、`trail`、`sub` | VelocityOverLifetime・Noise・RotationOverLifetime・SizeOverLifetime・Trails・SubEmitters |
 | `blend`（add/alpha） | マテリアル |
-| `max_particles` | MainModule.maxParticles（モバイル時は比率で減らす） |
+| `max` | MainModule.maxParticles（モバイル時は比率で減らす） |
+| `prewarm` | MainModule.prewarm |
 
-- 2D のテクスチャは、`export_unity/textures.py` が numpy で符号付き距離（SDF）から描きます（1024×1024、4×4 のタイル）。Blender のプレビューでも同じ画像を使います。
-- プレビュー（`particles_gn.py`）：Simulation Zone で発生・移動・寿命を近似します。ビルボードは観客カメラの方向に向けます。乱数・ノイズは Unity と同じにはなりません（見た目の確認用）。
+- 2D のテクスチャは、`core/atlas.py` が numpy で符号付き距離から描きます（1024×1024、4×4 のタイル。15 種）。Blender のプレビューでも同じ画像を使い、Unity 出力（段階 4）では PNG にします。
+- 強さ（演出の「パーティクルの量」）で、`rate` と `max` を 0.35〜1.65 倍にします。
+- **閉じた式**（`state(spec, t)`）：連続の発生源の粒 i は、寿命 L_i ごとに生まれ直し、世代ごとに新しい乱数で発生位置・速度を決めます。位置＝発生位置＋速度×経過＋重力＋ノイズ（正弦の和）。発生の多さ（`intensity`）は、生まれた時刻の値で粒を間引きます。破裂は、時刻と発生位置のリストから、粒ごとに減速つきの放射で求め、寿命の終わりに `sub` の粒が弾けます。粒は目から 0.6 m より内側に入れません（§7.2）。発生源全体は、開始から 0.8 秒で現れ、終了から 1.0 秒で消えます（`envelope`）。
+- プレビュー（`preview/particles.py`）：`frame_change_pre` のハンドラで、毎フレーム `state()` を計算し、発生源のメッシュに書き込みます。2D は観客の目（0, 0, 1.5）の方を向く四角形（軌跡のある粒は速度の向きに伸ばす）、3D は形状のメッシュです。頂点数は「連続の粒の数＋破裂の最大同時数」で固定し、消えた粒は大きさ 0 にします。色は頂点の色属性 `llb_col` に書きます。Unity は ParticleSystem が自分で計算するので、見た目は似ていても同じにはなりません。
 
 ### 8.2 背景ドーム
 
-- メッシュ：アイコスフィア（細分化 3、半径 60 m）の法線を内側に向けたもの。UV は正距円筒（パノラマ画像用）。
+- メッシュ：アイコスフィア（細分化 3、半径 60 m）の面を内側に向けたもの（`core/meshes.dome`）。中心は目の高さ。UV は使わず、シェーダーが方向（オブジェクト座標を正規化）から色を求めます（パノラマ画像も方向から引く）。
 - シェーダーは不透明・`Cull Front`・**`ZWrite On`** にします。Unity は不透明物の後に、深度が最も遠いままの画素へ Skybox を描きます。そのため、深度を書かないドームは Skybox に上書きされて見えなくなります（試作 S0-07 で確認）。
 - シェーダーのパラメータ（A と B の2組＋進行度）
 
 | パラメータ | 内容 |
 |---|---|
-| `_ModeA/_ModeB` | 0 単色 / 1 上下グラデ / 2 帯グラデ / 3 模様 / 4 画像 |
-| `_Top/_Horizon/_Bottom`（A・B 各組） | グラデーションの 3 色 |
-| `_BandCount`、`_PatternId`、`_PatternScale` | 帯・模様 |
-| `_TexA/_TexB` | パノラマ画像 |
-| `_TransType` | 0 クロスフェード / 1 上ワイプ / 2 下ワイプ / 3 横ワイプ / 4 リング / 5 ディゾルブ |
-| `_Progress`、`_Softness` | 切り替えの進行度と、境界のぼかし幅 |
-| `_Flash` | 白飛びの量（0..1） |
+| `modeA/modeB` | 0 単色 / 1 上下グラデ / 2 帯グラデ / 3 模様 / 4 画像 |
+| `top/horizon/bottom`（A・B 各組） | グラデーションの 3 色。グラデは地平線からの高さ h について √|h| で補間 |
+| `ink`、`bands`、`pattern`、`pscale`（A・B 各組） | 模様の線の色、帯の数、模様（0 同心円 / 1 緯度経度の格子 / 2 水玉）、模様の細かさ |
+| `next` | 次に見せる組（1＝B、0＝A） |
+| `progress` | 切り替えの進行度。B へは 0→1、A へは 1→0 と動かすので、切り替えの開始で値が飛ばない |
+| `trans` | 0 クロスフェード / 1 上から / 2 下から / 3 横から / 4 正面からのリング / 5 ディゾルブ（ノイズ） |
+| `flash`、`flash_color` | 白飛び・暗転の量と色（ホワイトアウト・暗転のトランジションとフラッシュ） |
+| `bright` | 明るさの倍率（拍の脈動） |
+| `cue_dir`、`cue_amount` | 視線の誘導：その方向を中心に明るさを足す（§8.4） |
 
-- 切り替えの手順：切り替え前に B へ次の背景を設定 → `_Progress` を 0 → 1 → 完了時に A へ B をコピーし、`_Progress` を 0 に戻す（同じフレームで行うので、見た目は変わらない）。
-- Blender のプレビュー：同じロジックのシェーダーノードを組みます。パラメータは、ドームのオブジェクトのカスタムプロパティを Attribute ノード（種類：Object）で読みます。
-- 遠景オブジェクト：月・太陽・山並み・街並みのシルエット・水平線を、プリミティブから生成します（unlit）。
+- B の重み：q = progress（next=1）または 1−progress（next=0）、m = 種類ごとのマスク（クロスフェードは q、ワイプ・リング・ディゾルブは、掃引の座標 s が q で動く境目より手前か。境界のぼかし幅 0.06）、w = m（next=1）または 1−m（next=0）。色 = mix(A, B, w) → フラッシュ → 明るさ → 誘導の光。
+- 切り替えの手順：次の背景を、見えていない側の組に、切り替えの開始の時刻に書き（一定補間のキー）、`next` をその組に変え、`progress` を 1.0〜1.8 秒で動かします（`core/bake_world.dome`）。A へ B をコピーする手順は要りません。
+- 背景のプリセット 14 種（`core/parts/backgrounds.py`）：朝・昼・夕焼け・夜・夜明け・星空（時間帯）、海の中、深い宇宙、帯の夕暮れ、同心円・格子・水玉（模様。色はスタイルから）、スタイルの色、パノラマ画像（画像を指定したときだけ）。トランジション 8 種：クロスフェード、ホワイトアウト、暗転、上から・下から・横からのワイプ、広がるリング、ディゾルブ。
+- Blender のプレビュー：同じロジックのシェーダーノードを組みます（1 組分をノードグループ `LLB_DomeSlot` にする）。パラメータは、マテリアルの中の `llb_<名前>` の Value / RGB ノードの値を、ノードツリーのアクションで動かします。オブジェクトのカスタムプロパティを Attribute ノード（Object）で読む方式は、Blender 5.0 の EEVEE で、1 つのマテリアルが読める属性の数を超えてドームが黒くなったため使いません。
+- 遠景オブジェクト（`core/meshes.py`）：月・太陽（円盤。目から 50 m、目の方を向く）・山並み・街並みのシルエット（観客を囲む帯）・水面（足元より 0.6 m 下の円盤）。unlit で、その背景のトランジションに合わせて透明度で現れ・消えます。プレビューのマテリアル `LLB_Far` は、深度を書く不透明の描き方（Dithered）にします（透明度はディザで表す）。半透明（Blended）の物体は原点の距離で並べて描かれ、山並み・街並みの帯は原点が観客の足元にあるため、文字の上に描かれていました。Unity（段階 4）でも、遠景は文字より先に描く描画順（不透明、またはそれに近いキュー）にします。
 
 ### 8.3 ギミック
 
@@ -387,6 +417,20 @@ class FrontLayout(LayoutPart):
 - **取り込みと正規化**：使うときに append し、評価済みのメッシュを1つにまとめます。そのうえで、高さを既定の大きさ（1.5 m）に、原点を底面の中心に、正面を +Y にそろえます。テクスチャ付きのマテリアルは、ベースカラーのテクスチャと色だけを引き継ぎます（Unity では lit / unlit に置き換える）。
 - **出し方**：出し方ごとに、時刻の関数でトラックを作ります（床から：Z を -高さ → 0、空から：Z を +5 m → 0 で弾む、壁から：半径 6 m → 配置半径、ポップ：拡大率 0 → 1.15 → 1、ひっくり返る：床の板の X 回転 180°、開く：シェイプキー、溶けて消える：ドームと同じディゾルブのパラメータを物体のマテリアルで使う）。
 - **スペクトラムバー**：24 本を半径 4 m の円に並べ、`audio.py` のスペクトラムから拡大率の Z のトラックを作ります（間引きつき）。
+
+### 8.4 視線の誘導（`core/guide.py`、仕様書 §7.6）
+
+- **判定**：行ごとに、推定した視線の方向と行の方向の角度を求めます。
+  - 推定した視線：直前の行の文字の重心の方向（新しい行の最初の文字が出る 0.8 秒前の位置。ベイク済みのトラックから求める）。直前に表示中の行が無ければ正面。
+  - 行の方向：最初の文字が出た時刻の、文字の重心の方向。
+  - 角度が 30° 以上なら誘導を付けます。行の設定が「あり」なら角度に関係なく付け、「なし」なら付けません。
+- **光の筋**：粒を 3〜6 個（強さに応じる）、推定した視線の位置から行の位置へ、上へふくらむ弧（大円＋仰角のふくらみ 8°）に沿って動かします。時刻は `t_hit − 0.7 → t_hit`（in-out sine）、粒ごとに 0.03 秒ずつ遅らせ（間を詰めて、点の列でなく尾を引く 1 本の筋に見せる）、後ろの粒ほど小さく薄くします。到着後 0.25 秒で縮んで消えます。粒の距離は、行の距離へ向けて補間します。
+  - BakedScene では、粒ごとのノード（kind `mote`、メッシュ `orb`）と、`location`・`scale`・`color`・`active` のトラックにします。Blender のプレビューでは、中心ほど明るい光の玉（Layer Weight の Facing で縁を消す加算のマテリアル `LLB_Glow`）で表します。Unity では、トレイルを付けた 1 つの粒にすると、より滑らかな筋になります（段階 4 で検討）。
+- **予兆の灯り**：行の重心の少し奥（0.3 m）に、大きめの光の玉（半径＝距離 × 0.06）を置き、`t_hit − 0.4` から明るくして（最大の透明度 0.55）、`t_hit + 0.3` までに消します。
+- **ドームに差す光**：視線から 90° を超える行では、ドームの `cue_dir` をその方向にし、`cue_amount` を `t_hit − 0.7 → t_hit` で 1 に上げ、`t_hit + 0.8` までに戻します。シェーダーは、方向との内積の 6 乗に比例して、暖かい白（1, 0.95, 0.85）× 0.12 × 量を足します（暗い夜空でも分かるよう、掛け算ではなく足し算にした）。点滅ではないので、フラッシュの回数には数えません。
+- **色**：文字の色（強調の行は強調の色）のうち明るいほう。明るさが 0.3 未満なら白へ 75% 寄せます（昼の空の上の暗い文字色では、加算の光が見えなかった）。
+- **全体の演出との分離**：行に結び付いたバースト（`!`・強調）の開始を、`t_hit` 以降にずらします。誘導のノードは `category = "guide"` にし、パーティクルの振り直しの対象にしません。
+- 連続して誘導が付く場合も、1 秒あたり 2 回までにします（間隔の狭いものは、角度の大きいほうを残す）。
 
 ---
 
@@ -592,6 +636,11 @@ Unity.exe -batchmode -nographics -quit -projectPath "<Project>"
   1. `LLBSync.cs.txt` を `Generated/LLBSync_<曲名>.cs` にコピーし、`_pending_udon.llb` を置く。
   2. スクリプトの再読み込み後、`LLBAutoBuild` が UdonSharpProgramAsset を作り、Prefab に U# の部品を付けて、PlayableDirector と開始ボタンをつなぐ。
 - 同期の内容：オーナーが「開始」を押す → 同期変数 `startServerTime`（`Networking.GetServerTimeInSeconds()`）と `isPlaying` を送る → 各クライアントは `director.time = now - startServerTime` にして `Play()` します。後から入室した人も、受信時に同じ計算で再生位置を合わせます。Udon からは再生速度を変えられないので、ずれが 0.2 秒を超えたときだけ `time` を設定し直します。
+- **視線に合わせた誘導**（段階 5）：誘導のイベント（`t_on`・`t_hit`・行の方向）を、U# の配列として出力します。
+  - 各クライアントは毎フレーム `director.time` を見ます。イベントが始まる時刻に、`Networking.LocalPlayer.GetTrackingData(TrackingDataType.Head)` で頭の向きを読み、行の方向との角度が 30° 未満なら、そのイベントの誘導のノードを非表示にします。
+  - 光の筋は、焼き込みの代わりに、Udon が頭の向きから行の方向へ弧を描いて動かします。
+  - 同期変数は使いません（観客ごとの見た目だけを変える）。
+  - Timeline が動かすノードと Udon が切り替えるノードが競合しないように、Udon は誘導のノードの親だけを切り替えます。
 - U# の部品の付け方（試作 S0-11 で確立）：`UdonSharpProgramAsset` を `ScriptableObject.CreateInstance` で作って `sourceCsScript` を設定・保存 → `UdonSharpProgramAsset.CompileAllCsPrograms(forceCompile, editorBuild)` → `UdonSharpEditor.UdonSharpUndo.AddComponent(GameObject, Type)` → フィールドを設定して `UdonSharpEditorUtility.CopyProxyToUdon` で反映。U# の版の差を吸収するため、これらはリフレクションで呼び、見つからない場合は警告を出して同期を付けずに続けます。
 
 ### 10.8 TextMesh Pro
@@ -656,7 +705,9 @@ def bake_palette_material(objects, *, max_colors=64) -> PaletteResult
 
 ## 12. Blender のプレビュー（`preview/`）
 
-- コレクション：`LyricLive`（`Text`・`Particles`・`Background`・`Gimmicks`・`Camera`）。作り直しは、このコレクション以下のオブジェクト・メッシュ（共有キャッシュ以外）・アクションを削除してから行います。
+- コレクション：`LyricLive`（`LLB_Text`・`LLB_Background`・`LLB_Particles`・`LLB_Guide`・`LLB_Gimmicks`・`LLB_Camera`）。作り直しは、このコレクション以下のオブジェクト・パーティクルのメッシュ・アクション（ドームのマテリアルのノードツリーのアクションを含む）を削除してから行います。字形と内蔵メッシュ（`llb_builtin` の印）は共有して残します。
+- マテリアル：`LLB_Text`（文字）、`LLB_Far`（遠景）、`LLB_Glow`（誘導の光）、`LLB_Dome`（ドーム。版の番号 `llb_version` が違えば作り直す）、`LLB_ParticleAdd`・`LLB_ParticleAlpha`（2D パーティクル。アトラスの画像 `LLB_ParticleAtlas` を .blend に格納）、`LLB_Particle3D`。
+- 「生成」「おまかせで作る」は、`ui/planning.build_preview` で、プロパティ → Settings → Plan → BakedScene → シーンの順に作ります。
 - アニメーションの書き込み（`animation.py`）：Blender 5.x のレイヤードアクションの API を使います。
   - オブジェクトごとにアクションを作り、`fcurve_ensure_for_datablock` または `layers → strips → channelbag(slot)` の `fcurves.new()` で F カーブを作ります。
   - `keyframe_points.add(n)` と `foreach_set('co', ...)` でまとめて書き込み、補間を一括で設定します。
@@ -679,10 +730,10 @@ def bake_palette_material(objects, *, max_colors=64) -> PaletteResult
 | 2. フォント | 役割 × 4 のファイル指定、不足文字の警告 |
 | 3. 曲 | 曲を読み込む、BPM・最初の拍、解析の再実行 |
 | 4. 同期 | タップで同期、遅延の測定、マーカーから取り込み、文字単位の配分 |
-| 5. おまかせ | おまかせで作る、前の案/次の案、ここだけ変える、使う演出の範囲 |
-| 6. セクションと行 | セクションの UIList、行の UIList、選んだ行の詳細（仕様書 §6.2） |
-| 7. 演出 | 強さのスライダー、部品の ON/OFF（分類ごとの UIList と絞り込み） |
-| 8. プレビュー | 生成、削除、観客カメラ、目安の検査 |
+| 5. おまかせ | おまかせで作る、前の案/次の案（n / m）、雰囲気・スタイル、ここだけ変える（スタイル／アクセントの色／雰囲気／文字の構成／パーティクル／背景） |
+| 6. セクションと行 | セクションの UIList と詳細（種別・テーマ・背景・トランジション・鍵）、行の UIList と詳細（仕様書 §6.2。鍵・選び直す・視線の誘導・この行のパーティクル・この行からの背景・トランジション） |
+| 7. 演出 | 強さのスライダー（動き・パーティクル・装飾・密度・背景の切り替え・視線の誘導）、コマ打ち、フラッシュ、独自のアクセント、パノラマ画像、部品の ON/OFF（種類を選んで UIList。まとめて入/切） |
+| 8. プレビュー | 生成、削除、観客カメラ、シード、ビュー変換が「標準」でないときの警告と切り替え。目安の検査は段階 5 |
 | 9. Unity 出力 | プロジェクト、エディタ、オプション、出力、状態とログ |
 | 最適化 | mesh_optimizer のパネル（独立） |
 
@@ -729,6 +780,8 @@ def bake_palette_material(objects, *, max_colors=64) -> PaletteResult
 | モーダル操作 | `tests/blender/test_tap_modal.py`：`--enable-event-simulate` 付きの GUI の Blender で、キー入力を送ってタップ同期と遅延の測定を確かめる（約 30 秒、ウィンドウが開く） |
 | `text/fontinfo.py` | テスト用の OFL フォント（リポジトリに置けるライセンスのもの）で、送り幅・cmap を検証 |
 | 部品の契約 | 全部品について、登場の p=1・退場の p=0 で恒等になること、例外を出さないこと |
+| 段階 3 の core | `tests/core/test_world.py`：配色のコントラスト、全パーティクルの状態（有限・目から 0.6 m 以上・期間外は無い・破裂の粒が枠に収まる）、アトラスとメッシュ、テーマ・背景・トランジション（切り替えの間はドームが今の背景を見せる）、「ここだけ変える」の独立性、行の選び直し、フラッシュの間隔、コマ打ち、動きの強さ、視線の誘導、おまかせ、スペクトラム、速さ |
+| 段階 3 の統合 | `tests/blender/test_phase3.py`：おまかせ・履歴・鍵・ここだけ変える・行の背景の上書き・強さのスライダー、パーティクルのプレビュー＝core（全粒の中心）、ドームの色（EEVEE で 33×19 を描き、地平線の画素が背景の色と一致）、4 分の曲の速さ、訳の漏れと衝突。共通の処理は `tests/blender/common.py` |
 | Blender 側 | `blender --background --factory-startup --python tests/blender/run_all.py`：フォント → 文字メッシュ → プレビュー → 出力 |
 | Unity 側 | `tests/unity/sample_manifest/` を Unity のテストプロジェクトに置き、バッチモードで `LLBBuilder.Build` を実行して Prefab の構造を検証 |
 | 見た目 | 観客カメラで、決まった時刻のスクリーンショットを撮り、目視で確認する |
@@ -777,3 +830,31 @@ def bake_palette_material(objects, *, max_colors=64) -> PaletteResult
 | §13 | 遅延を測ったときと違う fps でタップしたら警告する | フレームの時計の偏りは、同じ fps でしか打ち消されないため（改善メモ） |
 | 全体 | Python 3.11・numpy 1.26（Blender 5.0）でも動くように書く | Blender 5.0 の同梱の Python は 3.11、numpy は 1.26。numpy 1.x では uint64 の配列と Python の整数のビット演算ができない（5.0 での確認で発見） |
 | §13 | モーダルにタイマーを付け、再生が先頭に戻ったら終える | 最後のタップの後に入力が無いと、終わりを見逃して 2 周目に入った（自動テストで発見） |
+
+### 17.4 段階 3 の前に行った変更（段階 2 の確認での要望）
+
+| 箇所 | 変更 | 理由 |
+|---|---|---|
+| §5.7・仕様書 §7.4 | 残る行は、正面に出てから、次の行の直前に脇の位置へ移る。セクションの最後の行は正面のまま残る | 観客カメラ（VR の視野）の外に、いきなり文字が出て気づきにくかった（確認者の要望） |
+| §8.4・仕様書 §7.6 | 視線の誘導（光の筋・予兆の灯り・ドームに差す光）を加えた。Udon 版は段階 5 | 同上。矢印のようなあからさまな表現を避け、全体の演出と混ざらないようにする |
+| §5.7 | 床のレイアウトを残る行に使わない。残る行の退場を、その場で消える種類に限る | 全行を残す設定の総当たりで、床の行同士や、崩落で落ちる行が重なっていた（段階 2 の不具合） |
+| §5.7 | キーの時刻を 0.1 ms 単位にそろえる | float32 のフレーム番号で 2 つのキーが重なり、Blender で位置が最大 3 mm ずれた（段階 2 の不具合） |
+
+### 17.5 段階 3 の実装による変更
+
+| 箇所 | 変更 | 理由 |
+|---|---|---|
+| §8.1・§12 | パーティクルのプレビューを、Geometry Nodes の Simulation Zone から、core の閉じた式をフレームごとに計算してメッシュに書く方式に変えた（`preview/particles.py`） | シミュレーションは再生位置を飛ばすと結果が変わり、core の計算と一致することを検査できない。閉じた式なら、どのフレームでも同じで、テストで全粒の位置を照合できる |
+| §8.2・§12 | ドームのパラメータを、マテリアルの Value / RGB ノードの値のアニメーションにした（カスタムプロパティ＋Attribute ノードをやめた） | Blender 5.0 の EEVEE では、1 つのマテリアルが読めるオブジェクトの属性の数を超えて、ドームが黒くなった（5.2 では表示された）。ノードの値のアニメーションは版によらず動き、Unity のマテリアルのプロパティのアニメーションにもそのまま対応する |
+| §8.2 | 切り替えで A へ B をコピーするのをやめ、`next`（見せる組）と、両向きに動く `progress` にした | コピーの瞬間に、同じフレームで 2 つの値を飛ばす必要がなくなる（キーの補間で一瞬崩れることがない） |
+| §8.2 | ドームの UV を使わず、方向から色を求める | 正距円筒の UV は、アイコスフィアの継ぎ目で歪む |
+| §8.1 | テクスチャの描画を `core/atlas.py` に置いた（PNG の書き出しも標準ライブラリで行う） | プレビュー（`preview/`）は `export_unity/` を import しない（§3 の依存のルール） |
+| §8.4 | 誘導の光の色を、文字色が暗いときは白へ寄せる。粒の間隔を 0.03 秒に詰めた | 昼の空の上の暗い文字色では、加算の光が見えなかった。0.05 秒の間隔では、点線の矢印のように見えた |
+| §5.5 | 行の選び直し（`seed_offset`）は、残す・残さないの判定と、直近の重複を避ける履歴に、選び直す前の結果を使う | 選び直した行の結果が履歴に入ると、後ろの行の重みが変わり、ほかの行まで変わってしまう |
+| §4.1 | Plan を保存しない。部品の ON/OFF は `parts`（種類・キー・入/切）の Collection | 決定的なので保存は不要（段階 4 で必要なら保存）。UIList で絞り込んで表示するため |
+| §5.4 | スペクトラムは曲全体を基準にした dB（上位 60 dB）を 0..1 にする | 帯域ごとに正規化すると、帯域どうしを比べられず、スペクトラムバーの高さの意味がなくなる |
+| §13 | 長い項目名（レイアウト・パーティクル・背景・トランジション・パノラマ画像）は、名前を欄の上に置く | 狭いサイドバーで「レイア…」のように切れた |
+| 段階 2 | 「おまかせ」のレイアウトでも「3D 文字の行用」の警告が出ていたのを直した | 「おまかせ」の項目にも説明文があり、その有無で判定していた |
+| §8.2・§12 | 遠景のマテリアルを Dithered（深度を書く）にした | 段階 3 の確認で、観客カメラで山並みが文字を隠していた（半透明どうしは原点の距離で描く順が決まり、帯の原点は観客の足元にある） |
+| §5.5 | 文字の配色の基準を、シルエットがあればその色にした | 夕焼け・夜明けでは、明るい空に合わせた暗い文字が、暗い街並み・山並みに溶け込んでいた |
+

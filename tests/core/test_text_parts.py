@@ -196,27 +196,37 @@ class TestPlanBake(unittest.TestCase):
         self.assertEqual(len({ln.anchor for ln in p.lines if ln.section_index == 0}),
                          len([ln for ln in p.lines if ln.section_index == 0]))
 
+    def test_kept_line_appears_in_front_then_glides_to_its_slot(self):
+        p, b = make(n_lines=6, persist="section")
+        eye = np.array([0, 0, model.EYE_HEIGHT])
+        for ln in p.lines[:-1]:
+            self.assertIsNotNone(ln.glide, ln.index)
+            for t, want in ((ln.glide[0] - 0.02, 0.0), (ln.glide[1] + 0.05, ln.anchor[0])):
+                pos = [v for k, v in bake.world_positions(b, t).items() if k.startswith(f"line{ln.index:03d}_")]
+                c = np.mean(pos, axis=0) - eye
+                self.assertAlmostEqual(math.atan2(c[0], c[1]), want, delta=0.05, msg=(ln.index, t))
+        self.assertIsNone(p.lines[-1].glide)              # nothing comes after it in its section
+
     def test_2d_lines_never_get_3d_layouts(self):
         for seed in range(5):
             p, _ = make(seed=seed)
             self.assertFalse(any(registry.get("layout", ln.layout).only_3d for ln in p.lines))
 
     def test_no_overlap_and_eye_distance(self):
-        for seed in range(4):
-            for is_3d in (False, True):
-                p, b = make(seed=seed, is_3d=is_3d, n_lines=16, gap=3.0, sec_len=24.0)
-                em = {n.id: n.scale[0] for n in b.nodes if n.kind == "glyph"}
-                for t in np.arange(0, b.duration, 0.2):
-                    pos = bake.world_positions(b, t)
-                    ids = list(pos)
-                    for k, a in enumerate(ids):
-                        d = np.linalg.norm(pos[a] - np.array([0, 0, 1.5]))
-                        self.assertGreaterEqual(d, model.MIN_EYE_DISTANCE - 1e-6, (seed, a, t))
-                        for c in ids[k + 1:]:
-                            if a.split("_")[0] == c.split("_")[0]:
-                                continue                    # same line
-                            gap = np.linalg.norm(pos[a] - pos[c])
-                            self.assertGreater(gap, 0.45 * (em[a] + em[c]), (seed, is_3d, a, c, round(t, 2)))
+        for seed, is_3d, persist in [(s, d, k) for s in range(4) for d in (False, True) for k in ("", "section")]:
+            p, b = make(seed=seed, is_3d=is_3d, n_lines=16, gap=3.0, sec_len=24.0, persist=persist)
+            em = {n.id: n.scale[0] for n in b.nodes if n.kind == "glyph"}
+            for t in np.arange(0, b.duration, 0.2):
+                pos = bake.world_positions(b, t)
+                ids = list(pos)
+                for k, a in enumerate(ids):
+                    d = np.linalg.norm(pos[a] - np.array([0, 0, 1.5]))
+                    self.assertGreaterEqual(d, model.MIN_EYE_DISTANCE - 1e-6, (seed, a, t))
+                    for c in ids[k + 1:]:
+                        if a.split("_")[0] == c.split("_")[0]:
+                            continue                    # same line
+                        gap = np.linalg.norm(pos[a] - pos[c])
+                        self.assertGreater(gap, 0.45 * (em[a] + em[c]), (seed, is_3d, a, c, round(t, 2)))
 
     def test_decimation_tolerance(self):
         times = np.linspace(0, 4, 121)
@@ -236,7 +246,8 @@ class TestPlanBake(unittest.TestCase):
             self.assertTrue(np.isfinite(tr.values).all(), tr.node)
         # emphasised characters get the accent colour
         line = next(ln for ln in p.lines if "透明" in ln.text)
-        accent = [n for n in glyphs if n.parent == f"line{line.index:03d}" and n.color[:3] == bake.ACCENT]
+        want = tuple(line.colors["accent"])
+        accent = [n for n in glyphs if n.parent == f"line{line.index:03d}" and np.allclose(n.color[:3], want)]
         self.assertEqual(len(accent), 2)
 
     def test_speed_four_minutes(self):

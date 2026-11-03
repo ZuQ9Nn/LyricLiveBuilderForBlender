@@ -18,6 +18,7 @@ class AudioInfo:
     beats: np.ndarray          # seconds
     energy: np.ndarray         # normalized loudness, RATE Hz, 0..1
     energy_rate: int = RATE
+    spectrum: np.ndarray = None  # (frames, BANDS) 0..1 at RATE Hz (design §5.4)
 
 
 def _frame_energies(mono, hop):
@@ -88,6 +89,31 @@ def _phase(onset, lag):
     return best_ph
 
 
+BANDS = 24
+_FFT = 2048
+
+
+def spectrum(mono, sample_rate, hop):
+    """Log-spaced band levels (40 Hz .. 16 kHz) per analysis frame, 0..1 over the song's top 60 dB."""
+    n = max(0, (len(mono) - _FFT) // hop + 1)
+    if n == 0:
+        return np.zeros((0, BANDS), dtype=np.float32)
+    freqs = np.fft.rfftfreq(_FFT, 1.0 / sample_rate)
+    edges = np.geomspace(40.0, min(16000.0, sample_rate / 2), BANDS + 1)
+    band = np.clip(np.searchsorted(edges, freqs) - 1, -1, BANDS)
+    valid = (band >= 0) & (band < BANDS)
+    counts = np.maximum(np.bincount(band[valid], minlength=BANDS), 1)
+    window = np.hanning(_FFT).astype(np.float32)
+    out = np.empty((n, BANDS))
+    for a in range(0, n, _CHUNK):
+        idx = np.arange(a, min(n, a + _CHUNK))[:, None] * hop + np.arange(_FFT)
+        power = np.abs(np.fft.rfft(mono[idx] * window, axis=1)) ** 2
+        out[a:a + len(idx)] = (power[:, valid] @ np.eye(BANDS)[band[valid]]) / counts
+    db = 10 * np.log10(out + 1e-12)
+    hi = np.percentile(db, 99.5)                          # one scale for all bands: the top 60 dB
+    return np.clip((db - (hi - 60.0)) / 60.0, 0, 1).astype(np.float32)
+
+
 def analyze(pcm, sample_rate):
     """pcm: float array [samples] or [samples, channels]."""
     pcm = np.asarray(pcm, dtype=np.float32)
@@ -108,6 +134,7 @@ def analyze(pcm, sample_rate):
         bpm=round(60 / period * 10) / 10,
         beats=np.round(np.arange(first, duration, period), 4),
         energy=np.minimum(1.0, energy / p95).astype(np.float32),
+        spectrum=spectrum(mono, sample_rate, hop),
     )
 
 

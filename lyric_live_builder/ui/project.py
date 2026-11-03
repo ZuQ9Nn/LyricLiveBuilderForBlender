@@ -13,7 +13,9 @@ SONG_STRIP = "LLB_Song"
 # per-line settings made by the user; they follow their line when the lyrics are edited
 LINE_DEFAULTS = {"tap_time": -1.0, "use_manual": False, "manual_start": 0.0, "is_3d": False, "depth": 0.15,
                  "bevel": "0.015", "layout": "AUTO", "enter": "AUTO", "hold": "AUTO", "exit": "AUTO",
-                 "distance_layer": "AUTO", "persist": "AUTO"}
+                 "distance_layer": "AUTO", "persist": "AUTO", "guide": "AUTO", "particle": "AUTO",
+                 "background": "AUTO", "transition": "AUTO", "locked": False, "lock_frozen": "", "seed_offset": 0}
+SECTION_USER_FIELDS = ("theme", "background", "transition", "locked", "lock_frozen")
 LINE_USER_FIELDS = tuple(LINE_DEFAULTS)
 _busy = False
 _audio_cache = {}          # abs path -> (mtime, AudioInfo)
@@ -157,14 +159,17 @@ def _recompute(scene):
         ln.start, ln.end, ln.source = tm.starts[i], tm.ends[i], tm.sources[i]
         ln.section_index = sections.section_of(secs, tm.starts[i])
         ln.char_times = json.dumps([round(t, 4) for t in timing.char_times(src.text, tm.starts[i], tm.ends[i])])
-    # a hand-set kind stays while its section still starts at the same time
+    # a hand-set kind (and theme, background, lock) stays while its section still starts at the same time
     user_kinds = {round(x.start, 2): x.kind for x in proj.sections if x.user_kind}
+    user_sets = {round(x.start, 2): {f: getattr(x, f) for f in SECTION_USER_FIELDS} for x in proj.sections}
     proj.sections.clear()
     for s in secs:
         item = proj.sections.add()
         key = round(s.start, 2)
         item.kind, item.label, item.start, item.end = user_kinds.get(key, s.kind), s.label, s.start, s.end
         item.user_kind = key in user_kinds
+        for f, v in user_sets.get(key, {}).items():
+            setattr(item, f, v)
     if any(match.get(i) != i for i in range(len(proj.lines))) or len(old) != len(proj.lines):
         # line numbers moved: markers are named after them, so place them again
         for m in [m for m in scene.timeline_markers if _marker_line(m) is not None]:
@@ -172,6 +177,8 @@ def _recompute(scene):
         set_line_markers(scene, [i for i, ln in enumerate(proj.lines) if ln.tap_time >= 0])
     else:
         prune_markers(scene, len(proj.lines))
+    from . import planning
+    planning.sync_parts(proj)
     proj.line_active = min(proj.line_active, max(0, len(proj.lines) - 1))
     proj.section_active = min(proj.section_active, max(0, len(proj.sections) - 1))
 
@@ -285,6 +292,13 @@ def metrics(proj):
     return get
 
 
+def section_inputs(proj):
+    from ..core.model import SectionInput
+    auto = lambda v: "" if v == "AUTO" else v
+    return [SectionInput(s.start, s.end, s.kind, auto(s.theme), auto(s.background), auto(s.transition))
+            for s in proj.sections]
+
+
 def line_inputs(proj):
     """Scene lines -> core LineInputs (notation flags re-read from the lyrics)."""
     from ..core.model import LineInput
@@ -299,5 +313,7 @@ def line_inputs(proj):
             emph_words=list(src.emph) if src else [], impact=bool(src and src.impact),
             chunks=list(src.manual) if src and src.manual else None,
             is_3d=ln.is_3d, depth=ln.depth, bevel=float(ln.bevel), layout=auto(ln.layout), enter=auto(ln.enter),
-            hold=auto(ln.hold), exit=auto(ln.exit), distance=auto(ln.distance_layer), persist=auto(ln.persist)))
+            hold=auto(ln.hold), exit=auto(ln.exit), distance=auto(ln.distance_layer), persist=auto(ln.persist),
+            particle=auto(ln.particle), background=auto(ln.background), transition=auto(ln.transition),
+            guide=auto(ln.guide), seed_offset=ln.seed_offset))
     return out
