@@ -112,7 +112,7 @@ lyric_live_builder/
     convert.py                   # 座標・回転・色空間の変換（Blender → Unity）
     meshbin.py                   # 独自メッシュ形式の書き出し（§9.3）
     manifest.py                  # manifest の組み立て（§9.2）
-    textures.py                  # パーティクルのアトラス、パノラマのコピー
+    particles_unity.py           # 発生源の spec → Unity の ParticleSystem の説明（JSON）
     unity_locate.py              # Unity エディタの検出、プロジェクトのロック判定
     unity_run.py                 # バッチモードの起動と監視（タイマー）
     templates/                   # Unity にコピーする C# とシェーダー（§10）
@@ -445,14 +445,16 @@ class FrontLayout(LayoutPart):
   Songs/<曲名>/
     manifest.json
     meshes.bin
-    textures/particles_atlas.png, panorama_*.png
+    textures/particles_atlas.png, panorama.<拡張子>
     audio/<曲ファイル>
-    _pending.llb              # 未組み立ての印（組み立て後に削除）
-    Generated/                # Unity 側が生成：Meshes/ Materials/ Clips/ <曲名>.playable / <曲名>.prefab
+    _llb_build.pending        # 未組み立ての印（最後に書く。組み立て後に削除）
+    Generated/                # Unity 側が生成：Meshes.asset、Materials/、Clips/、<曲名>.playable、<曲名>.prefab
 ```
 
-- `Editor/` と `Runtime/` は、アドオンの版より古い場合だけ上書きします（各フォルダの `version.txt` で判定）。
+- `Editor/` と `Runtime/` は、アドオンの版より古い場合だけ上書きします（各フォルダの `version.txt` の整数で判定。テンプレートを変えたら上げる）。利用者が足したファイルは残します。
 - 出力の前に `Songs/<曲名>/` の中身を確認し、`Generated/` が既にあれば上書きの確認ダイアログを出します（仕様書 §9.2-4）。
+- 印のファイル名は `_llb_build.pending` にします（`_pending.llb` ではない）。テスト用プロジェクトに残る段階 0 の試作の自動組み立てが `_pending.llb` を監視していて、本実装の出力を別のデータとして組み立てようとするため。
+- 出力の前に、Unity が見つかること・プロジェクトであること（`Assets` と `ProjectSettings`）・Timeline パッケージがあること（`Packages/manifest.json` か `packages-lock.json`）を確かめます。無ければエラーダイアログを出し、何も書きません。Timeline は組み立てのスクリプトのコンパイルに要ります（空のプロジェクトには入っていない。VRChat のワールドには入っている）。プロジェクトの設定は書き換えません。
 
 ### 9.2 manifest（JSON）
 
@@ -462,24 +464,24 @@ Unity の `JsonUtility` で読めるように、辞書と入れ子の配列は�
 {
   "format": "llb-manifest", "version": 1, "generator": "LyricLiveBuilderForBlender 0.1.0",
   "song": { "title": "", "artist": "", "audio": "audio/song.wav", "duration": 215.3, "bpm": 128.0 },
-  "options": { "tmp": false, "mobile": false, "udonSync": false, "materialMode": "VRCHAT" },
+  "options": { "materialMode": "VRCHAT", "panorama": "" },
   "sections": [ { "index": 0, "label": "Intro", "kind": "intro", "start": 0.0, "end": 12.4 } ],
-  "meshes": [ { "key": "g_00a1", "offset": 0, "length": 5120, "blendShapes": [] } ],
-  "materials": [ { "key": "m_text0", "shader": "unlit", "color": [1,1,1,1], "emission": 0.0, "texture": "" } ],
-  "nodes": [ { "id": 12, "name": "L003_c02_空", "parent": 11, "category": "text", "kind": "glyph",
-               "mesh": "g_00a1", "material": "m_text0", "p": [0,0,0], "r": [0,0,0,1], "s": [1,1,1],
-               "tmp": "", "tmpFont": "" } ],
-  "emitters": [ { "node": 40, "preset": "{...JSON 文字列...}" } ],
-  "dome": { "node": 2, "mesh": "dome", "material": "m_dome" },
+  "meshes": [ { "key": "glyph2d|body|空", "offset": 0, "length": 5120 } ],
+  "materials": [ { "key": "text_f5eeeaff", "shader": "text", "color": [0.96,0.93,0.92,1], "params": [] },
+                 { "key": "dome", "shader": "dome", "color": [1,1,1,1], "params": [ { "name": "_TopA", "values": [0.1,0.2,0.4] } ] } ],
+  "nodes": [ { "id": 12, "name": "空", "parent": 11, "category": "text", "kind": "glyph", "mesh": "glyph2d|body|空",
+               "material": "text_f5eeeaff", "p": [0,0,0], "r": [0,0,0,1], "s": [1,1,1], "active": false, "particles": "" } ],
   "clips": [ { "section": 0, "category": "text",
-               "curves": [ { "node": 12, "prop": "scale", "interp": 0, "components": 3,
-                             "times": [0.0, 0.1], "values": [0,0,0, 1,1,1] } ] } ]
+               "curves": [ { "node": 12, "type": "Transform", "attr": "m_LocalScale", "fields": ["x","y","z"],
+                             "interp": 0, "times": [0.0, 0.1], "values": [0,0,0, 1,1,1] } ] } ]
 }
 ```
 
-- `nodes[].p/r/s` と `curves[].values` は、**Unity の座標系に変換済み**です（§9.4）。
+- `nodes[].p/r/s` と `curves[].values` は、**Unity の座標系に変換済み**です（§9.4）。色は sRGB です。
+- 曲線は、Unity の `EditorCurveBinding` の型・属性・成分の名前まで Python 側で決めます（`export_unity/manifest.binding`）。C# は文字列をつなぐだけです。
+- `parent` が −1 のノードは、分類のルート（Text・Particles・Background・Gimmicks）の直下に置きます。視線の誘導は Text に入れます。同じ親の下の名前は一意にします（アニメーションのパスが名前なので。1 行に同じ字が 2 つある場合など）。
+- パーティクルの系は、ノードの `particles` に Unity 向けの説明の JSON 文字列を入れます（`export_unity/particles_unity.py`。入れ子の配列は使わない）。系が 2 つになる発生源（上下 2 段の輪）は、子のノードに分けます。破裂（花火・きらめき）は、破裂ごとに子のノード（ループしない系）を作り、その時刻に表示します。
 - `clips` は §10.5 の規則で、セクション × 分類に切り分けて出力します。
-- パーティクルのプリセットは入れ子が深いので、JSON の文字列として埋め込み、C# 側で専用のクラスに `JsonUtility.FromJson` します。
 
 ### 9.3 独自メッシュ形式（`meshes.bin`）
 
@@ -505,7 +507,7 @@ Shape :=
   deltaPos : f32[nVerts*3]  # delta, Unity space
 ```
 
-- 頂点は、角の法線（フラットシェーディング）が必要な辺で分割してから書き出します（Blender のループ単位 → Unity の頂点単位）。
+- 法線を必ず書きます。3D の文字と 3D のパーティクルの形は、三角形ごとに頂点を分けて面の法線にします（側面を暗くするため）。2D の文字・ドーム・光の玉は頂点を共有し、面の法線の平均にします。UV・色・シェイプキーは段階 6 以降で使います（読み込みは対応済み）。
 
 ### 9.4 座標変換（`convert.py`）
 
@@ -540,9 +542,9 @@ Unity.exe -batchmode -nographics -quit -projectPath "<Project>"
           -llbSong "Assets/LyricLive/Songs/<曲名>" -logFile "<Project>/Logs/llb_build.log"
 ```
 
-- `subprocess.Popen` で起動し、`bpy.app.timers` で 0.5 秒ごとに終了とログを確認します（Blender の画面を止めない）。
-- ログの `[LLB]` で始まる行を進捗・警告として表示します。終了コードが 0 以外ならエラーダイアログを出し、ログのパスを示します。
-- 初回は Unity の起動（コンパイルとインポート）に数分かかるので、タイムアウトは長め（既定 30 分）にし、中止ボタンを付けます。
+- `subprocess.Popen` で起動し、モーダルオペレーターのタイマー（0.5 秒）で終了とログを確認します（Blender の画面を止めない。`Esc` で中止）。
+- ログの `[LLB]` で始まる行を、「Unity 出力」パネルの状態に表示します。終了コードが 0 以外ならエラーダイアログを出し、ログのパスを示します。
+- プロジェクトが開いている場合（§9.5 のロック判定）は起動せず、「Unity に切り替えると自動で組み立てる」と表示して終わります（`LLBAutoBuild`）。
 
 ---
 
@@ -552,32 +554,34 @@ Unity.exe -batchmode -nographics -quit -projectPath "<Project>"
 
 | ファイル | 役割 |
 |---|---|
-| `Editor/LLBBuilder.cs` | 入口。`BuildFromCommandLine()`、`Build(songFolder)`、メニュー `Tools/LyricLive/Rebuild` |
-| `Editor/LLBAutoBuild.cs` | `[InitializeOnLoad]` と `AssetPostprocessor`。`_pending.llb` を見つけたら `EditorApplication.delayCall` で組み立てる |
+| `Editor/LLBBuilder.cs` | 入口。`BuildFromCommandLine()`、`Build(songFolder)`、メニュー `Tools/LyricLive/Rebuild All Songs` |
+| `Editor/LLBAutoBuild.cs` | `[InitializeOnLoad]` と `AssetPostprocessor`。`_llb_build.pending` を見つけたら `EditorApplication.delayCall` で組み立てる |
 | `Editor/LLBManifest.cs` | manifest のクラス（`[Serializable]`） |
 | `Editor/LLBMeshReader.cs` | `meshes.bin` → `Mesh`（.asset）。シェイプキーは `AddBlendShapeFrame` |
 | `Editor/LLBMaterialFactory.cs` | マテリアルの生成（VRChat の Mobile シェーダー／同梱シェーダー／標準。シェーダーが見つからない場合の代替） |
 | `Editor/LLBParticleFactory.cs` | プリセット → ParticleSystem の各モジュール |
 | `Editor/LLBAnimationFactory.cs` | `clips` → `AnimationClip`（`AnimationUtility.SetEditorCurve`） |
 | `Editor/LLBTimelineFactory.cs` | `TimelineAsset`・トラック・クリップ・バインディング・マーカー |
-| `Editor/LLBTextMeshProFactory.cs` | TMP のフォントアセット（静的アトラス）と、文字ごとの TMP |
-| `Editor/LLBUdonSyncFactory.cs` | Udon 同期の生成（UdonSharp がある場合のみコンパイルされる。§10.7） |
-| `Runtime/Shaders/LLB_Unlit.shader` | 色・発光・透明度・ディゾルブ |
-| `Runtime/Shaders/LLB_Dome.shader` | §8.2 のドーム |
-| `Runtime/Shaders/LLB_MatCap.shader` | 標準モード用の MatCap |
-| `Runtime/Udon/LLBSync.cs.txt` | 同期スクリプトの元（拡張子を変えて、コンパイルされないように置く） |
+| `Editor/LLBTextMeshProFactory.cs` | TMP のフォントアセット（静的アトラス）と、文字ごとの TMP（段階 5） |
+| `Editor/LLBUdonSyncFactory.cs` | Udon 同期の生成（UdonSharp がある場合のみコンパイルされる。§10.7。段階 5） |
+| `Runtime/Shaders/LLB_Text.shader` | 文字。色と透明度、視線に対して斜めの面を暗くする |
+| `Runtime/Shaders/LLB_Far.shader` | 遠景。キュー 2900（ドームの後、文字の前に描く） |
+| `Runtime/Shaders/LLB_Glow.shader` | 視線の誘導の光の玉（加算、縁で消える） |
+| `Runtime/Shaders/LLB_Particle.shader` | パーティクル。アトラス × 頂点の色 × `_Color`（発生源の現れ・消え）。加算と半透明は `_SrcBlend/_DstBlend` |
+| `Runtime/Shaders/LLB_Dome.shader` | §8.2 のドーム（Blender のプレビューのノードと同じ式） |
+| `Runtime/Udon/LLBSync.cs.txt` | 同期スクリプトの元（拡張子を変えて、コンパイルされないように置く。段階 5） |
 
 ### 10.2 組み立ての手順（`LLBBuilder.Build`）
 
 1. manifest を読み、版を確認する。
 2. `Generated/` を作り直す（以前の生成物を削除）。
 3. メッシュ → マテリアル → テクスチャの取り込み設定（アトラスは Clamp・ミップマップあり）。
-4. 階層を作る（ルート → 分類 → ノード）。分類のルートに Animator（Controller 無し）を付ける。ノードは既定で非表示（`default_active=False`）。
+4. 階層を作る（ルート → 分類 → ノード）。分類のルートに Animator（Controller 無し）を付ける。ノードの表示・非表示は manifest の `active` の初期値（文字・遠景・パーティクルは非表示、行のグループ・ドームは表示）。組み立ては `EditorSceneManager.NewPreviewScene()` の中で行い、開いているシーンを汚さない。
 5. パーティクルの生成。
 6. AnimationClip の生成（§10.5）。
 7. Timeline の生成（§10.6）。ルートに PlayableDirector と AudioSource を付け、バインドする。
 8. オプション：TMP 変換、Udon 同期。
-9. Prefab として保存し、`_pending.llb` を削除する。`[LLB] done` をログに出す。
+9. Prefab として保存し、`_llb_build.pending` を削除する。`[LLB] done` をログに出す。
 
 組み立ては、作業用の一時オブジェクトだけで行い、開いているシーンのオブジェクトには触れません。シーンに置いた Prefab のインスタンスは、Prefab の上書きで自動的に更新されます（S0-03 の試作で、名前でシーンを検索して削除する処理が、シーンに置いたインスタンスまで消した）。
 
@@ -585,13 +589,14 @@ Unity.exe -batchmode -nographics -quit -projectPath "<Project>"
 
 | 仕様上の種類 | VRCHAT モード | 代替（シェーダーが見つからない場合） | STANDARD モード |
 |---|---|---|---|
-| unlit | `LyricLive/Unlit`（同梱） | `VRChat/Mobile/Particles/Alpha Blended` 相当の色 | `LyricLive/Unlit` |
-| lit | `VRChat/Mobile/Toon Lit` | `Standard` | `Standard` |
-| matcap | `VRChat/Mobile/MatCap Lit` | `LyricLive/MatCap` | `LyricLive/MatCap` |
-| particle_add / particle_alpha | `VRChat/Mobile/Particles/Additive`・`Alpha Blended` | `Particles/Standard Unlit` | `Particles/Standard Unlit` |
-| dome | `LyricLive/Dome` | （Quest で同梱シェーダーが使えない場合）`VRChat/Mobile/Toon Lit` + 色のみ | `LyricLive/Dome` |
+| text | `LyricLive/Text` | `Unlit/Transparent` → `Unlit/Color` | 同左 |
+| far | `LyricLive/Far` | `Unlit/Transparent` → `Unlit/Color` | 同左 |
+| glow | `LyricLive/Glow` | `Particles/Standard Unlit` | 同左 |
+| particle（加算・半透明・3D） | `LyricLive/Particle` | `Particles/Standard Unlit` | 同左 |
+| dome | `LyricLive/Dome` | `Unlit/Color` | 同左 |
 
-- `material._Color` 等のアニメーションの対象プロパティ名は、シェーダーごとの対応表で置き換えます（例：Toon Lit の色）。
+- 段階 4 では、どちらのモードも同梱シェーダーを使います（試作 S0-07 で、PC・Quest・iOS での表示を確認済み）。同梱シェーダーが見つからない場合は、表の代わりのシェーダーにして `[LLB][WARN]` を出します。lit・MatCap（仕様書 §7.2）は改善メモ #12。
+- 色は `SetColor` に sRGB の値で渡します（Linear のプロジェクトでも、Unity が線形に直す）。
 
 ### 10.4 アニメーションのプロパティ
 
@@ -606,7 +611,10 @@ Unity.exe -batchmode -nographics -quit -projectPath "<Project>"
 | shape:<name> | `typeof(SkinnedMeshRenderer)`, `blendShape.<name>`（×100） |
 | emit_rate | `typeof(ParticleSystem)`, `EmissionModule.rateOverTime.scalar` |
 
-- 補間：linear はキーの接線を前後の傾きに設定、constant は `AnimationUtility.SetKeyBroken` と `TangentMode.Constant` を使う。
+| `dome:<名前>` | `typeof(MeshRenderer)`, `material._TopA.r/g/b` など（色は sRGB、`_CueDir` は `.x/.y/.z`、数値は成分なし） |
+
+- 補間：linear はキーの接線を前後の区間の傾きに、constant は接線を無限大（階段）にします。`active` は常に constant。まとめて `AnimationUtility.SetEditorCurves` で書きます。
+- 発生源の `color` は `ParticleSystemRenderer` の `material._Color`（現れ・消え）、`emit_rate` は `ParticleSystem` の `EmissionModule.rateOverTime.scalar` です。
 
 ### 10.5 クリップの分割規則
 
@@ -614,6 +622,7 @@ Unity.exe -batchmode -nographics -quit -projectPath "<Project>"
 - **クリップは自己完結させます。** Timeline の Animation Track は、そのとき再生中のクリップに含まれないプロパティを既定値に戻します。そのため、各クリップには、そのセクションで動く・見えるノードのすべてのプロパティを、開始時刻の値から入れます。
 - セクションの境目をまたぐ要素（退場の途中の文字・続いている背景・パーティクル）は、両方のクリップに含め、境目の時刻の値をそろえます。
 - 既定値（Prefab に保存される状態）は「すべて非表示・静止姿勢」です。
+- 実装：セクション [s0, s1) の中で一度でも表示されるノードの全トラックを、s0 の値（補間で求める）＋区間内のキー＋s1 の値（linear のみ）で切り出し、時刻を 0 からにします。何も動かない分類のクリップにも、ルートの拡大率の一定の曲線を 1 本入れて、クリップの長さをセクションに合わせます。
 
 ### 10.6 Timeline
 
@@ -624,10 +633,11 @@ Unity.exe -batchmode -nographics -quit -projectPath "<Project>"
 | Particles | AnimationTrack | `Particles` の Animator | セクションごと |
 | Background | AnimationTrack | `Background` の Animator | セクションごと |
 | Gimmicks | AnimationTrack | `Gimmicks` の Animator | セクションごと |
-| Markers | Marker Track | — | セクション名・行の Signal 用マーカー（編集の目印） |
 
-- クリップ名：`<2桁の番号>_<セクション名>_<分類>`（例：`03_Chorus_Text`）。AnimationClip のアセット名も同じにします。
-- PlayableDirector：`playOnAwake = true`（Udon 同期が OFF の場合）、`extrapolationMode = Hold`。
+- クリップ名：`<2桁の番号>_<セクション名>_<分類>`（例：`03_Chorus_Text`）。AnimationClip のアセット名も同じにします（`Generated/Clips/`）。
+- PlayableDirector：`playOnAwake = true`（Udon 同期が OFF の場合）、`extrapolationMode = Hold`（最後の状態を保つ。クリップの後の外挿は API で設定できないため、ディレクターで保つ）、`timeUpdateMode = DSPClock`（曲の時計に合わせる）。
+- マーカーのトラック（セクション名・行の目印）は、段階 4 では作りません（改善メモ #16）。
+- 曲は `CompressedInMemory`・Vorbis（品質 0.7）で取り込みます（4 分の曲を読み込み時に展開すると、Quest で数十 MB になるため）。
 
 ### 10.7 Udon 同期（オプション）
 
@@ -857,4 +867,16 @@ def bake_palette_material(objects, *, max_colors=64) -> PaletteResult
 | 段階 2 | 「おまかせ」のレイアウトでも「3D 文字の行用」の警告が出ていたのを直した | 「おまかせ」の項目にも説明文があり、その有無で判定していた |
 | §8.2・§12 | 遠景のマテリアルを Dithered（深度を書く）にした | 段階 3 の確認で、観客カメラで山並みが文字を隠していた（半透明どうしは原点の距離で描く順が決まり、帯の原点は観客の足元にある） |
 | §5.5 | 文字の配色の基準を、シルエットがあればその色にした | 夕焼け・夜明けでは、明るい空に合わせた暗い文字が、暗い街並み・山並みに溶け込んでいた |
+
+### 17.6 段階 4 の実装による変更
+
+| 箇所 | 変更 | 理由 |
+|---|---|---|
+| §9.1 | 組み立ての印を `_llb_build.pending` にした | テスト用プロジェクトの段階 0 の試作が `_pending.llb` を監視しており、本実装の出力を誤って組み立てようとする |
+| §9.1 | 出力の前に Timeline パッケージの有無を確かめる | 空のプロジェクトには Timeline が無く、組み立てのスクリプトがコンパイルできない |
+| §9.2 | manifest の曲線に、Unity の型・属性・成分の名前を持たせた。パーティクルは Unity 向けの説明を Python 側で作る | ロジックを Python に集める（§1 の方針 2）。C# は値を写すだけになる |
+| §10.2 | 組み立てをプレビュー用のシーンで行う | 開いているシーンを変更済みにしない（MCP で `isDirty = false` を確認） |
+| §10.3 | どちらのモードも同梱シェーダーを使う | 試作 S0-07 で Quest・iOS での表示を確認済み。アニメーションするプロパティ名をシェーダーごとに置き換える必要もなくなる |
+| §10.6 | クリップの後の外挿の代わりに、ディレクターの Hold を使う。マーカーのトラックは作らない | `TimelineClip.postExtrapolationMode` は読み取り専用 |
+| パーティクル | テクスチャのタイルを選ぶ `startFrame` は、タイル番号ではなく `(番号 + 0.5) / 16` | Unity では 0〜1 の割合（番号を入れると 0.9999 に丸められ、空のタイルになった） |
 

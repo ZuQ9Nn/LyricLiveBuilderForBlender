@@ -280,5 +280,36 @@ class LLB_PT_preview(_Panel, bpy.types.Panel):
             col.operator("llb.view_standard", icon="COLOR")
 
 
+class LLB_PT_export(_Panel, bpy.types.Panel):
+    bl_label = "Unity Export"
+    bl_order = 9
+
+    def draw(self, context):
+        from . import operators_export
+        proj = context.scene.llb
+        st = proj.export
+        col = self.layout.column()
+        prop_above(col, st, "project_path")
+        prop_above(col, st, "unity_path")
+        unity, _ = operators_export.unity_path(context)
+        if unity:
+            col.label(text=unity, icon="CHECKMARK", translate=False)
+        else:
+            col.label(text="Unity 2022.3.22f1 was not found", icon="ERROR")
+        prop_above(col, st, "folder_name")
+        col.label(text=iface_("Folder: {}").format("Assets/LyricLive/Songs/" + operators_export.song_name(proj)),
+                  translate=False)
+        prop_above(col, st, "material_mode")
+        row = col.row()
+        row.scale_y = 1.4
+        row.operator("llb.export_unity", icon="EXPORT")
+        if st.status:
+            box = col.box()
+            labels(box, st.status, "INFO")
+            if st.log_path:
+                box.label(text=st.log_path, translate=False)
+        labels(col, "TextMesh Pro, mobile optimisation\nand Udon sync come in phase 5", "QUESTION")
+
+
 CLASSES = (LLB_PT_lyrics, LLB_PT_lyrics_notation, LLB_PT_fonts, LLB_PT_song, LLB_PT_sync, LLB_PT_omakase,
-           LLB_PT_sections, LLB_PT_effects, LLB_PT_preview)
+           LLB_PT_sections, LLB_PT_effects, LLB_PT_preview, LLB_PT_export)

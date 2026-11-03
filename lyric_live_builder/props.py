@@ -117,6 +117,19 @@ class LLBHistoryItem(bpy.types.PropertyGroup):
     data: StringProperty(description="JSON of one proposal")
 
 
+class LLBExportSettings(bpy.types.PropertyGroup):
+    project_path: StringProperty(name="Unity Project", subtype="DIR_PATH",
+                                 description="The VRChat world project (the folder that holds Assets)")
+    unity_path: StringProperty(name="Unity Editor Path", subtype="FILE_PATH",
+                               description="Unity.exe (empty = the preferences value, or found automatically)")
+    folder_name: StringProperty(name="Song Folder", description="Assets/LyricLive/Songs/<this> (empty = the song file name)")
+    material_mode: EnumProperty(name="Material Set", items=[
+        ("VRCHAT", "VRChat Worlds", "The add-on's own shaders (tested on PC, Quest and iOS)"),
+        ("STANDARD", "Standard Unity", "The same shaders; for non-VRChat projects")], default="VRCHAT")
+    status: StringProperty(name="Export Status")
+    log_path: StringProperty(subtype="FILE_PATH")
+
+
 class LLBSection(bpy.types.PropertyGroup):
     kind: EnumProperty(name="Kind", items=SECTION_KIND_ITEMS, default="verse", update=_kind_set_by_user)
     user_kind: BoolProperty(description="Kind was changed by hand; kept when the lyrics are read again")
@@ -200,6 +213,7 @@ class LLBProject(bpy.types.PropertyGroup):
     history: CollectionProperty(type=LLBHistoryItem)
     history_index: IntProperty(default=-1)
     reroll_target: EnumProperty(name="Change Only", items=REROLL_ITEMS, default="particles")
+    export: PointerProperty(type=LLBExportSettings)
     panorama_path: StringProperty(name="Panorama Image", subtype="FILE_PATH",
                                   description="360° equirectangular image for the Panorama Image background")
 
@@ -207,7 +221,7 @@ class LLBProject(bpy.types.PropertyGroup):
         return getattr(self, "font_" + role)
 
 
-CLASSES = (LLBFontRole, LLBFx, LLBPartToggle, LLBHistoryItem, LLBSection, LLBLine, LLBProject)
+CLASSES = (LLBFontRole, LLBFx, LLBPartToggle, LLBHistoryItem, LLBExportSettings, LLBSection, LLBLine, LLBProject)
 
 
 def register():

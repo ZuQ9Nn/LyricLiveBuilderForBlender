@@ -11,7 +11,6 @@ import os
 import sys
 import time
 import traceback
-import wave
 
 import bpy
 import numpy as np
@@ -21,23 +20,13 @@ ROOT = os.path.normpath(os.path.join(HERE, "..", ".."))
 sys.path[:0] = [ROOT, HERE]
 
 import lyric_live_builder as llb                                     # noqa: E402
-from common import check, failures, font_arg, setup, text_objects, translation_checks  # noqa: E402
+from common import check, failures, font_arg, setup, song, text_objects, translation_checks  # noqa: E402
 from lyric_live_builder.core import bake, color, world               # noqa: E402
 from lyric_live_builder.core.parts import backgrounds as bgs          # noqa: E402
 from lyric_live_builder.core.parts import particles as pts            # noqa: E402
 from lyric_live_builder.preview import particles as preview_particles  # noqa: E402
 from lyric_live_builder.preview import scene as preview_scene        # noqa: E402
 from lyric_live_builder.ui import planning, project                  # noqa: E402
-
-
-def song(path, seconds=70.0, sr=22050):
-    t = np.arange(int(sr * seconds)) / sr
-    x = (np.sin(2 * np.pi * 440 * t) * 0.2 * (1 + 0.8 * (np.sin(t * 0.4) > 0))).astype(np.float32)
-    with wave.open(path, "wb") as w:
-        w.setnchannels(1)
-        w.setsampwidth(2)
-        w.setframerate(sr)
-        w.writeframes((x * 32767).astype("<i2").tobytes())
 
 
 def frame_set(scene, t):

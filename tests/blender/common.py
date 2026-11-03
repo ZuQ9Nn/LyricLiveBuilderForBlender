@@ -3,8 +3,10 @@ import ast
 import glob
 import os
 import sys
+import wave
 
 import bpy
+import numpy as np
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 
@@ -97,3 +99,11 @@ def translation_checks():
     bpy.context.preferences.view.language = "en_US"
 
 
+def song(path, seconds=70.0, sr=22050):
+    t = np.arange(int(sr * seconds)) / sr
+    x = (np.sin(2 * np.pi * 440 * t) * 0.2 * (1 + 0.8 * (np.sin(t * 0.4) > 0))).astype(np.float32)
+    with wave.open(path, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(sr)
+        w.writeframes((x * 32767).astype("<i2").tobytes())
