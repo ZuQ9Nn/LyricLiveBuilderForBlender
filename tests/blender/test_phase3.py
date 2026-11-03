@@ -149,8 +149,8 @@ def main():
     check(colls.get(preview_scene.TEXT, 0) > 100, f"text built {colls}")
     check(any(ob.get("llb_node") == "dome" for ob in bpy.data.collections["LLB_Background"].objects), "dome built")
     check(colls.get("LLB_Particles", 0) == len(baked1.emitters) > 0, f"one object per particle emitter ({len(baked1.emitters)})")
-    check(colls.get("LLB_Guide", 0) == sum(g["motes"] + ("glow" in g["kinds"]) for g in baked1.guides),
-          f"guide objects ({len(baked1.guides)} guides)")
+    check(colls.get("LLB_Guide", 0) == sum(1 + g["motes"] + ("glow" in g["kinds"]) for g in baked1.guides),
+          f"guide objects ({len(baked1.guides)} guides, each a pivot with motes and glow)")
     check(len({w["spec"]["key"] for w in plan1.world}) >= 2, "the background changes over the song")
 
     # particle preview == core

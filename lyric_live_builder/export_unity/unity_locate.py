@@ -83,14 +83,18 @@ def project_is_open(project):
         return True
 
 
-def has_timeline(project):
-    """The build scripts need the Timeline package (VRChat world projects have it; an empty project may not)."""
-    for name in ("manifest.json", "packages-lock.json"):
+def has_package(project, name):
+    """Is the package in the project (listed in Packages/manifest.json or packages-lock.json)?"""
+    for fname in ("manifest.json", "packages-lock.json"):
         try:
-            with open(os.path.join(project, "Packages", name), encoding="utf-8") as f:
-                if "com.unity.timeline" in json.load(f).get("dependencies", {}):
+            with open(os.path.join(project, "Packages", fname), encoding="utf-8") as f:
+                if name in json.load(f).get("dependencies", {}):
                     return True
         except (OSError, ValueError):
             pass
     return False
 
+
+def has_timeline(project):
+    """The build scripts need the Timeline package (VRChat world projects have it; an empty project may not)."""
+    return has_package(project, "com.unity.timeline")

@@ -126,6 +126,20 @@ class LLBExportSettings(bpy.types.PropertyGroup):
     material_mode: EnumProperty(name="Material Set", items=[
         ("VRCHAT", "VRChat Worlds", "The add-on's own shaders (tested on PC, Quest and iOS)"),
         ("STANDARD", "Standard Unity", "The same shaders; for non-VRChat projects")], default="VRCHAT")
+    use_mobile: BoolProperty(name="Mobile Optimization",
+                             description="Lighter letters, still lines merged, one text material, fewer particles (Quest / phones)")
+    particle_ratio: FloatProperty(name="Particle Share", default=0.5, min=0.05, max=1.0, subtype="FACTOR",
+                                  description="Share of the particle counts kept by Mobile Optimization")
+    use_tmp: BoolProperty(name="TextMesh Pro",
+                          description="Flat lines become TextMesh Pro letters (a static atlas of the lyric's characters; "
+                                      "the font file is not part of the build). 3D lines stay meshes")
+    use_udon_sync: BoolProperty(name="Udon Sync",
+                                description="A start button that plays the show in sync for everyone, late joiners too, "
+                                            "and gaze guides that follow each viewer's own view (needs UdonSharp)")
+    limit_tris: IntProperty(name="Triangles on Stage", default=100000, min=1000)
+    limit_particles: IntProperty(name="Particles Alive", default=3000, min=100)
+    limit_materials: IntProperty(name="Material Count", default=16, min=1)
+    budget: StringProperty(description="JSON of the last budget check")
     status: StringProperty(name="Export Status")
     log_path: StringProperty(subtype="FILE_PATH")
 

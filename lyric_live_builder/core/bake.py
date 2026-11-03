@@ -93,9 +93,35 @@ def mesh_key(line, ch):
     return f"glyph2d|{line.font_role}|{ch}"
 
 
-def bake(plan, metrics, eye=model.EYE_HEIGHT, rate=RATE):
-    """metrics(role) -> object with advance_em(ch) / vadvance_em(ch)."""
+LINE_MIN_STILL = 1.0                             # seconds a line must stand still to be worth a line mesh
+
+
+def _line_meshes(candidates, nodes, meshes, tracks):
+    """Mobile: while a still line stands between its entrance and its exit, show one merged mesh
+    instead of its letters (design §11.3); fewer draw calls when lines pile up."""
+    by_id = {(t.node, t.prop): k for k, t in enumerate(tracks)}
+    for gid, parts, t_on, t_off in candidates:
+        key = f"line:{gid}"
+        meshes[key] = MeshSource(key, "line", {"parts": [p[1:] for p in parts]})
+        nodes.append(Node(f"{gid}_line", "Line", gid, "text", "line_mesh", mesh=key, material="text_line",
+                          default_active=False))
+        tracks.append(Track(f"{gid}_line", "active", "constant", np.array([0.0, t_on, t_off], dtype=np.float32),
+                            np.array([[0.0], [1.0], [0.0]], dtype=np.float32)))
+        for nid, *_ in parts:
+            k = by_id[(nid, "active")]
+            tr = tracks[k]
+            on, off = float(tr.times[-2] if len(tr.times) == 3 else tr.times[0]), float(tr.times[-1])
+            keys = [(0.0, 0.0), (on, 1.0), (t_on, 0.0), (t_off, 1.0), (off, 0.0)] if on > 0 else \
+                [(on, 1.0), (t_on, 0.0), (t_off, 1.0), (off, 0.0)]
+            tracks[k] = Track(nid, "active", "constant", np.array([x[0] for x in keys], dtype=np.float32),
+                              np.array([[x[1]] for x in keys], dtype=np.float32))
+
+
+def bake(plan, metrics, eye=model.EYE_HEIGHT, rate=RATE, mobile=False, tmp=False):
+    """metrics(role) -> object with advance_em(ch) / vadvance_em(ch). mobile: add line meshes (§11.3);
+    tmp: flat lines become TextMesh Pro letters in Unity, so only 3D lines get line meshes."""
     nodes, meshes, tracks = [], {}, []
+    line_candidates = []
     eye_pt = np.array([0.0, 0.0, eye])
     fx = plan.fx or model.FX_DEFAULTS
     koma = int(fx.get("koma", 0) or 0)                   # 12 / 8 = frame stepping (constant keys)
@@ -176,6 +202,7 @@ def bake(plan, metrics, eye=model.EYE_HEIGHT, rate=RATE):
         fg, accent = (ln.colors["fg"], ln.colors["accent"]) if ln.colors else (WHITE, ACCENT)
         base = [tuple(accent) if ln.emph_mask[i] else tuple(fg) for i in ci]
         narrow = lp.shown(ctx, params, pl)
+        parts = []
         for k in range(g):
             i = ci[k]
             ch = ln.text[i]
@@ -193,6 +220,7 @@ def bake(plan, metrics, eye=model.EYE_HEIGHT, rate=RATE):
                 on, off = max(on, narrow[k][0]), min(off, narrow[k][1])
             if off <= on:
                 continue                         # never on stage
+            parts.append((nid, key, tuple(rest_loc[k]), tuple(rest_rot[k]), float(pl.em), tuple(base[k])))
             keys = [(0.0, 0.0), (on, 1.0), (off, 0.0)] if on > 0 else [(on, 1.0), (off, 0.0)]
             tracks.append(Track(nid, "active", "constant", np.array([k_[0] for k_ in keys], dtype=np.float32),
                                 np.array([[k_[1]] for k_ in keys], dtype=np.float32)))
@@ -205,10 +233,15 @@ def bake(plan, metrics, eye=model.EYE_HEIGHT, rate=RATE):
             tr = _track(nid, "color", times, col, color, interp)
             if tr:
                 tracks.append(tr)
+        t_on, t_off = float(in_end.max()), float(out_start.min())
+        if (mobile and ln.hold == "still" and not narrow and len(parts) > 1 and t_off - t_on >= LINE_MIN_STILL
+                and (ln.is_3d or not tmp)):
+            line_candidates.append((gid, parts, t_on, t_off))
     # gaze guidance needs the text's world positions; the dome takes its cues
     text = BakedScene(duration=plan.duration, nodes=nodes, meshes=meshes, tracks=tracks, sections=plan.sections)
     by_key = {(t.node, t.prop): t for t in tracks}
     guides = guide.plan_guides(plan, lambda t: world_positions(text, t), by_key)
+    _line_meshes(line_candidates, nodes, meshes, tracks)       # after the guides: they read the letters
     g_nodes, g_tracks, g_meshes = guide.bake_guides(guides, _track)
     nodes, tracks = nodes + g_nodes, tracks + g_tracks
     meshes.update(g_meshes)

@@ -275,9 +275,31 @@ class LLB_PT_preview(_Panel, bpy.types.Panel):
         row.operator("llb.preview_clear", text="", icon="TRASH")
         col.operator("llb.view_audience", icon="CAMERA_DATA")
         col.prop(proj, "seed")
+        col.separator()
+        col.operator("llb.check_budget", icon="VIEWZOOM")
+        draw_budget(col, proj.export)
         if context.scene.view_settings.view_transform != "Standard":
             labels(col, "Colors differ from Unity\n(view transform is not Standard)", "ERROR")
             col.operator("llb.view_standard", icon="COLOR")
+
+
+BUDGET_LABELS = {"letter_flat": "Triangles per Flat Letter", "letter_solid": "Triangles per 3D Letter",
+                 "tris": "Triangles on Stage", "particles": "Particles Alive", "materials": "Material Count"}
+
+
+def draw_budget(layout, st):
+    import json
+    if not st.budget:
+        return
+    box = layout.box()
+    box.label(text="Mobile Optimization" if st.use_mobile else "Without Mobile Optimization",
+              icon="CHECKMARK" if st.use_mobile else "INFO")
+    for key, (value, limit, at) in json.loads(st.budget).items():
+        if key == "letter_solid" and not value:
+            continue
+        over = value > limit
+        text = f"{iface_(BUDGET_LABELS[key])}: {value:,} / {limit:,}" + (f"  ({at} s)" if at else "")
+        box.label(text=text, icon="ERROR" if over else "CHECKMARK", translate=False)
 
 
 class LLB_PT_export(_Panel, bpy.types.Panel):
@@ -300,6 +322,15 @@ class LLB_PT_export(_Panel, bpy.types.Panel):
         col.label(text=iface_("Folder: {}").format("Assets/LyricLive/Songs/" + operators_export.song_name(proj)),
                   translate=False)
         prop_above(col, st, "material_mode")
+        col.prop(st, "use_mobile")
+        if st.use_mobile:
+            sub = col.column(align=True)
+            sub.prop(st, "particle_ratio", slider=True)
+            sub.prop(st, "limit_tris")
+            sub.prop(st, "limit_particles")
+            sub.prop(st, "limit_materials")
+        col.prop(st, "use_tmp")
+        col.prop(st, "use_udon_sync")
         row = col.row()
         row.scale_y = 1.4
         row.operator("llb.export_unity", icon="EXPORT")
@@ -308,7 +339,6 @@ class LLB_PT_export(_Panel, bpy.types.Panel):
             labels(box, st.status, "INFO")
             if st.log_path:
                 box.label(text=st.log_path, translate=False)
-        labels(col, "TextMesh Pro, mobile optimisation\nand Udon sync come in phase 5", "QUESTION")
 
 
 CLASSES = (LLB_PT_lyrics, LLB_PT_lyrics_notation, LLB_PT_fonts, LLB_PT_song, LLB_PT_sync, LLB_PT_omakase,

@@ -285,6 +285,37 @@
 | 5 | Quest 実機で、テスト用ワールドを最後まで見る | 目立つコマ落ちが無く、文字が読める |
 | 6 | 「Udon 同期スクリプト」を ON にして出力し、VR で、脇に出る行の前にわざと別の方向を見る／最初から行の方を見る | 別の方向を見ていると、その視線の位置から光の筋が流れる。行の方を見ていると、誘導は出ない |
 
+実施した確認（段階 5）：
+
+- 単体テスト（`tests/core/test_export.py` に TestMobile を追加。5.2 と 5.0 の同梱 Python）。統合テスト `test_phase1`〜`test_phase5`・`test_mesh_optimizer`・`test_tap_modal`（5.2 と 5.0）が合格。
+  - `test_mesh_optimizer`：代表 100 字 × ゴシック・明朝で、モバイル最適化の字が 1 字の上限（2D 300・3D 1000）以内、2D の字の穴が保たれる。
+  - `test_phase5`：閉じたプロジェクト（VRChat SDK・TMP なし）に、モバイル最適化の出力 → バッチモードで組み立て。行メッシュ（頂点の色あり）・文字のマテリアル 1 つ・目安の検査が上限以内。TMP 変換は出力の前に止まり、Udon 同期は警告を出して同期なしで組み立てる。
+- 単体版の `dist/mesh_optimizer-0.1.0.zip` を、5.0 の使い捨ての設定フォルダに入れて有効にし、パネル・4 つの操作（文字を整理・ポリゴンを減らす・パレット・まとめる）が動くことを確かめた。本体の zip とあわせて `extension validate` が通る。
+- 最適化の前後（`check_phase5.blend`。目安の検査、TMP 変換なしで数えた値）
+
+| 項目 | 上限 | モバイル最適化なし | モバイル最適化 |
+|---|---|---|---|
+| 2D の 1 文字の三角形（最大） | 300 | 448 | 275 |
+| 3D の 1 文字の三角形（最大） | 1000 | 1912 | 460 |
+| 表示中の三角形（最大、16.0 秒） | 100,000 | 15,561 | 6,521 |
+| 同時のパーティクル（最大、44.0 秒） | 3,000 | 1,282 | 641 |
+| マテリアルの数 | 16 | 17 | 15（TMP 変換ありでは 14） |
+
+- テスト用のワールドプロジェクト（`PraticleLiveRainbowSpark`。Unity を開いたまま）に `check_phase5.blend`（モバイル最適化・TMP 変換・Udon 同期を ON）を出力し、Unity MCP で次を確かめた。
+  - 自動の組み立てが 2 段階（`LLBSync.cs` のコンパイルの後に組み立て直し）で完了（ノード 202・クリップ 32・`udon=attached`・フォントアセット 3）。Console にエラーなし。
+  - 2D の行の 115 字が TMP、3D の行（3 行目）の 11 字がメッシュ。フォントファイルが Prefab の依存に無く、`fonts/` は削除済み。
+  - `LLB_StartButton` に LLBSync と UdonBehaviour（プログラム LLBSync、誘導の親 3 つ、ディレクター）が付き、`playOnAwake` が false。
+  - プレビュー用のシーンで 9.5・14・58 秒を描画し、TMP の文字がメッシュの文字と同じ位置・大きさで並ぶ。
+- 2 クライアントでの同期（S0-11・P5-05）と、VR での視線に合わせた誘導（P5-06）は、確認者の確認 #4・#6 で確かめる。
+
+確認者の確認の補足：
+
+- 確認用ファイル：`tests/manual/check_phase5.blend`（`tests/blender/build_check_phase5.py -- --project <Unity のプロジェクト>` で作り直せる。出力先はテスト用のワールドプロジェクト、フォルダ名 `LLB_Phase5_Check`。3 行目は 3D 文字で、セクションの終わりまで残る）。
+- 単体版は `dist/mesh_optimizer-0.1.0.zip`、本体は `dist/lyric_live_builder-0.1.0.zip`。#1 は、普段の設定を汚さないよう、5.0 の `portable` の Blender で行うのがよい。
+- 「目安の検査」は「プレビュー」パネル、「モバイル最適化」「TextMesh Pro に変換」「Udon 同期」は「Unity 出力」パネルにあります（表の #4・#6 の「Udon 同期スクリプト」は「Udon 同期」）。
+- 開始ボタンは、観客の後ろ（ステージのルートから `(0, 1, -1.2)`）の小さな白い立方体です。押すと再生、もう一度押すと停止します。Udon 同期を付けた Prefab は、ボタンを押すまで再生されません。
+- TMP の文字は、目安の検査の三角形に数えません。
+
 ---
 
 ### 段階 6：ステージギミック・仕上げ
@@ -365,11 +396,11 @@ blender --background --factory-startup --python tests/blender/run_all.py -- --fo
 
 ```
 blender --command extension build --source-dir lyric_live_builder --output-dir dist
-blender --command extension build --source-dir mesh_optimizer --output-dir dist
+blender --command extension build --source-dir lyric_live_builder/mesh_optimizer --output-dir dist
 blender --command extension validate dist/<file>.zip
 ```
 
-- 本体の zip には `mesh_optimizer/` を同梱します（ビルドの前に、スクリプトで本体のフォルダへコピーします）。単体版は `mesh_optimizer/` だけを zip にします。
+- `mesh_optimizer/` は本体のパッケージの中（`lyric_live_builder/mesh_optimizer/`）にあり、本体の zip にそのまま入ります（その `blender_manifest.toml` は `paths_exclude_pattern` で除外）。単体版は、そのフォルダを `--source-dir` にして zip にします（設計書 §3・§11.1）。
 - リリースの前に、次のことを確認します。
   - `LICENSE`（MIT）がある。
   - `THIRD_PARTY_NOTICES.md` に、JIZURA（MIT）の著作権表示とライセンス文がある。

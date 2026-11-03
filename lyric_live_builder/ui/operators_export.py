@@ -49,6 +49,42 @@ def _error(context, title, lines):
     context.window_manager.popup_menu(draw, title=iface_(title), icon="ERROR")
 
 
+def export_options(st):
+    return {"materialMode": st.material_mode, "mobile": st.use_mobile, "particleRatio": st.particle_ratio,
+            "tmp": st.use_tmp, "udonSync": st.use_udon_sync}
+
+
+class LLB_OT_check_budget(bpy.types.Operator):
+    bl_idname = "llb.check_budget"
+    bl_label = "Check the Budget"
+    bl_description = ("Count triangles on stage, particles alive and materials as the Unity export would make them "
+                      "(with the Unity Export panel's options), against the mobile limits")
+
+    @classmethod
+    def poll(cls, context):
+        return len(context.scene.llb.lines) > 0
+
+    def execute(self, context):
+        import json
+        from ..export_unity import budget, exporter as ex
+        proj = context.scene.llb
+        st = proj.export
+        if not project.has_any_font(proj):
+            self.report({"ERROR"}, iface_("Set at least the Body font"))
+            return {"CANCELLED"}
+        plan = planning.make_plan(proj)
+        baked = bake.bake(plan, project.metrics(proj), mobile=st.use_mobile, tmp=st.use_tmp)
+        skip = set(ex.tmp_fonts(baked, lambda role: project.font_paths(proj, role))[0]) if st.use_tmp else set()
+        _, tris = ex.pack_meshes(baked, lambda role: project.font_paths(proj, role), st.use_mobile, skip)
+        res = budget.check(baked, tris, st.use_mobile, st.particle_ratio,
+                           {"tris": st.limit_tris, "particles": st.limit_particles, "materials": st.limit_materials})
+        st.budget = json.dumps(res)
+        over = [k for k, (v, lim, _) in res.items() if v > lim]
+        self.report({"WARNING" if over else "INFO"},
+                    iface_("Over the limit: {}").format(", ".join(over)) if over else iface_("Within the limits"))
+        return {"FINISHED"}
+
+
 class LLB_OT_export_unity(bpy.types.Operator):
     bl_idname = "llb.export_unity"
     bl_label = "Export to Unity"
@@ -70,6 +106,11 @@ class LLB_OT_export_unity(bpy.types.Operator):
         if not unity_locate.has_timeline(project_dir):
             _error(context, "The Timeline package is missing",
                    [iface_("Add Timeline in Unity: Window > Package Manager > Unity Registry > Timeline")])
+            return None
+        st = proj.export
+        if st.use_tmp and not unity_locate.has_package(project_dir, "com.unity.textmeshpro"):
+            _error(context, "The TextMesh Pro package is missing",
+                   [iface_("Add TextMesh Pro in Unity, or turn TextMesh Pro off")])
             return None
         unity, others = unity_path(context)
         if unity is None:
@@ -103,24 +144,27 @@ class LLB_OT_export_unity(bpy.types.Operator):
         st = proj.export
         try:
             plan = planning.make_plan(proj)
-            baked = bake.bake(plan, project.metrics(proj))
+            baked = bake.bake(plan, project.metrics(proj), mobile=st.use_mobile, tmp=st.use_tmp)
             sections = [{"index": i, "label": s.label or s.kind.capitalize(), "kind": s.kind,
                          "start": float(a), "end": float(b)} for i, (s, (a, b)) in enumerate(zip(proj.sections, plan.sections))]
             folder, existed = exporter.export(
                 project_dir, song_name(proj), baked, plan, sections, lambda role: project.font_paths(proj, role),
                 audio_path=bpy.path.abspath(proj.audio_path) if proj.audio_path else "",
                 panorama_path=bpy.path.abspath(proj.panorama_path) if proj.panorama_path else "",
-                title=song_name(proj), options={"materialMode": st.material_mode}, version=addon_version())
+                title=song_name(proj), options=export_options(st), version=addon_version())
         except (OSError, ValueError) as e:
             self.report({"ERROR"}, str(e))
             return {"CANCELLED"}
         rel = os.path.relpath(folder, project_dir).replace("\\", "/")
+        if st.use_udon_sync and not unity_locate.has_package(project_dir, "com.vrchat.worlds"):
+            self.report({"WARNING"}, iface_("No VRChat Worlds SDK (UdonSharp): the prefab plays without Udon sync"))
         if unity_locate.project_is_open(project_dir):
             st.status = iface_("Written. Switch to Unity: it builds there automatically")
             st.log_path = ""
             self.report({"INFO"}, st.status)
             return {"FINISHED"}
         _job["build"] = unity_run.BatchBuild(unity, project_dir, rel)
+        _job["args"] = (unity, project_dir, rel)
         st.status = iface_("Unity is building (the first time takes a few minutes)…")
         st.log_path = _job["build"].log
         self._timer = context.window_manager.event_timer_add(0.5, window=context.window)
@@ -143,6 +187,12 @@ class LLB_OT_export_unity(bpy.types.Operator):
                 area.tag_redraw()
         if not done:
             return {"PASS_THROUGH"}
+        if code == 0 and _job["build"].udon_pending and not _job.get("again"):
+            # LLBSync.cs was added: a second run compiles it and attaches it to the prefab
+            _job["again"] = True
+            _job["build"] = unity_run.BatchBuild(*_job["args"])
+            st.status = iface_("Adding Udon sync (Unity runs once more)…")
+            return {"PASS_THROUGH"}
         if code == 0:
             st.status = iface_("Done: the prefab is in Generated/")
             self.report({"INFO"}, st.status)
@@ -158,4 +208,4 @@ class LLB_OT_export_unity(bpy.types.Operator):
         return result
 
 
-CLASSES = (LLB_OT_export_unity,)
+CLASSES = (LLB_OT_check_budget, LLB_OT_export_unity)

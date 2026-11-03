@@ -1,0 +1,18 @@
+schema_version = "1.0.0"
+
+id = "mesh_optimizer"
+version = "0.1.0"
+name = "Mesh Optimizer"
+tagline = "Clean text meshes and lighten scenes for VRChat Quest and mobile"
+maintainer = "ZuQ9Nn"
+type = "add-on"
+
+tags = ["Mesh", "Import-Export"]
+
+blender_version_min = "5.0.0"
+
+license = ["SPDX:MIT"]
+copyright = ["2026 ZuQ9Nn"]
+
+[build]
+paths_exclude_pattern = ["__pycache__/", "*.pyc"]

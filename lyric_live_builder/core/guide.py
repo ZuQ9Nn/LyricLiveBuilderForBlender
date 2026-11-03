@@ -110,7 +110,10 @@ def plan_guides(plan, positions, tracks):
 
 
 def bake_guides(guides, track_fn):
-    """Mote and glow nodes. track_fn(node, prop, times, values, rest) -> Track or None (decimated)."""
+    """Per guide, a pivot at the eye holding the motes and the glow (positions relative to the eye).
+    The Udon version (design §10.7) turns the pivot about the line's direction so the streak starts
+    from where that viewer really looks; the line's end of the streak stays put.
+    track_fn(node, prop, times, values, rest) -> Track or None (decimated)."""
     nodes, tracks = [], []
     meshes = {"orb": MeshSource("orb", "orb", {})}
     for n, g in enumerate(guides):
@@ -118,6 +121,9 @@ def bake_guides(guides, track_fn):
         u0, u1 = _unit(gaze - EYE), _unit(target - EYE)
         d0, d1 = np.linalg.norm(gaze - EYE), np.linalg.norm(target - EYE)
         rgb = tuple(g["color"])
+        pid = f"guide{n:03d}"
+        g["node"] = pid
+        nodes.append(Node(pid, f"Guide_{g['line'] + 1:03d}", "", "guide", "group", loc=tuple(EYE)))
         for k in range(g["motes"]):
             nid = f"guide{n:03d}_m{k}"
             t0 = g["t_on"] + k * MOTE_LAG
@@ -131,7 +137,8 @@ def bake_guides(guides, track_fn):
             loc = EYE + dirs * dist[..., None]
             size = 0.026 * dist * (1 - 0.13 * k) * np.clip(1 - (times - t1) / 0.25, 0.2, 1)
             alpha = np.clip(np.minimum((times - t0) / (0.15 * LEAD), (t1 + 0.25 - times) / 0.25), 0, 1) * (1 - 0.14 * k)
-            nodes.append(Node(nid, f"Guide_{g['line'] + 1:03d}", "", "guide", "mote", mesh="orb", material="glow",
+            loc = loc - EYE
+            nodes.append(Node(nid, f"Mote_{k}", pid, "guide", "mote", mesh="orb", material="glow",
                               loc=tuple(loc[0]), scale=(float(size[0]),) * 3, color=rgb + (0.0,), default_active=False))
             tracks.append(Track(nid, "active", "constant", np.array([0.0, t0, t1 + 0.25], dtype=np.float32),
                                 np.array([[0.0], [1.0], [0.0]], dtype=np.float32)))
@@ -142,9 +149,9 @@ def bake_guides(guides, track_fn):
                     tracks.append(tr)
         if "glow" in g["kinds"]:
             nid = f"guide{n:03d}_glow"
-            loc = tuple(target + u1 * 0.3)                                  # just behind the text
+            loc = tuple(target + u1 * 0.3 - EYE)                            # just behind the text
             size = 0.12 * d1
-            nodes.append(Node(nid, f"GuideGlow_{g['line'] + 1:03d}", "", "guide", "glow", mesh="orb", material="glow",
+            nodes.append(Node(nid, "Glow", pid, "guide", "glow", mesh="orb", material="glow",
                               loc=loc, scale=(size,) * 3, color=rgb + (0.0,), default_active=False))
             t_a, t_b = g["t_hit"] - 0.4, g["t_hit"] + 0.3
             tracks.append(Track(nid, "active", "constant", np.array([0.0, t_a, t_b], dtype=np.float32),

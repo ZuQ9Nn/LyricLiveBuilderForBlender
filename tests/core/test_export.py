@@ -36,7 +36,7 @@ class TestMeshBin(unittest.TestCase):
     def test_round_trip_and_winding(self):
         v, f = meshes.particle_shape("cube")
         data = meshbin.encode(v, f, flat=True)
-        pos, nrm, idx = meshbin.decode(data)
+        pos, nrm, idx, _ = meshbin.decode(data)
         self.assertEqual(len(idx) % 3, 0)
         tris = idx.reshape(-1, 3)
         # every Unity triangle's normal (left-handed winding) agrees with the stored normal
@@ -51,7 +51,7 @@ class TestMeshBin(unittest.TestCase):
             p.add(key, meshbin.encode(*meshes.build(key)))
         blob = p.bytes()
         for e in p.entries:
-            pos, _, _ = meshbin.decode(blob, e["offset"])
+            pos = meshbin.decode(blob, e["offset"])[0]
             self.assertGreater(len(pos), 10)
 
 
@@ -149,6 +149,65 @@ class TestManifest(unittest.TestCase):
         for a in ("material._TopA", "material._Progress", "material._Next", "material._CueDir", "material._FlashColor"):
             self.assertIn(a, attrs)
         self.assertNotIn("material.None", attrs)
+
+
+class TestMobile(unittest.TestCase):
+    def plan(self, hold="still", **over):
+        lines = inputs(10, sec_len=16.0, hold=hold, **over)
+        duration = lines[-1].end + 2.0
+        secs = [model.SectionInput(a, b, "verse") for a, b in sections_for(duration, 16.0)]
+        return planner.plan(lines, secs, duration, 4, bpm=120, settings=model.Settings(mood="pop"))
+
+    def test_still_lines_switch_to_one_mesh(self):
+        plan = self.plan()
+        b = bake.bake(plan, metrics, mobile=True)
+        lines = [n for n in b.nodes if n.kind == "line_mesh"]
+        self.assertGreater(len(lines), 5)
+        normal = bake.bake(plan, metrics)
+        self.assertFalse([n for n in normal.nodes if n.kind == "line_mesh"])
+        self.assertEqual(len(normal.guides), len(b.guides))        # the guides still see the letters
+        act = {t.node: t for t in b.tracks if t.prop == "active"}
+        for ln in lines:
+            t_on, t_off = act[ln.id].times[1], act[ln.id].times[2]
+            t = (t_on + t_off) / 2
+            shown = bake.world_positions(b, t)
+            self.assertFalse([k for k in shown if k.startswith(ln.parent + "_g")], "letters hidden while the line mesh shows")
+            self.assertTrue([k for k in bake.world_positions(b, t_on - 0.05) if k.startswith(ln.parent + "_g")])
+        self.assertFalse([n for n in bake.bake(self.plan(hold="float"), metrics, mobile=True).nodes if n.kind == "line_mesh"])
+        self.assertFalse([n for n in bake.bake(plan, metrics, mobile=True, tmp=True).nodes if n.kind == "line_mesh"])
+
+    def test_mobile_manifest(self):
+        plan = self.plan()
+        b = bake.bake(plan, metrics, mobile=True)
+        sections = [{"index": i, "label": f"S{i}", "kind": "verse", "start": a, "end": c} for i, (a, c) in enumerate(plan.sections)]
+        full = manifest.build(b, plan, sections, [], {}, {"mobile": False}, [])
+        mob = manifest.build(b, plan, sections, [], {}, {"mobile": True, "particleRatio": 0.5}, [])
+        text_full = [m for m in full["materials"] if m["shader"] == "text"]
+        text_mob = [m for m in mob["materials"] if m["shader"] == "text"]
+        self.assertEqual(len(text_mob), 1)
+        self.assertGreaterEqual(len(text_full), 1)
+        self.assertTrue(any(m["shader"] == "text_vc" for m in mob["materials"]))
+        glyphs = {n["id"] for n in mob["nodes"] if n["kind"] == "glyph"}
+        coloured = {cv["node"] for c in mob["clips"] for cv in c["curves"] if cv["attr"] == "material._Color"}
+        self.assertTrue(glyphs <= coloured, "every letter carries its colour on the shared material")
+        ps = lambda doc: sum(json.loads(n["particles"])["max"] for n in doc["nodes"] if n["particles"])
+        self.assertLess(ps(mob), ps(full) * 0.6)
+
+    def test_tmp_and_guides(self):
+        plan = self.plan(persist="section")
+        b = bake.bake(plan, metrics, tmp=True)
+        tmp = {k: "body" for k, src in b.meshes.items() if src.kind == "glyph2d"}
+        sections = [{"index": i, "label": f"S{i}", "kind": "verse", "start": a, "end": c} for i, (a, c) in enumerate(plan.sections)]
+        doc = manifest.build(b, plan, sections, [], {}, {"tmp": True}, [], fonts=[{"key": "body", "file": "fonts/x.ttf", "chars": "夜"}], tmp_fonts=tmp)
+        letters = [n for n in doc["nodes"] if n["tmp"]]
+        self.assertTrue(letters and all(n["kind"] == "glyph_tmp" and n["tmpFont"] == "body" and not n["mesh"] for n in letters))
+        types = {cv["type"] for c in doc["clips"] for cv in c["curves"] if cv["node"] in {n["id"] for n in letters} and cv["attr"] == "m_fontColor"}
+        self.assertEqual(types, {"TextMeshPro"})
+        ids = {n["id"]: n for n in doc["nodes"]}
+        for g in doc["guides"]:
+            self.assertEqual(ids[g["node"]]["kind"], "group")
+            self.assertAlmostEqual(float(np.linalg.norm(g["to"])), 1.0, places=5)
+            self.assertLess(g["tOn"], g["tHit"])
 
 
 if __name__ == "__main__":

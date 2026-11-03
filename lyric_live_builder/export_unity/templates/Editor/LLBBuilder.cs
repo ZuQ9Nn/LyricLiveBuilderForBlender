@@ -15,6 +15,7 @@ namespace LyricLive.Editor
     public static class LLBBuilder
     {
         public const string Marker = "_llb_build.pending";
+        public const string UdonMarker = "_llb_udon.pending";       // build again once LLBSync.cs has compiled
         const int ManifestVersion = 1;
 
         [MenuItem("Tools/LyricLive/Rebuild All Songs")]
@@ -125,6 +126,9 @@ namespace LyricLive.Editor
                 return pm;
             }
 
+            var fonts = m.options.tmp ? LLBTextMeshProFactory.CreateFonts(m, song, gen, m.options.mobile)
+                                      : new Dictionary<string, (UnityEngine.Object asset, float size)>();
+
             // hierarchy, built in a preview scene
             var scene = EditorSceneManager.NewPreviewScene();
             try
@@ -163,6 +167,8 @@ namespace LyricLive.Editor
                         mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
                         mr.receiveShadows = false;
                     }
+                    if (!string.IsNullOrEmpty(n.tmp) && fonts.TryGetValue(n.tmpFont, out var fa))
+                        LLBTextMeshProFactory.AddLetter(go, n.tmp, fa.asset, fa.size);
                     if (!string.IsNullOrEmpty(n.particles))
                     {
                         var d = JsonUtility.FromJson<LLBParticles>(n.particles);
@@ -188,7 +194,19 @@ namespace LyricLive.Editor
                 }
                 LLBTimelineFactory.Build(Join(gen, name + ".playable"), m, audio, clips, director, source, animators);
                 director.playableAsset = AssetDatabase.LoadAssetAtPath<PlayableAsset>(Join(gen, name + ".playable"));
-                director.playOnAwake = true;
+                var udon = "off";
+                if (m.options.udonSync)
+                {
+                    var guides = m.guides ?? new LLBGuide[0];
+                    var pivots = Array.ConvertAll(guides, g => objs[g.node].transform);
+                    udon = LLBUdonSyncFactory.Attach(root, director, pivots, guides);
+                    if (udon == "pending")
+                    {
+                        File.WriteAllText(Join(song, UdonMarker), name);
+                        Debug.Log("[LLB] udon-pending: LLBSync.cs was added; the prefab is built again after it compiles");
+                    }
+                }
+                director.playOnAwake = udon != "attached";             // with Udon sync, the start button plays it
                 director.extrapolationMode = DirectorWrapMode.Hold;
                 director.timeUpdateMode = DirectorUpdateMode.DSPClock;      // follows the audio clock
                 var prefabPath = Join(gen, name + ".prefab");
@@ -196,7 +214,8 @@ namespace LyricLive.Editor
                 AssetDatabase.SaveAssets();
                 var marker = Join(song, Marker);
                 if (File.Exists(marker)) AssetDatabase.DeleteAsset(marker);
-                Debug.Log($"[LLB] done {prefabPath} nodes={m.nodes.Length} clips={clips.Count}");
+                if (udon != "pending" && File.Exists(Join(song, UdonMarker))) AssetDatabase.DeleteAsset(Join(song, UdonMarker));
+                Debug.Log($"[LLB] done {prefabPath} nodes={m.nodes.Length} clips={clips.Count} udon={udon} tmpFonts={fonts.Count}");
                 return prefabPath;
             }
             finally

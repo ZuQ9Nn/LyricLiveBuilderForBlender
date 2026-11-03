@@ -11,7 +11,8 @@ import numpy as np
 from ..core import atlas, meshes
 from ..core.parts import particles as pts
 from ..text import glyphs
-from . import manifest, meshbin
+from ..mesh_optimizer import api as mo
+from . import convert, manifest, meshbin
 
 MARKER = "_llb_build.pending"          # not "_pending.llb": the phase 0 prototype in the test project watches that
 TEMPLATES = os.path.join(os.path.dirname(__file__), "templates")
@@ -61,27 +62,99 @@ def _glyph_arrays(me):
     return v.reshape(-1, 3), [tuple(p.vertices) for p in me.polygons]
 
 
-def pack_meshes(baked, font_paths, resolution=6):
-    """All meshes the nodes and particle systems use -> meshbin.Pack."""
-    pack = meshbin.Pack()
+def _letter(path, src, mobile):
+    """(verts, faces, flat) of one cleaned letter (design §11.2): mobile lowers the curve resolution
+    until the letter fits its triangle budget; 3D letters are then extruded without a bevel."""
+    a = src.args
+    solid = src.kind == "glyph3d"
+    if mobile:
+        def make(res):
+            return glyphs.glyph_mesh(path, a["char"], False, 0.0, 0.0, res).copy()
+        me, _ = mo.fit_text_mesh(make, max_tris=mo.LIMITS["solid" if solid else "flat"],
+                                 depth=a["depth"] if solid else 0.0, **_mobile_args())
+    else:
+        def make(res):
+            return glyphs.glyph_mesh(path, a["char"], solid, a["depth"], a["bevel"], res).copy()
+        me, _ = mo.fit_text_mesh(make, max_tris=10 ** 9, resolutions=(mo.DEFAULTS["normal"]["resolution"],),
+                                 dissolve_angle_deg=mo.DEFAULTS["normal"]["angle"])
+    v, f = _glyph_arrays(me)
+    bpy.data.meshes.remove(me)
+    return v, f, solid
+
+
+def _mobile_args():
+    m = mo.DEFAULTS["mobile"]
+    return {"resolutions": tuple(range(m["resolution"], 1, -1)), "dissolve_angle_deg": m["angle"]}
+
+
+def _line(parts, letters):
+    """One mesh of a still line in its group's space, letter colours per vertex (design §11.3)."""
+    from ..core import xform
+    verts, faces, cols, flat = [], [], [], False
+    for key, loc, rot, em, rgb in parts:
+        if key not in letters:
+            continue
+        v, f, solid = letters[key]
+        flat |= solid
+        base = sum(len(x) for x in verts)
+        verts.append(np.asarray(loc) + xform.rotate(np.asarray(rot), v * em))
+        faces += [tuple(i + base for i in face) for face in f]
+        cols.append(np.tile(list(convert.srgb(rgb)) + [1.0], (len(v), 1)))
+    if not verts:
+        return None
+    return np.concatenate(verts), faces, flat, np.concatenate(cols)
+
+
+def tmp_fonts(baked, font_paths):
+    """Flat letters that become TextMesh Pro: ({glyph mesh key: font key}, [{key, file, chars, path}])."""
+    by_key, fonts = {}, {}
+    for key, src in baked.meshes.items():
+        if src.kind != "glyph2d":
+            continue
+        path = glyphs.font_for_char(font_paths(src.args["role"]), src.args["char"])
+        if path is None:
+            continue
+        fk = safe_name(os.path.splitext(os.path.basename(path))[0])
+        f = fonts.setdefault(fk, {"key": fk, "file": "fonts/" + safe_name(os.path.basename(path)), "chars": "", "path": path})
+        if src.args["char"] not in f["chars"]:
+            f["chars"] += src.args["char"]
+        by_key[key] = fk
+    return by_key, list(fonts.values())
+
+
+def pack_meshes(baked, font_paths, mobile=False, skip=()):
+    """All meshes the nodes and particle systems use -> (meshbin.Pack, {key: triangles}).
+    skip: keys not needed (letters that become TextMesh Pro)."""
+    pack, tris, letters = meshbin.Pack(), {}, {}
     keys = dict(baked.meshes)
     for e in baked.emitters:
         shape = e["spec"]["preset"]["shape"]
         if shape in pts.SHAPES_3D:
             keys.setdefault(f"shape:{shape}", None)
-    for key, src in keys.items():
+    order = sorted(keys, key=lambda k: k.startswith("line:"))          # letters before the lines made of them
+
+    def add(key, data):
+        pack.add(key, data)
+        tris[key] = meshbin.decode(data)[2].size // 3
+    for key in order:
+        src = keys[key]
+        if key in skip:
+            continue
         if src is not None and src.kind in ("glyph2d", "glyph3d"):
-            a = src.args
-            path = glyphs.font_for_char(font_paths(a["role"]), a["char"])
+            path = glyphs.font_for_char(font_paths(src.args["role"]), src.args["char"])
             if path is None:
                 continue                                 # no font has it: the node stays empty
-            me = glyphs.glyph_mesh(path, a["char"], src.kind == "glyph3d", a["depth"], a["bevel"], resolution)
-            v, f = _glyph_arrays(me)
-            pack.add(key, meshbin.encode(v, f, flat=src.kind == "glyph3d"))
+            letters[key] = _letter(path, src, mobile)
+            v, f, solid = letters[key]
+            add(key, meshbin.encode(v, f, flat=solid))
+        elif src is not None and src.kind == "line":
+            line = _line(src.args["parts"], letters)
+            if line:
+                add(key, meshbin.encode(line[0], line[1], flat=line[2], colors=line[3]))
         else:
             v, f = meshes.build(key)
-            pack.add(key, meshbin.encode(v, f, flat=key.startswith("shape:")))
-    return pack
+            add(key, meshbin.encode(v, f, flat=key.startswith("shape:")))
+    return pack, tris
 
 
 def dome_params(baked):
@@ -103,7 +176,13 @@ def export(project, name, baked, plan, sections, font_paths, audio_path="", pano
     os.makedirs(folder, exist_ok=True)
     for sub in ("textures", "audio"):
         os.makedirs(os.path.join(folder, sub), exist_ok=True)
-    pack = pack_meshes(baked, font_paths)
+    mobile = bool((options or {}).get("mobile"))
+    tmp_map, fonts = tmp_fonts(baked, font_paths) if (options or {}).get("tmp") else ({}, [])
+    if fonts:
+        os.makedirs(os.path.join(folder, "fonts"), exist_ok=True)
+        for f in fonts:                                  # Unity deletes them once the static atlas exists
+            shutil.copy2(f.pop("path"), os.path.join(folder, f["file"]))
+    pack, _ = pack_meshes(baked, font_paths, mobile, skip=set(tmp_map))
     with open(os.path.join(folder, "meshes.bin"), "wb") as f:
         f.write(pack.bytes())
     with open(os.path.join(folder, "textures", "particles_atlas.png"), "wb") as f:
@@ -120,7 +199,7 @@ def export(project, name, baked, plan, sections, font_paths, audio_path="", pano
     opts.update(options or {})
     song = {"title": title or name, "artist": "", "audio": audio, "duration": float(plan.duration),
             "bpm": float(plan.bpm or 0.0)}
-    doc = manifest.build(baked, plan, sections, pack.entries, song, opts, dome_params(baked))
+    doc = manifest.build(baked, plan, sections, pack.entries, song, opts, dome_params(baked), fonts, tmp_map)
     with open(os.path.join(folder, "manifest.json"), "w", encoding="utf-8") as f:
         json.dump(doc, f, ensure_ascii=False, separators=(",", ":"))
     install_templates(project)

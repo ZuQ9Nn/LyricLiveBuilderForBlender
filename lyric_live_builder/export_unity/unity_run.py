@@ -15,6 +15,7 @@ class BatchBuild:
                "-executeMethod", METHOD, "-llbSong", song_rel, "-logFile", self.log]
         self.proc = subprocess.Popen(cmd)
         self._seen = 0
+        self.udon_pending = False
 
     def poll(self):
         """(finished, return code or None, new [LLB] lines)."""
@@ -27,6 +28,7 @@ class BatchBuild:
             self._seen += cut
             chunk = data[:cut].decode("utf-8", errors="replace")
             lines = [ln.strip() for ln in chunk.splitlines() if ln.strip().startswith("[LLB]")]
+            self.udon_pending |= any(ln.startswith("[LLB] udon-pending") for ln in lines)
         except OSError:
             pass
         code = self.proc.poll()

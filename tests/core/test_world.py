@@ -262,7 +262,7 @@ class TestGuide(unittest.TestCase):
         g = b.guides[0]
         n = b.guides.index(g)
         loc = next(x for x in b.tracks if x.node == f"guide{n:03d}_m0" and x.prop == "location")
-        at_hit = np.array([np.interp(g["t_hit"], loc.times, loc.values[:, c]) for c in range(3)])
+        at_hit = EYE + np.array([np.interp(g["t_hit"], loc.times, loc.values[:, c]) for c in range(3)])  # under the eye pivot
         self.assertLess(np.linalg.norm(at_hit - np.array(g["target"])), 0.05)
 
     def test_line_settings_and_strength(self):

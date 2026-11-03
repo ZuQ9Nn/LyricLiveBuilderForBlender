@@ -44,16 +44,17 @@ def _shape(kind, radius, r_in=0.0, position=(0.0, 0.0, 0.0), rotation=(0.0, 0.0,
             "rotation": [float(x) for x in rotation], "randomDirection": float(random_dir)}
 
 
-def continuous(spec):
-    """Looping systems of a non-burst emitter (usually one; two for rings above and below)."""
+def continuous(spec, ratio=1.0):
+    """Looping systems of a non-burst emitter (usually one; two for rings above and below).
+    ratio: mobile share of the particle counts (spec §10.2)."""
     p = spec["preset"]
     r_in, r_out = p.get("radius", (1.0, 2.0))
     lo, hi = p.get("height", (0.0, 0.0))
     speed = [float(x) for x in p.get("speed", (0.0, 0.0))]
     kind = p["emitter"]
     d = _common(spec, p)
-    d.update({"looping": True, "prewarm": bool(p.get("prewarm")), "rate": float(p["rate"]),
-              "max": int(spec["count"] or p["max"]), "duration": 5.0})
+    d.update({"looping": True, "prewarm": bool(p.get("prewarm")), "rate": float(p["rate"]) * ratio,
+              "max": max(1, int((spec["count"] or p["max"]) * ratio)), "duration": 5.0})
     out = []
     if kind in ("sphere", "sky_shell"):
         if kind == "sphere":
@@ -90,17 +91,18 @@ def continuous(spec):
     return out
 
 
-def burst(spec, event):
+def burst(spec, event, ratio=1.0):
     """One non-looping system for a burst event, placed at its origin (Unity space)."""
     p = spec["preset"]
     b = p["burst"]
     d = _common(spec, p)
-    d.update({"looping": False, "prewarm": False, "rate": 0.0, "duration": 1.0, "burst": int(b["count"]),
-              "max": int(b["count"]), "life": [float(x) for x in b["life"]], "speed": [float(x) for x in b["speed"]],
+    count = max(1, int(b["count"] * ratio))
+    d.update({"looping": False, "prewarm": False, "rate": 0.0, "duration": 1.0, "burst": count,
+              "max": count, "life": [float(x) for x in b["life"]], "speed": [float(x) for x in b["speed"]],
               "shape": _shape("Sphere", 0.05, 0.0, (0.0, 0.0, 0.0), random_dir=1.0), "drag": 1.5})
     if b.get("sub"):
         d["sub"] = {"count": int(b["sub"]["count"]), "speed": float(b["sub"]["speed"]), "life": float(b["sub"]["life"])}
-        d["max"] = int(b["count"])
+        d["max"] = count
     origin = [float(x) for x in convert.pos(event["origin"])]
     span = b["life"][1] + (b["sub"]["life"] if b.get("sub") else 0.0)
     return d, origin, span

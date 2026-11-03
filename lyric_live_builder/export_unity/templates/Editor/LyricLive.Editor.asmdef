@@ -1,0 +1,26 @@
+{
+    "name": "LyricLive.Editor",
+    "rootNamespace": "LyricLive.Editor",
+    "references": [
+        "Unity.Timeline",
+        "Unity.TextMeshPro",
+        "Unity.TextMeshPro.Editor"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [
+        {
+            "name": "com.unity.textmeshpro",
+            "expression": "",
+            "define": "LLB_TMP"
+        }
+    ],
+    "noEngineReferences": false
+}

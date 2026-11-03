@@ -10,10 +10,16 @@ namespace LyricLive.Editor
         public LLBSong song; public LLBOptions options;
         public LLBSection[] sections; public LLBMeshRef[] meshes; public LLBMaterialDef[] materials;
         public LLBNode[] nodes; public LLBClip[] clips;
+        public LLBFontDef[] fonts; public LLBGuide[] guides;
     }
 
     [Serializable] public class LLBSong { public string title, artist, audio; public float duration, bpm; }
-    [Serializable] public class LLBOptions { public string materialMode, panorama; }
+    [Serializable] public class LLBOptions
+    {
+        public string materialMode, panorama; public bool mobile, tmp, udonSync; public float particleRatio;
+    }
+    [Serializable] public class LLBFontDef { public string key, file, chars; }
+    [Serializable] public class LLBGuide { public int node; public float tOn, tHit; public float[] from, to; }
     [Serializable] public class LLBSection { public int index; public string label, kind; public float start, end; }
     [Serializable] public class LLBMeshRef { public string key; public int offset, length; }
     [Serializable] public class LLBParam { public string name; public float[] values; }
@@ -26,7 +32,7 @@ namespace LyricLive.Editor
     [Serializable] public class LLBNode
     {
         public int id; public string name; public int parent;
-        public string category, kind, mesh, material, particles;
+        public string category, kind, mesh, material, particles, tmp, tmpFont;
         public float[] p, r, s; public bool active;
     }
 

@@ -1,0 +1,127 @@
+// LyricLive Builder: plays the show in sync for everyone, late joiners too, and turns each gaze guide
+// toward where that viewer really looks (design §10.7). The builder copies this file to LLBSync.cs
+// only when UdonSharp is in the project (as a .txt it is never compiled).
+//
+// Sync: pressing the button (Interact) makes the presser the owner, who stores the server time of
+// "t = 0"; every client seeks the director to (now - start). Udon cannot change the playback speed,
+// so drift is corrected by re-seeking only when it exceeds maxDrift (prototype S0-11).
+// Gaze: when a guide starts, the head direction is read. Already looking at the line: the guide is
+// hidden. Otherwise its pivot (at the eye) turns about the line's direction so the streak starts on
+// the side of the real gaze. Visual only, nothing is synced.
+using UdonSharp;
+using UnityEngine;
+using UnityEngine.Playables;
+using VRC.SDKBase;
+
+[UdonBehaviourSyncMode(BehaviourSyncMode.Manual)]
+public class LLBSync : UdonSharpBehaviour
+{
+    public PlayableDirector director;
+    public Transform stage;
+    public float maxDrift = 0.2f;
+    public float guideAngle = 30f;
+    public Transform[] guidePivots;
+    public float[] guideOn;
+    public float[] guideHit;
+    public Vector3[] guideFrom;
+    public Vector3[] guideTo;
+
+    [UdonSynced] private double startServerTime;
+    [UdonSynced] private bool playing;
+    private int[] guideState;                      // 0 waiting, 1 shown or hidden for this viewer, 2 done
+
+    private void Start()
+    {
+        guideState = new int[guidePivots == null ? 0 : guidePivots.Length];
+    }
+
+    public override void Interact()
+    {
+        if (!Networking.IsOwner(gameObject)) Networking.SetOwner(Networking.LocalPlayer, gameObject);
+        playing = !playing;
+        startServerTime = Networking.GetServerTimeInSeconds();
+        RequestSerialization();
+        Apply();
+    }
+
+    public override void OnDeserialization()
+    {
+        Apply();
+    }
+
+    private void Apply()
+    {
+        if (director == null) return;
+        ResetGuides();
+        if (!playing)
+        {
+            director.Stop();
+            return;
+        }
+        double t = Networking.GetServerTimeInSeconds() - startServerTime;
+        if (t < 0) t = 0;
+        if (t > director.duration) return;
+        director.time = t;
+        director.Play();
+    }
+
+    private void Update()
+    {
+        if (!playing || director == null) return;
+        double t = Networking.GetServerTimeInSeconds() - startServerTime;
+        if (t > director.duration) return;
+        if (System.Math.Abs(director.time - t) > maxDrift)
+        {
+            director.time = t;
+            director.Evaluate();
+        }
+        Guides((float)director.time);
+    }
+
+    private void Guides(float t)
+    {
+        if (guideState == null) return;
+        VRCPlayerApi me = Networking.LocalPlayer;
+        for (int k = 0; k < guideState.Length; k++)
+        {
+            Transform pivot = guidePivots[k];
+            if (pivot == null) continue;
+            if (guideState[k] == 0 && t >= guideOn[k] - 0.05f && t < guideHit[k])
+            {
+                guideState[k] = 1;
+                Vector3 gaze = Vector3.forward;
+                if (Utilities.IsValid(me)) gaze = me.GetTrackingData(VRCPlayerApi.TrackingDataType.Head).rotation * Vector3.forward;
+                if (stage != null) gaze = Quaternion.Inverse(stage.rotation) * gaze;
+                Vector3 to = guideTo[k];
+                if (Vector3.Angle(gaze, to) < guideAngle)
+                {
+                    pivot.gameObject.SetActive(false);   // already looking there: no guide
+                }
+                else
+                {
+                    Vector3 a = Vector3.ProjectOnPlane(guideFrom[k], to);
+                    Vector3 b = Vector3.ProjectOnPlane(gaze, to);
+                    pivot.localRotation = Quaternion.AngleAxis(Vector3.SignedAngle(a, b, to), to);
+                }
+            }
+            else if (guideState[k] == 1 && t > guideHit[k] + 1.0f)
+            {
+                guideState[k] = 2;
+                pivot.gameObject.SetActive(true);
+                pivot.localRotation = Quaternion.identity;
+            }
+        }
+    }
+
+    private void ResetGuides()
+    {
+        if (guideState == null) return;
+        for (int k = 0; k < guideState.Length; k++)
+        {
+            guideState[k] = 0;
+            if (guidePivots[k] == null) continue;
+            guidePivots[k].gameObject.SetActive(true);
+            guidePivots[k].localRotation = Quaternion.identity;
+        }
+    }
+}

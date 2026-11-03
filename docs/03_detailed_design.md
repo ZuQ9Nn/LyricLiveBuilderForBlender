@@ -115,15 +115,16 @@ lyric_live_builder/
     particles_unity.py           # 発生源の spec → Unity の ParticleSystem の説明（JSON）
     unity_locate.py              # Unity エディタの検出、プロジェクトのロック判定
     unity_run.py                 # バッチモードの起動と監視（タイマー）
+    budget.py                    # 目安の検査（§11.4）
     templates/                   # Unity にコピーする C# とシェーダー（§10）
   ui/
     panels.py / lists.py / operators_*.py / tap_sync.py
     planning.py                  # シーンのプロパティ ⇔ おまかせの状態・Settings、鍵、プレビューの生成
-mesh_optimizer/                  # 独立パッケージ（§11）
-  blender_manifest.toml          # 単体の Extension としてビルドする場合に使う
-  __init__.py                    # 単体インストール時の register
-  api.py                         # 公開関数
-  retopo.py / decimate.py / merge.py / ui.py
+  mesh_optimizer/                # 本体から独立したパッケージ（§11）。本体は相対 import で使う
+    blender_manifest.toml        # 単体の Extension としてビルドする場合に使う（本体の zip からは除外）
+    __init__.py                  # 単体インストール時の register
+    api.py                       # 公開関数
+    retopo.py / decimate.py / merge.py / ui.py
 tests/
   core/                          # unittest（Blender 不要）
   blender/                       # Blender をバックグラウンドで起動して実行するテスト
@@ -425,12 +426,13 @@ class FrontLayout(LayoutPart):
   - 行の方向：最初の文字が出た時刻の、文字の重心の方向。
   - 角度が 30° 以上なら誘導を付けます。行の設定が「あり」なら角度に関係なく付け、「なし」なら付けません。
 - **光の筋**：粒を 3〜6 個（強さに応じる）、推定した視線の位置から行の位置へ、上へふくらむ弧（大円＋仰角のふくらみ 8°）に沿って動かします。時刻は `t_hit − 0.7 → t_hit`（in-out sine）、粒ごとに 0.03 秒ずつ遅らせ（間を詰めて、点の列でなく尾を引く 1 本の筋に見せる）、後ろの粒ほど小さく薄くします。到着後 0.25 秒で縮んで消えます。粒の距離は、行の距離へ向けて補間します。
-  - BakedScene では、粒ごとのノード（kind `mote`、メッシュ `orb`）と、`location`・`scale`・`color`・`active` のトラックにします。Blender のプレビューでは、中心ほど明るい光の玉（Layer Weight の Facing で縁を消す加算のマテリアル `LLB_Glow`）で表します。Unity では、トレイルを付けた 1 つの粒にすると、より滑らかな筋になります（段階 4 で検討）。
-- **予兆の灯り**：行の重心の少し奥（0.3 m）に、大きめの光の玉（半径＝距離 × 0.06）を置き、`t_hit − 0.4` から明るくして（最大の透明度 0.55）、`t_hit + 0.3` までに消します。
+  - BakedScene では、誘導 1 回分の親（`guide<番号>`、kind `group`、目の位置）の子に、粒ごとのノード（kind `mote`、メッシュ `orb`。位置は目からの相対）を置き、`location`・`scale`・`color`・`active` のトラックにします。Blender のプレビューでは、中心ほど明るい光の玉（Layer Weight の Facing で縁を消す加算のマテリアル `LLB_Glow`）で表します。Unity では、トレイルを付けた 1 つの粒にすると、より滑らかな筋になります（段階 4 で検討）。
+- **予兆の灯り**：親の子として、行の重心の少し奥（0.3 m）に、大きめの光の玉（半径＝距離 × 0.06）を置き、`t_hit − 0.4` から明るくして（最大の透明度 0.55）、`t_hit + 0.3` までに消します。
 - **ドームに差す光**：視線から 90° を超える行では、ドームの `cue_dir` をその方向にし、`cue_amount` を `t_hit − 0.7 → t_hit` で 1 に上げ、`t_hit + 0.8` までに戻します。シェーダーは、方向との内積の 6 乗に比例して、暖かい白（1, 0.95, 0.85）× 0.12 × 量を足します（暗い夜空でも分かるよう、掛け算ではなく足し算にした）。点滅ではないので、フラッシュの回数には数えません。
 - **色**：文字の色（強調の行は強調の色）のうち明るいほう。明るさが 0.3 未満なら白へ 75% 寄せます（昼の空の上の暗い文字色では、加算の光が見えなかった）。
 - **全体の演出との分離**：行に結び付いたバースト（`!`・強調）の開始を、`t_hit` 以降にずらします。誘導のノードは `category = "guide"` にし、パーティクルの振り直しの対象にしません。
 - 連続して誘導が付く場合も、1 秒あたり 2 回までにします（間隔の狭いものは、角度の大きいほうを残す）。
+- Udon 同期を付けた Prefab では、観客ごとの実際の頭の向きに合わせて、親を回すか非表示にします（§10.7）。
 
 ---
 
@@ -447,14 +449,17 @@ class FrontLayout(LayoutPart):
     meshes.bin
     textures/particles_atlas.png, panorama.<拡張子>
     audio/<曲ファイル>
+    fonts/<フォント>           # TMP 変換が ON のときだけ。フォントアセットを作った後に Unity 側が削除する（§10.8）
     _llb_build.pending        # 未組み立ての印（最後に書く。組み立て後に削除）
+    _llb_udon.pending         # Unity 側が置く：Udon のスクリプトのコンパイル後に組み立て直す印（§10.7）
+    FontAssets/               # Unity 側が生成：TMP のフォントアセット（組み立て直しで使い回す）
     Generated/                # Unity 側が生成：Meshes.asset、Materials/、Clips/、<曲名>.playable、<曲名>.prefab
 ```
 
 - `Editor/` と `Runtime/` は、アドオンの版より古い場合だけ上書きします（各フォルダの `version.txt` の整数で判定。テンプレートを変えたら上げる）。利用者が足したファイルは残します。
 - 出力の前に `Songs/<曲名>/` の中身を確認し、`Generated/` が既にあれば上書きの確認ダイアログを出します（仕様書 §9.2-4）。
 - 印のファイル名は `_llb_build.pending` にします（`_pending.llb` ではない）。テスト用プロジェクトに残る段階 0 の試作の自動組み立てが `_pending.llb` を監視していて、本実装の出力を別のデータとして組み立てようとするため。
-- 出力の前に、Unity が見つかること・プロジェクトであること（`Assets` と `ProjectSettings`）・Timeline パッケージがあること（`Packages/manifest.json` か `packages-lock.json`）を確かめます。無ければエラーダイアログを出し、何も書きません。Timeline は組み立てのスクリプトのコンパイルに要ります（空のプロジェクトには入っていない。VRChat のワールドには入っている）。プロジェクトの設定は書き換えません。
+- 出力の前に、Unity が見つかること・プロジェクトであること（`Assets` と `ProjectSettings`）・Timeline パッケージがあること（`Packages/manifest.json` か `packages-lock.json`）を確かめます。無ければエラーダイアログを出し、何も書きません。Timeline は組み立てのスクリプトのコンパイルに要ります（空のプロジェクトには入っていない。VRChat のワールドには入っている）。プロジェクトの設定は書き換えません。TMP 変換が ON なら TMP パッケージ（`com.unity.textmeshpro`）も確かめます。Udon 同期が ON で `com.vrchat.worlds` が無い場合は、出力の後に警告を出します（同期なしで組み立てる）。
 
 ### 9.2 manifest（JSON）
 
@@ -562,14 +567,16 @@ Unity.exe -batchmode -nographics -quit -projectPath "<Project>"
 | `Editor/LLBParticleFactory.cs` | プリセット → ParticleSystem の各モジュール |
 | `Editor/LLBAnimationFactory.cs` | `clips` → `AnimationClip`（`AnimationUtility.SetEditorCurve`） |
 | `Editor/LLBTimelineFactory.cs` | `TimelineAsset`・トラック・クリップ・バインディング・マーカー |
-| `Editor/LLBTextMeshProFactory.cs` | TMP のフォントアセット（静的アトラス）と、文字ごとの TMP（段階 5） |
-| `Editor/LLBUdonSyncFactory.cs` | Udon 同期の生成（UdonSharp がある場合のみコンパイルされる。§10.7。段階 5） |
+| `Editor/LLBTextMeshProFactory.cs` | TMP のフォントアセット（静的アトラス）と、文字ごとの TMP（§10.8）。TMP が無いプロジェクトでは空の実装になる（`#if LLB_TMP`） |
+| `Editor/LLBUdonSyncFactory.cs` | 開始ボタンと Udon 同期の部品（§10.7）。UdonSharp の API はリフレクションで呼ぶ |
+| `Editor/LyricLive.Editor.asmdef` | Timeline・TMP を参照するエディタ用アセンブリ。`versionDefines` で TMP がある場合だけ `LLB_TMP` を定義する |
 | `Runtime/Shaders/LLB_Text.shader` | 文字。色と透明度、視線に対して斜めの面を暗くする |
+| `Runtime/Shaders/LLB_TextVC.shader` | 行メッシュ（§11.3）。`LLB_Text` に頂点の色を掛ける |
 | `Runtime/Shaders/LLB_Far.shader` | 遠景。キュー 2900（ドームの後、文字の前に描く） |
 | `Runtime/Shaders/LLB_Glow.shader` | 視線の誘導の光の玉（加算、縁で消える） |
 | `Runtime/Shaders/LLB_Particle.shader` | パーティクル。アトラス × 頂点の色 × `_Color`（発生源の現れ・消え）。加算と半透明は `_SrcBlend/_DstBlend` |
 | `Runtime/Shaders/LLB_Dome.shader` | §8.2 のドーム（Blender のプレビューのノードと同じ式） |
-| `Runtime/Udon/LLBSync.cs.txt` | 同期スクリプトの元（拡張子を変えて、コンパイルされないように置く。段階 5） |
+| `Runtime/Udon/LLBSync.cs.txt` | 同期スクリプトの元（拡張子を変えて、コンパイルされないように置く。UdonSharp がある場合だけ `LLBSync.cs` にコピーする） |
 
 ### 10.2 組み立ての手順（`LLBBuilder.Build`）
 
@@ -635,32 +642,39 @@ Unity.exe -batchmode -nographics -quit -projectPath "<Project>"
 | Gimmicks | AnimationTrack | `Gimmicks` の Animator | セクションごと |
 
 - クリップ名：`<2桁の番号>_<セクション名>_<分類>`（例：`03_Chorus_Text`）。AnimationClip のアセット名も同じにします（`Generated/Clips/`）。
-- PlayableDirector：`playOnAwake = true`（Udon 同期が OFF の場合）、`extrapolationMode = Hold`（最後の状態を保つ。クリップの後の外挿は API で設定できないため、ディレクターで保つ）、`timeUpdateMode = DSPClock`（曲の時計に合わせる）。
+- PlayableDirector：`playOnAwake = true`（Udon 同期を付けた場合は `false`。開始ボタンで再生する）、`extrapolationMode = Hold`（最後の状態を保つ。クリップの後の外挿は API で設定できないため、ディレクターで保つ）、`timeUpdateMode = DSPClock`（曲の時計に合わせる）。
 - マーカーのトラック（セクション名・行の目印）は、段階 4 では作りません（改善メモ #16）。
 - 曲は `CompressedInMemory`・Vorbis（品質 0.7）で取り込みます（4 分の曲を読み込み時に展開すると、Quest で数十 MB になるため）。
 
 ### 10.7 Udon 同期（オプション）
 
-- UdonSharp が入っているかは、型 `UdonSharp.UdonSharpBehaviour` の有無で判定します。無ければ警告を出し、同期を付けずに続けます。
+- UdonSharp が入っているかは、型 `UdonSharp.UdonSharpBehaviour` の有無で判定します。無ければ `[LLB][WARN]` を出し、同期を付けずに組み立てます（`playOnAwake = true` のまま）。Blender 側も、出力の後に `com.vrchat.worlds` が無ければ警告を出します。
+- 同期のスクリプトは全曲で共有の `Runtime/Udon/LLBSync.cs` です（曲ごとの値は部品のフィールドに入れるので、曲ごとのスクリプトは不要）。
 - 手順（スクリプトのコンパイルが要るので、2 段階で行います）
-  1. `LLBSync.cs.txt` を `Generated/LLBSync_<曲名>.cs` にコピーし、`_pending_udon.llb` を置く。
-  2. スクリプトの再読み込み後、`LLBAutoBuild` が UdonSharpProgramAsset を作り、Prefab に U# の部品を付けて、PlayableDirector と開始ボタンをつなぐ。
-- 同期の内容：オーナーが「開始」を押す → 同期変数 `startServerTime`（`Networking.GetServerTimeInSeconds()`）と `isPlaying` を送る → 各クライアントは `director.time = now - startServerTime` にして `Play()` します。後から入室した人も、受信時に同じ計算で再生位置を合わせます。Udon からは再生速度を変えられないので、ずれが 0.2 秒を超えたときだけ `time` を設定し直します。
-- **視線に合わせた誘導**（段階 5）：誘導のイベント（`t_on`・`t_hit`・行の方向）を、U# の配列として出力します。
-  - 各クライアントは毎フレーム `director.time` を見ます。イベントが始まる時刻に、`Networking.LocalPlayer.GetTrackingData(TrackingDataType.Head)` で頭の向きを読み、行の方向との角度が 30° 未満なら、そのイベントの誘導のノードを非表示にします。
-  - 光の筋は、焼き込みの代わりに、Udon が頭の向きから行の方向へ弧を描いて動かします。
-  - 同期変数は使いません（観客ごとの見た目だけを変える）。
-  - Timeline が動かすノードと Udon が切り替えるノードが競合しないように、Udon は誘導のノードの親だけを切り替えます。
-- U# の部品の付け方（試作 S0-11 で確立）：`UdonSharpProgramAsset` を `ScriptableObject.CreateInstance` で作って `sourceCsScript` を設定・保存 → `UdonSharpProgramAsset.CompileAllCsPrograms(forceCompile, editorBuild)` → `UdonSharpEditor.UdonSharpUndo.AddComponent(GameObject, Type)` → フィールドを設定して `UdonSharpEditorUtility.CopyProxyToUdon` で反映。U# の版の差を吸収するため、これらはリフレクションで呼び、見つからない場合は警告を出して同期を付けずに続けます。
+  1. `LLBSync.cs` がまだコンパイルされていなければ、`LLBSync.cs.txt` からコピーし、Udon 同期なしで Prefab を保存して、`_llb_udon.pending` を置きます。ログに `[LLB] udon-pending` を出します。
+  2. スクリプトの再読み込みの後、`LLBAutoBuild` の `InitializeOnLoad`（`ScanAll`）が `_llb_udon.pending` を見つけて組み立て直します（`AssetPostprocessor` では拾わない。再読み込みの前に動いてしまうため）。バッチモードでは、Blender 側が `[LLB] udon-pending` を見て、Unity をもう一度実行します。
+- U# の部品の付け方（試作 S0-11 で確立）：`UdonSharpProgramAsset` を `ScriptableObject.CreateInstance` で作って `sourceCsScript` を設定・保存 → `UdonSharpProgramAsset.CompileAllCsPrograms(true, false)` → `UdonSharpEditor.UdonSharpUndo.AddComponent(GameObject, Type)` → フィールドを設定して `UdonSharpEditorUtility.CopyProxyToUdon` で反映。U# の版の差を吸収し、U# の無いプロジェクトでもコンパイルできるように、これらはリフレクションで呼びます。
+  - 型は `MonoScript.GetClass()` で取ります。U# は同じクラスを自分のアセンブリ（`UdonSharpRoslynCompileAssembly<n>`）にもコンパイルするため、名前で型を探すと別の型が見つかります。
+  - プログラムのコンパイルが終わっていない場合（`CopyProxyToUdon` が「outdated script version」で失敗する）は、手順 1 と同じく保留にして、再読み込みの後に組み立て直します。
+- 開始ボタン：ルートの子の立方体 `LLB_StartButton`（観客の後ろ、`(0, 1, -1.2)`、0.2 m）。押すと（`Interact`）押した人がオーナーになり、再生と停止を切り替えます。
+- 同期の内容：オーナーが同期変数 `startServerTime`（`Networking.GetServerTimeInSeconds()`）と `playing` を送る → 各クライアントは `director.time = now - startServerTime` にして `Play()` します。後から入室した人も、受信時に同じ計算で再生位置を合わせます。Udon からは再生速度を変えられないので、ずれが 0.2 秒を超えたときだけ `time` を設定し直します。
+- **視線に合わせた誘導**：誘導 1 回分の粒と光の玉は、目の位置にある親（`guide<番号>`）の子にします（§8.4）。manifest の `guides`（親のノード・`tOn`・`tHit`・光の筋の出発の方向 `from`・行の方向 `to`。Unity の座標）を、部品の配列に入れます。
+  - 各クライアントは、`tOn` の時刻に頭の向き（`GetTrackingData(Head)`）を読みます。行の方向との角度が 30° 未満なら、その誘導の親を非表示にします（もう見ている）。
+  - それ以外は、親を `to` の軸で回し、光の筋の出発の方向が頭の向きの側に来るようにします（`from` と頭の向きを、`to` に垂直な面に投影した角度）。
+  - `tHit + 1` 秒で親を元に戻します。同期変数は使いません（観客ごとの見た目だけを変える）。
+  - Timeline が動かすのは子（粒・光の玉）、Udon が動かすのは親だけなので、競合しません。
 
 ### 10.8 TextMesh Pro
 
-- 対象：2D 文字の行のうち、TMP 変換が ON の行（3D 文字の行はメッシュのまま）。
-- フォントアセット：フォントファイルを一時的に `Generated/Fonts/` にコピーし、`TMP_FontAsset.CreateFontAsset` で作ります。歌詞で使う文字だけを `TryAddCharacters` で追加したら、`atlasPopulationMode = Static` にして、元のフォントへの参照を外します。最後にコピーしたフォントファイルを削除します（仕様書 §9.5）。
+- 対象：TMP 変換が ON のときの 2D 文字の行（3D 文字の行はメッシュのまま。2D の行は行メッシュ（§11.3）にしない）。TMP が無いプロジェクトでは、Blender 側が出力の前に止めます。
+- Blender 側は、行で使うフォントを `<曲>/fonts/` にコピーし、manifest の `fonts`（キー・ファイル・使う文字）と、文字のノードの `tmp`（文字）・`tmpFont`（キー）を書きます。
+- フォントアセット：`TMP_FontAsset.CreateFontAsset`（サンプリング 72 pt・余白 7・アトラス 2048×2048・アトラスの追加あり）で作り、歌詞で使う文字だけを `TryAddCharacters` で追加したら、`atlasPopulationMode = Static` にして、元のフォントへの参照を外します。最後にコピーしたフォントファイルを削除します（仕様書 §9.5）。
   - 外す参照は `m_SourceFontFile`・`m_SourceFontFileGUID`・**`m_SourceFontFile_EditorRef`** の 3 つです（`SerializedObject` で設定）。3 つめを外さないと、フォントファイルが依存に残ります（試作 S0-06）。
+  - 保存先は `<曲>/FontAssets/`（`Generated/` は組み立てのたびに消すので使わない）。フォントファイルが無い組み立て直し（Udon の 2 段階めなど）では、作成済みのアセットを使います。`Fonts` という名前にしないのは、Windows のフォルダー名が大文字・小文字を区別せず、`fonts/` と同じフォルダーになるためです。
   - TMP の基本リソース（`Assets/TextMesh Pro`）が無いプロジェクトでは、TMP のシェーダーが無いためフォントアセットを作れません。無い場合は、`TMPro.TMP_PackageResourceImporter.ImportResources(true, false, false)` で自動的に取り込みます。
-  - 作成したアトラスのテクスチャとマテリアルは、`AssetDatabase.AddObjectToAsset` でフォントアセットのサブアセットとして保存します。
-- 文字ごとに TMP（`TextMeshPro`、1 文字）を作り、メッシュのノードの代わりに置きます。アニメーションのパスは同じにします（ノード名を変えない）。
+  - 作成したアトラスのテクスチャとマテリアルは、`AssetDatabase.AddObjectToAsset` でフォントアセットのサブアセットとして保存します。モバイル最適化が ON なら、マテリアルを `TextMeshPro/Mobile/Distance Field` にします。
+- 文字ごとに TMP（`TextMeshPro`、1 文字、中央揃え）を作り、メッシュのノードの代わりに置きます。アニメーションのパスは同じにします（ノード名を変えない）。文字の大きさ：`fontSize` 10 の `GetPreferredValues` で 1 em の高さを測り、メッシュの文字と同じ高さになる値にします。
+- 色のアニメーションは `TextMeshPro` の `m_fontColor.r/g/b/a` にします。
 
 ---
 
@@ -670,14 +684,17 @@ Unity.exe -batchmode -nographics -quit -projectPath "<Project>"
 
 ```python
 def optimize_text_curve(curve_obj, *, resolution=4) -> None
-def retopo_flat_text_mesh(mesh, *, dissolve_angle_deg=1.0, merge_dist=1e-5) -> RetopoReport
-def extrude_flat_mesh(mesh, *, depth, bevel=0.0) -> None
+def retopo_flat_text_mesh(mesh, *, dissolve_angle_deg=1.0, merge_dist=1e-5, depth=0.0) -> RetopoReport
+def fit_text_mesh(make_mesh, *, max_tris, resolutions=(4, 3, 2), dissolve_angle_deg=1.0, depth=0.0) -> FitReport
+def extrude_flat_mesh(mesh, *, depth) -> None
 def decimate(mesh, *, ratio=None, target_tris=None, planar_angle_deg=2.0) -> int
 def merge_static_objects(objects, *, by_material=True) -> list
 def bake_palette_material(objects, *, max_colors=64) -> PaletteResult
 ```
 
-- 単体のアドオンとして入れた場合は、`ui.py` が 3D ビューのサイドバーに「Mesh Optimizer」パネルを出し、選択したオブジェクトに上の処理を行います。
+- 本体からは `fit_text_mesh` を使います（`export_unity/exporter.py`）。それ以外は、単体のアドオンとして手作業で使う関数です。
+- 単体のアドオンとして入れた場合は、`ui.py` が 3D ビューのサイドバーに「Mesh Optimizer」パネルを出し、選択したオブジェクトに上の処理を行います（文字の整理・減面・まとめる（元は非表示）・パレットのマテリアル）。本体からは `ui.py` を使いません。
+- 単体の zip は `blender --command extension build --source-dir lyric_live_builder/mesh_optimizer` で作ります。本体の zip には、パッケージは入りますが、`blender_manifest.toml` は入りません（`paths_exclude_pattern`）。
 
 ### 11.2 文字のリトポロジー（`retopo.py`）
 
@@ -687,6 +704,7 @@ def bake_palette_material(objects, *, max_colors=64) -> PaletteResult
 2. `bmesh.ops.remove_doubles(dist=1e-5)` で近接頂点を結合する。
 3. `bmesh.ops.dissolve_limit(angle_limit=1°, use_dissolve_boundaries=False)` で、同一平面の三角形を多角形にまとめ、ほぼ直線上の頂点を取り除く。
 4. `bmesh.ops.triangulate(quad_method='BEAUTY', ngon_method='BEAUTY')` で三角形化し直す（細長い三角形を減らす）。
+5. 3D 文字は、平らな字を `depth` で押し出す（側面は輪郭の辺から作る）。
 
 - 試作 S0-09 で、限定的溶解だけで穴が保たれることを確認しました（代表 100 字 × 2 書体 × 20 通りで、壊れた字は 0）。そのため、輪郭のループを取り出して面を張り直す手順は使いません。
 - 既定値（試作 S0-09 で決定）
@@ -697,19 +715,27 @@ def bake_palette_material(objects, *, max_colors=64) -> PaletteResult
 | モバイル最適化 | 4 | 1° | 74 / 210 |
 
 - 角度を 5° 以上にすると、明朝体で形の誤差が大きくなる（面積で最大 8%）ため、角度の上限は 3° にします。
+- **1 字の上限に収める**（`fit_text_mesh`）：モバイル最適化では、1 字の三角形を仕様書 §10.3 の上限（2D 300・3D 1000）に収めます。解像度 4 → 3 → 2 の順に作り直し、それでも超える字（明朝の画数の多い字。例：「鬱」は解像度 4 で 2D 807）は減面（Decimate の Collapse）で上限にします。2D の字は、減面の後に穴の数が変わっていないかを数え直して報告します（`holes_kept`。代表 100 字では変わらなかった）。
 
 ### 11.3 行メッシュへの切り替え
 
-- 対象：モバイル最適化が ON で、保持の動きが「静止」または行単位の動き（行全体の脈動など）の行。文字ごとに動く保持の行は切り替えません。
-- ベイク時に、行の静止姿勢で全文字を結合した `line_mesh` ノードを作ります。登場が終わった時刻に、文字ノードを非表示・`line_mesh` を表示に切り替え、退場の開始時刻に逆に切り替えます。
+- 対象：モバイル最適化が ON で、保持の動きが「静止」、2 文字以上、表示が 1 秒以上続く行（TMP 変換が ON なら 3D の行だけ）。仕様の「行単位の動き（行全体の脈動など）」は、文字のトラックが行で共通にならないため、段階 5 では対象にしません。
+- ベイク時（`core/bake.py`、視線の誘導の後）に、行の全文字を静止姿勢で並べた `line_mesh` ノード（`<行>_line`、メッシュ `line:<行>`）を作ります。全文字の登場が終わった時刻に、文字ノードを非表示・`line_mesh` を表示に切り替え、最初の文字の退場の開始時刻に逆に切り替えます。
+- 文字ごとに色が違うので、行メッシュは頂点の色を持ちます（`meshes.bin` の頂点の色。§9.3 の flags の 4）。マテリアルは `text_line`（`LyricLive/TextVC`）。
+- モバイル最適化では、文字のマテリアルを 1 つにまとめ（`text`）、色は全文字の `color` のトラックで与えます。
 
 ### 11.4 目安の検査
 
-出力の前に、BakedScene から次の値を数え、仕様書 §10.3 の上限を超えたら警告します。
+「目安の検査」ボタン（プレビュー・出力のパネル）で、Unity 出力と同じ設定のベイクから次の値を数え、仕様書 §10.3 の上限と比べます（`export_unity/budget.py`。0.5 秒ごとに数える）。
 
-- 各時刻で表示中の三角形の数
-- パーティクルの最大数の合計
-- マテリアルの数
+| 項目 | 数え方 |
+|---|---|
+| 1 字の三角形（2D・3D） | 出力と同じ手順で作った字のメッシュの最大 |
+| 表示中の三角形 | 各時刻で表示中のノード（親も表示中）のメッシュの三角形の合計の最大 |
+| 同時のパーティクル | 連続の発生源は最大数、一斉の発生源は発生から寿命（子の寿命を含む）までの数の合計の最大。モバイル最適化ではパーティクルの割合を掛ける |
+| マテリアルの数 | manifest のマテリアルと、パーティクルの描画の組み合わせ（加算・半透明 × 2D・3D）の数 |
+
+- 上限は出力のパネルで変えられます（既定は §10.3 の値）。TMP の文字は数えません（改善メモ）。
 
 ---
 
@@ -880,3 +906,15 @@ def bake_palette_material(objects, *, max_colors=64) -> PaletteResult
 | §10.6 | クリップの後の外挿の代わりに、ディレクターの Hold を使う。マーカーのトラックは作らない | `TimelineClip.postExtrapolationMode` は読み取り専用 |
 | パーティクル | テクスチャのタイルを選ぶ `startFrame` は、タイル番号ではなく `(番号 + 0.5) / 16` | Unity では 0〜1 の割合（番号を入れると 0.9999 に丸められ、空のタイルになった） |
 
+### 17.7 段階 5 の実装による変更
+
+| 箇所 | 変更 | 理由 |
+|---|---|---|
+| §3 | `mesh_optimizer/` を本体のパッケージの中に置き、単体の zip は `--source-dir` で作る | Extension の zip には、パッケージの外のモジュールを入れられない |
+| §11.2 | 1 字の上限を超える字は、解像度を下げ、それでも超えたら減面する（`fit_text_mesh`） | 明朝の画数の多い字は、解像度 4 でも上限を大きく超えた（「鬱」は 2D 807・3D 3284） |
+| §11.3 | 行メッシュは頂点の色を持ち、モバイル最適化では文字のマテリアルを 1 つにする | 文字ごとの色を残したまま、マテリアルの数を減らす |
+| §11.3 | 行メッシュの対象を「静止」の行だけにした | 行単位の動きは文字ごとのトラックで表しており、行で共通にならない |
+| §8.4・§10.7 | 誘導 1 回分の粒と光の玉を、目の位置の親の子にした | Udon が親だけを回せば、Timeline のアニメーションと競合しない |
+| §10.7 | 同期のスクリプトを全曲で共有し、組み立ての印を 2 つ（`_llb_build.pending`・`_llb_udon.pending`）にした。型は `MonoScript.GetClass()` で取る | 曲ごとのスクリプトは不要。スクリプトのコンパイルの後でないと部品を付けられない。U# が同名のクラスを別のアセンブリにもコンパイルする |
+| §10.8 | フォントアセットを `<曲>/FontAssets/` に作り、組み立て直しで使い回す | `Generated/` は毎回消える。Udon の 2 段階めではフォントファイルが削除済み。`Fonts` は Windows で `fonts` と同じフォルダーになる |
+| §10.1 | エディタのスクリプトを asmdef にまとめ、TMP の有無を `versionDefines` で切り替える | TMP の無いプロジェクトでもコンパイルできるようにする |

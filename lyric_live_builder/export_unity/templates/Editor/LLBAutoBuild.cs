@@ -1,7 +1,8 @@
 // LyricLive Builder: builds automatically when the add-on drops its marker while the editor is open
 // (design §10.1, prototype S0-04). Two triggers so both cases work:
 //   - AssetPostprocessor: the marker is imported after the scripts already exist
-//   - InitializeOnLoad:   scripts and marker arrive together (first export / script update)
+//   - InitializeOnLoad:   scripts and marker arrive together (first export / script update), and the
+//                         Udon marker (the build after LLBSync.cs has compiled)
 using System;
 using System.IO;
 using UnityEditor;
@@ -19,6 +20,7 @@ namespace LyricLive.Editor
 
         static void OnPostprocessAllAssets(string[] imported, string[] deleted, string[] moved, string[] movedFrom)
         {
+            // the Udon marker is left to ScanAll: it must wait for the domain reload that brings LLBSync in
             foreach (var p in imported)
                 if (p.EndsWith(LLBBuilder.Marker))
                 {
@@ -30,14 +32,16 @@ namespace LyricLive.Editor
         static void ScanAll()
         {
             if (Application.isBatchMode || !Directory.Exists("Assets/LyricLive/Songs")) return;
-            foreach (var f in Directory.GetFiles("Assets/LyricLive/Songs", LLBBuilder.Marker, SearchOption.AllDirectories))
-                BuildFolder(Path.GetDirectoryName(f).Replace('\\', '/'));
+            foreach (var marker in new[] { LLBBuilder.Marker, LLBBuilder.UdonMarker })
+                foreach (var f in Directory.GetFiles("Assets/LyricLive/Songs", marker, SearchOption.AllDirectories))
+                    BuildFolder(Path.GetDirectoryName(f).Replace('\\', '/'));
         }
 
         static void BuildFolder(string dir)
         {
             if (Application.isBatchMode || EditorApplication.isPlayingOrWillChangePlaymode) return;
-            if (!File.Exists(Path.Combine(dir, LLBBuilder.Marker))) return;      // the other trigger got it
+            if (!File.Exists(Path.Combine(dir, LLBBuilder.Marker)) && !File.Exists(Path.Combine(dir, LLBBuilder.UdonMarker)))
+                return;                                                          // the other trigger got it
             try { LLBBuilder.Build(dir); }
             catch (Exception e) { Debug.LogError("[LLB][ERROR] " + e); }
         }

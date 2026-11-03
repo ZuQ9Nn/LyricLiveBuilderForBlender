@@ -39,6 +39,8 @@ def binding(node_kind, prop, values):
         return "Transform", "m_LocalRotation", XYZW, convert.quat(v)
     if prop == "scale":
         return "Transform", "m_LocalScale", XYZ, convert.scale(v)
+    if prop == "color" and node_kind == "glyph_tmp":
+        return "TextMeshPro", "m_fontColor", RGBA, convert.rgba(v)
     if prop == "color":
         renderer = "ParticleSystemRenderer" if node_kind == "emitter" else "MeshRenderer"
         return renderer, "material._Color", RGBA, convert.rgba(v)
@@ -63,8 +65,11 @@ def _hex(rgba):
 
 
 class Builder:
-    def __init__(self, baked):
+    def __init__(self, baked, mobile=False, particle_ratio=1.0, tmp_fonts=None):
         self.baked = baked
+        self.tmp_fonts = tmp_fonts or {}                  # glyph mesh key -> font key (TextMesh Pro letters)
+        self.mobile = mobile
+        self.ratio = particle_ratio if mobile else 1.0
         self.nodes, self.ids, self.materials = [], {}, {}
         self.extra_tracks = []                          # (node id, kind, prop, interp, times, values)
         self.kind_of = {}
@@ -93,7 +98,7 @@ class Builder:
         name = self._unique(name, self.ids.get(parent, -1))
         self.ids[nid] = len(self.nodes)
         self.kind_of[nid] = kind
-        self.nodes.append({"id": len(self.nodes), "name": name, "parent": self.ids.get(parent, -1),
+        self.nodes.append({"id": len(self.nodes), "name": name, "parent": self.ids.get(parent, -1), "tmp": "", "tmpFont": "",
                            "category": CATEGORY_OF.get(category, category), "kind": kind, "mesh": mesh,
                            "material": material, "p": [float(x) for x in convert.pos(p)],
                            "r": [float(x) for x in convert.quat(r)], "s": [float(x) for x in convert.scale(s)],
@@ -106,8 +111,22 @@ class Builder:
             tracks.setdefault(tr.node, []).append(tr)
         for n in self.baked.nodes:
             mat = ""
-            if n.material == "text":
+            if n.kind == "glyph" and n.mesh in self.tmp_fonts:
+                self.add(n.id, n.name, n.parent, n.category, "glyph_tmp", "", "", n.loc, n.rot, n.scale, n.default_active)
+                node = self.nodes[-1]
+                node["tmp"], node["tmpFont"] = self.baked.meshes[n.mesh].args["char"], self.tmp_fonts[n.mesh]
+                if not any(t.prop == "color" for t in tracks.get(n.id, [])):
+                    self.extra_tracks.append((n.id, "color", "constant", np.array([0.0]), np.array([list(n.color)])))
+                continue
+            if n.material == "text" and self.mobile:
+                # one text material (a palette, design §11): every letter then carries its colour curve
+                mat = self.material("text")
+                if not any(t.prop == "color" for t in tracks.get(n.id, [])):
+                    self.extra_tracks.append((n.id, "color", "constant", np.array([0.0]), np.array([list(n.color)])))
+            elif n.material == "text":
                 mat = self.material("text", n.color[:3] + (1.0,))
+            elif n.material == "text_line":
+                mat = self.material("text_vc")
             elif n.material == "far":
                 mat = self.material("far", n.color[:3] + (1.0,))
             elif n.material == "glow":
@@ -121,14 +140,14 @@ class Builder:
             if spec["preset"]["emitter"] == "burst":
                 self.add(n.id, n.name, n.parent, n.category, "emitter_group", active=n.default_active)
                 for k, ev in enumerate(spec["bursts"]):
-                    d, origin, span = particles_unity.burst(spec, ev)
+                    d, origin, span = particles_unity.burst(spec, ev, self.ratio)
                     cid = f"{n.id}_b{k}"
                     self.add(cid, f"Burst_{k:02d}", n.id, n.category, "particle_system", p=convert.pos(origin),
                              active=False, particles=json.dumps(d))
                     t = np.array([0.0, ev["t"], ev["t"] + span + 0.1])
                     self.extra_tracks.append((cid, "active", "constant", t, np.array([[0.0], [1.0], [0.0]])))
                 continue
-            systems = particles_unity.continuous(spec)
+            systems = particles_unity.continuous(spec, self.ratio)
             if len(systems) == 1:
                 self.add(n.id, n.name, n.parent, n.category, "emitter", active=n.default_active,
                          particles=json.dumps(systems[0]))
@@ -196,6 +215,8 @@ def clips(builder, sections):
             for prop, interp, times, values in trs:
                 if kind == "emitter_group" and prop in ("color", "emit_rate"):
                     continue                            # carried by the systems below the group
+                if prop == "emit_rate":
+                    values = np.asarray(values) * builder.ratio
                 b = binding(kind, prop, values)
                 if b is None:
                     continue
@@ -210,13 +231,28 @@ def clips(builder, sections):
     return out
 
 
-def build(baked, plan, sections, mesh_entries, song, options, dome_params):
-    """sections: [{index, label, kind, start, end}]; returns the manifest dict."""
-    b = Builder(baked)
+def guides(builder):
+    """Gaze-guide events for the Udon version (design §10.7), directions in Unity space."""
+    eye = np.array([0.0, 0.0, 1.5])
+    out = []
+    for g in builder.baked.guides:
+        if g.get("node") not in builder.ids:
+            continue
+        u0 = np.asarray(g["from"]) - eye
+        u0 = u0 / max(np.linalg.norm(u0), 1e-9)
+        out.append({"node": builder.ids[g["node"]], "tOn": float(g["t_on"]), "tHit": float(g["t_hit"]),
+                    "from": [float(x) for x in convert.pos(u0)], "to": [float(x) for x in convert.pos(g["to"])]})
+    return out
+
+
+def build(baked, plan, sections, mesh_entries, song, options, dome_params, fonts=None, tmp_fonts=None):
+    """sections: [{index, label, kind, start, end}]; fonts: [{key, file, chars}] for TextMesh Pro;
+    tmp_fonts: {glyph mesh key: font key}. Returns the manifest dict."""
+    b = Builder(baked, bool(options.get("mobile")), float(options.get("particleRatio", 1.0)), tmp_fonts)
     b.build_nodes(dome_params)
     return {
         "format": FORMAT, "version": VERSION, "generator": options.pop("generator", ""),
         "song": song, "options": options, "sections": sections, "meshes": mesh_entries,
-        "materials": list(b.materials.values()), "nodes": b.nodes,
+        "materials": list(b.materials.values()), "nodes": b.nodes, "fonts": fonts or [], "guides": guides(b),
         "clips": clips(b, [(s["start"], s["end"]) for s in sections]),
     }

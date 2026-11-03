@@ -16,6 +16,11 @@ namespace LyricLive.Editor
             { "ParticleSystemRenderer", typeof(ParticleSystemRenderer) },
         };
 
+        static LLBAnimationFactory()
+        {
+            if (LLBTextMeshProFactory.LetterType != null) Types["TextMeshPro"] = LLBTextMeshProFactory.LetterType;
+        }
+
         public static AnimationCurve Curve(float[] t, float[] v, int stride, int comp, bool constant)
         {
             int n = t.Length;
