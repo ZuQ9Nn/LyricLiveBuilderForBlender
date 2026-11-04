@@ -3,7 +3,9 @@
 The audience's gaze is estimated from the previous line; a line 30° or more away from it gets a
 streak of light motes flowing from the gaze to the line (moving light draws the eye far better
 than a static one), a soft glow where the line will appear, and, behind the audience, a lift of
-the dome's brightness in that direction."""
+the dome's brightness in that direction. A line set to always guide gets a streak of at least
+MIN_ARC, even when it appears where the audience is estimated to look. With Udon sync, LLBSync
+replaces the path from each viewer's real gaze (design §10.7); these keys remain its fallback."""
 import math
 
 import numpy as np
@@ -13,8 +15,12 @@ from .model import MeshSource, Node, Track
 from .parts.common import in_out_sine
 
 ANGLE = math.radians(30)             # guide lines at least this far from the estimated gaze
-LEAD = 0.7                           # the streak takes this long and arrives as the line appears
+LEAD = 0.7                           # the streak takes this long over a short arc and arrives as the line appears
+LEAD_MAX = 1.2                       # ...and this long over 180°: a long way needs more time to follow
+UDON_HOLD = 0.3                      # with Udon, the motes first show at the viewer's gaze for this long
+MIN_ARC = math.radians(45)           # shortest streak of a line set to always guide
 MOTE_LAG = 0.03                      # each mote trails the one before: close together they read as one streak
+MOTE_SIZE = 0.06                     # diameter per metre of distance (the orb fades to its rim)
 MIN_GAP = 0.5                        # at most two guides per second
 EYE = np.array([0.0, 0.0, model.EYE_HEIGHT])
 RATE = 30.0
@@ -70,8 +76,23 @@ def _light(lp):
     return tuple(float(x) for x in c)
 
 
-def plan_guides(plan, positions, tracks):
-    """positions(t) -> {glyph node id: world position}; tracks: {(node, prop): Track} of the text."""
+def lead(arc):
+    return LEAD + (LEAD_MAX - LEAD) * arc / math.pi
+
+
+def _start_at(gaze, target, index):
+    """Where a streak of MIN_ARC starts: beside the line, on the gaze's side (alternating when the gaze
+    is on the line). Sideways, so it never starts in the floor."""
+    u = _unit(target - EYE)
+    side = _unit(np.cross(u, [0.0, 0.0, 1.0]) + [1e-6, 0.0, 0.0])
+    s = float(np.dot(gaze - EYE, side))
+    sign = math.copysign(1.0, s) if abs(s) > 1e-3 else (1.0 if index % 2 else -1.0)
+    return EYE + (math.cos(MIN_ARC) * u + math.sin(MIN_ARC) * sign * side) * np.linalg.norm(target - EYE)
+
+
+def plan_guides(plan, positions, tracks, udon=False):
+    """positions(t) -> {glyph node id: world position}; tracks: {(node, prop): Track} of the text.
+    udon: every guide gets the longest lead and the hold, as a viewer's real gaze may be any angle from the line."""
     strength = plan.fx.get("guide", model.FX_DEFAULTS["guide"])
     if strength <= 0:
         return []
@@ -103,7 +124,11 @@ def plan_guides(plan, positions, tracks):
             out.pop()
         kinds = ["streak", "glow"] + (["dome"] if ang > math.radians(90) else [])
         col = _light(lp)
-        out.append({"line": lp.index, "t_on": t_hit - LEAD, "t_hit": t_hit, "from": [float(x) for x in gaze],
+        arc = ang
+        if lp.guide == "on" and ang < MIN_ARC:
+            gaze, arc = _start_at(gaze, target, lp.index), MIN_ARC
+        out.append({"line": lp.index, "t_on": t_hit - (LEAD_MAX + UDON_HOLD if udon else lead(arc)), "t_hit": t_hit,
+                    "from": [float(x) for x in gaze],
                     "to": [float(x) for x in _unit(target - EYE)], "target": [float(x) for x in target],
                     "angle": ang, "kinds": kinds, "color": tuple(col), "motes": 3 + int(round(3 * strength))})
     return out
@@ -111,8 +136,7 @@ def plan_guides(plan, positions, tracks):
 
 def bake_guides(guides, track_fn):
     """Per guide, a pivot at the eye holding the motes and the glow (positions relative to the eye).
-    The Udon version (design §10.7) turns the pivot about the line's direction so the streak starts
-    from where that viewer really looks; the line's end of the streak stays put.
+    The Udon version (design §10.7) hides the pivot for a viewer already looking at the line.
     track_fn(node, prop, times, values, rest) -> Track or None (decimated)."""
     nodes, tracks = [], []
     meshes = {"orb": MeshSource("orb", "orb", {})}
@@ -135,8 +159,8 @@ def bake_guides(guides, track_fn):
             dirs /= np.linalg.norm(dirs, axis=-1, keepdims=True)
             dist = d0 + (d1 - d0) * s
             loc = EYE + dirs * dist[..., None]
-            size = 0.026 * dist * (1 - 0.13 * k) * np.clip(1 - (times - t1) / 0.25, 0.2, 1)
-            alpha = np.clip(np.minimum((times - t0) / (0.15 * LEAD), (t1 + 0.25 - times) / 0.25), 0, 1) * (1 - 0.14 * k)
+            size = MOTE_SIZE * dist * (1 - 0.13 * k) * np.clip(1 - (times - t1) / 0.25, 0.2, 1)
+            alpha = np.clip(np.minimum((times - t0) / (0.15 * (t1 - t0)), (t1 + 0.25 - times) / 0.25), 0, 1) * (1 - 0.14 * k)
             loc = loc - EYE
             nodes.append(Node(nid, f"Mote_{k}", pid, "guide", "mote", mesh="orb", material="glow",
                               loc=tuple(loc[0]), scale=(float(size[0]),) * 3, color=rgb + (0.0,), default_active=False))

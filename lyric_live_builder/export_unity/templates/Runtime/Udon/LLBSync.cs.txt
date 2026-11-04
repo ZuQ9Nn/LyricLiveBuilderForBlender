@@ -6,8 +6,9 @@
 // "t = 0"; every client seeks the director to (now - start). Udon cannot change the playback speed,
 // so drift is corrected by re-seeking only when it exceeds maxDrift (prototype S0-11).
 // Gaze: when a guide starts, the head direction is read. Already looking at the line: the guide is
-// hidden. Otherwise its pivot (at the eye) turns about the line's direction so the streak starts on
-// the side of the real gaze. Visual only, nothing is synced.
+// hidden. Otherwise the motes wait where the viewer looks, then flow from there to the line, taking
+// longer the farther it is. Timeline keeps their visibility, colour and size; LateUpdate runs after it
+// and replaces their baked positions. Visual only, nothing is synced.
 using UdonSharp;
 using UnityEngine;
 using UnityEngine.Playables;
@@ -23,16 +24,26 @@ public class LLBSync : UdonSharpBehaviour
     public Transform[] guidePivots;
     public float[] guideOn;
     public float[] guideHit;
-    public Vector3[] guideFrom;
-    public Vector3[] guideTo;
+    public Vector3[] guideTarget;                  // stage space
+    public int[] guideMotes;
 
     [UdonSynced] private double startServerTime;
     [UdonSynced] private bool playing;
     private int[] guideState;                      // 0 waiting, 1 shown or hidden for this viewer, 2 done
+    private Vector3[] guideGaze;                   // the viewer's gaze when the guide began
+    private float[] guideStart;                    // when the streak leaves it
+    private Vector3 headPosition, headForward;
+
+    // the same values as core/guide.py
+    private const float LeadMin = 0.7f, LeadMax = 1.2f, MoteLag = 0.03f, Bow = 0.14f;
+    private const float MinDistance = 1.5f;        // a streak never starts closer to the face than this
 
     private void Start()
     {
-        guideState = new int[guidePivots == null ? 0 : guidePivots.Length];
+        int n = guidePivots == null ? 0 : guidePivots.Length;
+        guideState = new int[n];
+        guideGaze = new Vector3[n];
+        guideStart = new float[n];
     }
 
     public override void Interact()
@@ -78,10 +89,57 @@ public class LLBSync : UdonSharpBehaviour
         Guides((float)director.time);
     }
 
+    private void LateUpdate()
+    {
+        if (!playing || director == null || guideState == null) return;
+        float t = (float)director.time;
+        for (int k = 0; k < guideState.Length; k++)
+            if (guideState[k] == 1 && guidePivots[k] != null && guidePivots[k].gameObject.activeSelf) MoveMotes(k, t);
+    }
+
+    private void ReadHead()
+    {
+        VRCPlayerApi me = Networking.LocalPlayer;
+        if (Utilities.IsValid(me))
+        {
+            VRCPlayerApi.TrackingData head = me.GetTrackingData(VRCPlayerApi.TrackingDataType.Head);
+            headPosition = head.position;
+            headForward = head.rotation * Vector3.forward;
+        }
+        else
+        {
+            headPosition = stage.position + Vector3.up * 1.5f;
+            headForward = stage.forward;
+        }
+    }
+
+    private Vector3 Arc(Vector3 from, Vector3 to, float s)
+    {
+        if (Vector3.Angle(from, to) < 170f) return Vector3.Slerp(from, to, s);
+        Vector3 over = Vector3.ProjectOnPlane(Vector3.up, from).normalized;   // straight behind: over the top
+        return s < 0.5f ? Vector3.Slerp(from, over, s * 2f) : Vector3.Slerp(over, to, s * 2f - 1f);
+    }
+
+    private void MoveMotes(int k, float t)
+    {
+        ReadHead();
+        Transform pivot = guidePivots[k];
+        Vector3 line = stage.TransformPoint(guideTarget[k]) - headPosition;
+        float distance = line.magnitude;
+        Vector3 to = line.normalized;
+        for (int m = 0; m < guideMotes[k]; m++)
+        {
+            float t0 = guideStart[k] + m * MoteLag;
+            float s = Mathf.Clamp01((t - t0) / (guideHit[k] + m * MoteLag - t0));
+            s = 0.5f - 0.5f * Mathf.Cos(Mathf.PI * s);
+            Vector3 dir = (Arc(guideGaze[k], to, s) + Vector3.up * (Mathf.Sin(Mathf.PI * s) * Bow)).normalized;
+            pivot.GetChild(m).position = headPosition + dir * Mathf.Lerp(Mathf.Max(distance, MinDistance), distance, s);
+        }
+    }
+
     private void Guides(float t)
     {
         if (guideState == null) return;
-        VRCPlayerApi me = Networking.LocalPlayer;
         for (int k = 0; k < guideState.Length; k++)
         {
             Transform pivot = guidePivots[k];
@@ -89,26 +147,22 @@ public class LLBSync : UdonSharpBehaviour
             if (guideState[k] == 0 && t >= guideOn[k] - 0.05f && t < guideHit[k])
             {
                 guideState[k] = 1;
-                Vector3 gaze = Vector3.forward;
-                if (Utilities.IsValid(me)) gaze = me.GetTrackingData(VRCPlayerApi.TrackingDataType.Head).rotation * Vector3.forward;
-                if (stage != null) gaze = Quaternion.Inverse(stage.rotation) * gaze;
-                Vector3 to = guideTo[k];
-                if (Vector3.Angle(gaze, to) < guideAngle)
+                ReadHead();
+                float angle = Vector3.Angle(headForward, stage.TransformPoint(guideTarget[k]) - headPosition);
+                if (angle < guideAngle)
                 {
                     pivot.gameObject.SetActive(false);   // already looking there: no guide
                 }
                 else
                 {
-                    Vector3 a = Vector3.ProjectOnPlane(guideFrom[k], to);
-                    Vector3 b = Vector3.ProjectOnPlane(gaze, to);
-                    pivot.localRotation = Quaternion.AngleAxis(Vector3.SignedAngle(a, b, to), to);
+                    guideGaze[k] = headForward;
+                    guideStart[k] = guideHit[k] - Mathf.Lerp(LeadMin, LeadMax, angle / 180f);
                 }
             }
             else if (guideState[k] == 1 && t > guideHit[k] + 1.0f)
             {
                 guideState[k] = 2;
                 pivot.gameObject.SetActive(true);
-                pivot.localRotation = Quaternion.identity;
             }
         }
     }
@@ -119,9 +173,7 @@ public class LLBSync : UdonSharpBehaviour
         for (int k = 0; k < guideState.Length; k++)
         {
             guideState[k] = 0;
-            if (guidePivots[k] == null) continue;
-            guidePivots[k].gameObject.SetActive(true);
-            guidePivots[k].localRotation = Quaternion.identity;
+            if (guidePivots[k] != null) guidePivots[k].gameObject.SetActive(true);
         }
     }
 }

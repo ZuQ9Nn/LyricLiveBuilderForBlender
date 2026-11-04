@@ -73,7 +73,7 @@ class LLB_OT_check_budget(bpy.types.Operator):
             self.report({"ERROR"}, iface_("Set at least the Body font"))
             return {"CANCELLED"}
         plan = planning.make_plan(proj)
-        baked = bake.bake(plan, project.metrics(proj), mobile=st.use_mobile, tmp=st.use_tmp)
+        baked = bake.bake(plan, project.metrics(proj), mobile=st.use_mobile, tmp=st.use_tmp, udon=st.use_udon_sync)
         skip = set(ex.tmp_fonts(baked, lambda role: project.font_paths(proj, role))[0]) if st.use_tmp else set()
         _, tris = ex.pack_meshes(baked, lambda role: project.font_paths(proj, role), st.use_mobile, skip)
         res = budget.check(baked, tris, st.use_mobile, st.particle_ratio,
@@ -144,7 +144,7 @@ class LLB_OT_export_unity(bpy.types.Operator):
         st = proj.export
         try:
             plan = planning.make_plan(proj)
-            baked = bake.bake(plan, project.metrics(proj), mobile=st.use_mobile, tmp=st.use_tmp)
+            baked = bake.bake(plan, project.metrics(proj), mobile=st.use_mobile, tmp=st.use_tmp, udon=st.use_udon_sync)
             sections = [{"index": i, "label": s.label or s.kind.capitalize(), "kind": s.kind,
                          "start": float(a), "end": float(b)} for i, (s, (a, b)) in enumerate(zip(proj.sections, plan.sections))]
             folder, existed = exporter.export(

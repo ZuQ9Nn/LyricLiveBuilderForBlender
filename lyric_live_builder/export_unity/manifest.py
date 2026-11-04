@@ -232,17 +232,10 @@ def clips(builder, sections):
 
 
 def guides(builder):
-    """Gaze-guide events for the Udon version (design §10.7), directions in Unity space."""
-    eye = np.array([0.0, 0.0, 1.5])
-    out = []
-    for g in builder.baked.guides:
-        if g.get("node") not in builder.ids:
-            continue
-        u0 = np.asarray(g["from"]) - eye
-        u0 = u0 / max(np.linalg.norm(u0), 1e-9)
-        out.append({"node": builder.ids[g["node"]], "tOn": float(g["t_on"]), "tHit": float(g["t_hit"]),
-                    "from": [float(x) for x in convert.pos(u0)], "to": [float(x) for x in convert.pos(g["to"])]})
-    return out
+    """Gaze-guide events for the Udon version (design §10.7), the line's position in Unity space."""
+    return [{"node": builder.ids[g["node"]], "tOn": float(g["t_on"]), "tHit": float(g["t_hit"]),
+             "target": [float(x) for x in convert.pos(g["target"])], "motes": g["motes"]}
+            for g in builder.baked.guides if g.get("node") in builder.ids]
 
 
 def build(baked, plan, sections, mesh_entries, song, options, dome_params, fonts=None, tmp_fonts=None):

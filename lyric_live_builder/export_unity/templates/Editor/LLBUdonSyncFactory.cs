@@ -30,18 +30,24 @@ namespace LyricLive.Editor
                 Debug.LogWarning("[LLB][WARN] UdonSharp is not in the project: the prefab plays without Udon sync");
                 return "unavailable";
             }
+            if (!File.Exists(Script) || File.ReadAllText(Script) != File.ReadAllText(Template))
+            {
+                File.Copy(Template, Script, true);                               // first export, or a new add-on
+                AssetDatabase.ImportAsset(Script);
+                return "pending";
+            }
             // the class from the script asset: UdonSharp also compiles a copy into its own assemblies
             var mono = AssetDatabase.LoadAssetAtPath<MonoScript>(Script);
             var script = mono != null ? mono.GetClass() : null;
-            if (script == null)
+            if (script == null) return "pending";
+            var fields = new (string name, object value)[]
             {
-                if (!File.Exists(Script))
-                {
-                    File.Copy(Template, Script);
-                    AssetDatabase.ImportAsset(Script);
-                }
-                return "pending";
-            }
+                ("director", director), ("stage", root.transform), ("guidePivots", pivots),
+                ("guideOn", guides.Select(g => g.tOn).ToArray()), ("guideHit", guides.Select(g => g.tHit).ToArray()),
+                ("guideTarget", guides.Select(g => new Vector3(g.target[0], g.target[1], g.target[2])).ToArray()),
+                ("guideMotes", guides.Select(g => g.motes).ToArray()),
+            };
+            if (fields.Any(f => script.GetField(f.name) == null)) return "pending";   // still the previous LLBSync
             var progType = Find("UdonSharp.UdonSharpProgramAsset");
             var prog = AssetDatabase.LoadAssetAtPath(Program, progType);
             if (prog == null)
@@ -61,14 +67,7 @@ namespace LyricLive.Editor
             button.transform.localScale = Vector3.one * 0.2f;
             var add = Find("UdonSharpEditor.UdonSharpUndo").GetMethod("AddComponent", new[] { typeof(GameObject), typeof(Type) });
             var comp = (Component)add.Invoke(null, new object[] { button, script });
-            void Set(string field, object value) => script.GetField(field).SetValue(comp, value);
-            Set("director", director);
-            Set("stage", root.transform);
-            Set("guidePivots", pivots);
-            Set("guideOn", guides.Select(g => g.tOn).ToArray());
-            Set("guideHit", guides.Select(g => g.tHit).ToArray());
-            Set("guideFrom", guides.Select(g => new Vector3(g.from[0], g.from[1], g.from[2])).ToArray());
-            Set("guideTo", guides.Select(g => new Vector3(g.to[0], g.to[1], g.to[2])).ToArray());
+            foreach (var f in fields) script.GetField(f.name).SetValue(comp, f.value);
             var copy = Find("UdonSharpEditor.UdonSharpEditorUtility").GetMethods(BindingFlags.Public | BindingFlags.Static)
                        .Where(m => m.Name == "CopyProxyToUdon").OrderBy(m => m.GetParameters().Length).First();
             var args = copy.GetParameters().Select((p, i) => i == 0 ? comp : (p.HasDefaultValue ? p.DefaultValue : null)).ToArray();

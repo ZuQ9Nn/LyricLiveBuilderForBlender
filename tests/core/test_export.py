@@ -206,7 +206,7 @@ class TestMobile(unittest.TestCase):
         ids = {n["id"]: n for n in doc["nodes"]}
         for g in doc["guides"]:
             self.assertEqual(ids[g["node"]]["kind"], "group")
-            self.assertAlmostEqual(float(np.linalg.norm(g["to"])), 1.0, places=5)
+            self.assertEqual((len(g["target"]), g["motes"] > 0), (3, True))
             self.assertLess(g["tOn"], g["tHit"])
 
 

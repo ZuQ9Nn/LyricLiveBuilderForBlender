@@ -273,6 +273,18 @@ class TestGuide(unittest.TestCase):
         _, off = make(n_lines=12, guide="off", persist="section")
         self.assertEqual(off.guides, [])
 
+    def test_always_guide_has_a_streak_and_lead_grows_with_the_arc(self):
+        p, b = make(n_lines=12, guide="on")
+        for g in b.guides:
+            u = np.array(g["from"]) - EYE
+            arc = guide._angle(u, np.array(g["target"]) - EYE)
+            self.assertGreaterEqual(arc, guide.MIN_ARC - 1e-6)
+            self.assertAlmostEqual(g["t_hit"] - g["t_on"], guide.lead(arc), places=5)
+        self.assertLess(guide.lead(guide.MIN_ARC), guide.lead(math.pi))
+        self.assertEqual(guide.lead(math.pi), guide.LEAD_MAX)
+        for g in bake.bake(p, metrics, udon=True).guides:
+            self.assertAlmostEqual(g["t_hit"] - g["t_on"], guide.LEAD_MAX + guide.UDON_HOLD)
+
     def test_guides_ignore_particle_rerolls(self):
         base = {"mood": "emotional", "style": "noir", "fx": {}, "disabled": {}, "accent": "", "seed": 9, "stage_offsets": {}}
         _, b1 = make(persist="section", settings=omakase.settings(base))

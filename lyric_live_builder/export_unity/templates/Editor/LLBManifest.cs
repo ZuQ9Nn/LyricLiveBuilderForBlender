@@ -19,7 +19,7 @@ namespace LyricLive.Editor
         public string materialMode, panorama; public bool mobile, tmp, udonSync; public float particleRatio;
     }
     [Serializable] public class LLBFontDef { public string key, file, chars; }
-    [Serializable] public class LLBGuide { public int node; public float tOn, tHit; public float[] from, to; }
+    [Serializable] public class LLBGuide { public int node, motes; public float tOn, tHit; public float[] target; }
     [Serializable] public class LLBSection { public int index; public string label, kind; public float start, end; }
     [Serializable] public class LLBMeshRef { public string key; public int offset, length; }
     [Serializable] public class LLBParam { public string name; public float[] values; }

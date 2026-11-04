@@ -117,9 +117,10 @@ def _line_meshes(candidates, nodes, meshes, tracks):
                               np.array([[x[1]] for x in keys], dtype=np.float32))
 
 
-def bake(plan, metrics, eye=model.EYE_HEIGHT, rate=RATE, mobile=False, tmp=False):
+def bake(plan, metrics, eye=model.EYE_HEIGHT, rate=RATE, mobile=False, tmp=False, udon=False):
     """metrics(role) -> object with advance_em(ch) / vadvance_em(ch). mobile: add line meshes (§11.3);
-    tmp: flat lines become TextMesh Pro letters in Unity, so only 3D lines get line meshes."""
+    tmp: flat lines become TextMesh Pro letters in Unity, so only 3D lines get line meshes;
+    udon: gaze guides timed for Udon sync (§10.7)."""
     nodes, meshes, tracks = [], {}, []
     line_candidates = []
     eye_pt = np.array([0.0, 0.0, eye])
@@ -240,7 +241,7 @@ def bake(plan, metrics, eye=model.EYE_HEIGHT, rate=RATE, mobile=False, tmp=False
     # gaze guidance needs the text's world positions; the dome takes its cues
     text = BakedScene(duration=plan.duration, nodes=nodes, meshes=meshes, tracks=tracks, sections=plan.sections)
     by_key = {(t.node, t.prop): t for t in tracks}
-    guides = guide.plan_guides(plan, lambda t: world_positions(text, t), by_key)
+    guides = guide.plan_guides(plan, lambda t: world_positions(text, t), by_key, udon)
     _line_meshes(line_candidates, nodes, meshes, tracks)       # after the guides: they read the letters
     g_nodes, g_tracks, g_meshes = guide.bake_guides(guides, _track)
     nodes, tracks = nodes + g_nodes, tracks + g_tracks
