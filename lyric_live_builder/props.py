@@ -55,17 +55,31 @@ ENTER_ITEMS = _part_items("enter")
 HOLD_ITEMS = _part_items("hold")
 EXIT_ITEMS = _part_items("exit")
 THEME_ITEMS, BACKGROUND_ITEMS, TRANSITION_ITEMS, PARTICLE_ITEMS, MOOD_ITEMS, STYLE_ITEMS = _world_items()
+
+
+def _gimmick_items():
+    from .core import gimmick_shapes as shapes
+    from .core.parts import gimmicks
+    objects = [(AUTO, "From the Lyrics", "A keyword in the line picks the object"), ("none", "No Stage Object", ""),
+               ("emblem", "Keyword Emblem", "The word in 3D letters on a disc")]
+    objects += [(k, v[0], "") for k, v in shapes.SHAPES.items()]
+    return objects, _items(gimmicks.SHOWS, gimmicks.SHOW_ORDER)
+
+
+GIMMICK_ITEMS, SHOW_ITEMS = _gimmick_items()
+SPECTRUM_ITEMS = [("off", "No Spectrum Bars", ""), ("chorus", "Bars in Choruses", ""), ("all", "Bars All Through", "")]
 GUIDE_ITEMS = [(AUTO, "Automatic Guide", "Only when the line appears away from where the audience is looking"),
                ("on", "Always Guide", ""), ("off", "No Guide", "")]
 KOMA_ITEMS = [("0", "Every Frame", "Every frame (recommended for VR)"), ("12", "12 Steps per Second", ""),
               ("8", "8 Steps per Second", "")]
 PART_KINDS = [("layout", "Layouts", ""), ("enter", "Entrances", ""), ("hold", "Hold Motions", ""), ("exit", "Exits", ""),
               ("theme", "Themes", ""), ("particle", "Particle Presets", ""), ("background", "Backgrounds", ""),
-              ("transition", "Transitions", "")]
+              ("transition", "Transitions", ""), ("gimmick", "Stage Objects", ""), ("show", "Ways of Appearing", "")]
 REROLL_ITEMS = [("style", "Style", "Text and particle colours"), ("colors", "Accent Color", ""),
                 ("mood", "Mood", "Mood, effect strengths and the parts in use"),
                 ("text", "Text Composition", "Layouts and motions of the lines"),
-                ("particles", "Particles", ""), ("background", "Background", "Backgrounds and transitions")]
+                ("particles", "Particles", ""), ("background", "Background", "Backgrounds and transitions"),
+                ("gimmicks", "Stage Objects", "Which lines get an object, how and where it appears")]
 
 
 def _recompute(self, context):
@@ -104,6 +118,10 @@ class LLBFx(bpy.types.PropertyGroup):
     guide: FloatProperty(name="Gaze Guide", default=0.7, min=0.0, max=1.0, subtype="FACTOR",
                          description="Light that leads the eye to lines appearing out of view (0 = off)")
     flash: BoolProperty(name="Flashes", default=True, description="Brief white flashes on strong lines and choruses")
+    gimmick: FloatProperty(name="Stage Object Amount", default=0.6, min=0.0, max=1.0, subtype="FACTOR",
+                           description="How often a keyword in the lyrics brings an object on stage (0 = only lines set by hand)")
+    spectrum: EnumProperty(name="Spectrum Bars", items=SPECTRUM_ITEMS, default="chorus",
+                           description="24 bars around the audience, moving with the song (needs a song)")
 
 
 class LLBPartToggle(bpy.types.PropertyGroup):
@@ -182,6 +200,9 @@ class LLBLine(bpy.types.PropertyGroup):
     distance_layer: EnumProperty(name="Distance Layer", items=DISTANCE_ITEMS)
     persist: EnumProperty(name="Leaves", items=PERSIST_ITEMS)
     guide: EnumProperty(name="Gaze Guide", items=GUIDE_ITEMS)
+    gimmick: EnumProperty(name="Stage Object", items=GIMMICK_ITEMS)
+    gimmick_show: EnumProperty(name="How It Appears", items=SHOW_ITEMS)
+    gimmick_word: StringProperty(name="Emblem Word", description="The emblem's text (empty = the keyword or the longest chunk)")
     particle: EnumProperty(name="Line Particles", items=PARTICLE_ITEMS,
                            description="Particles added while this line is on stage")
     background: EnumProperty(name="Background from Here", items=BACKGROUND_ITEMS)

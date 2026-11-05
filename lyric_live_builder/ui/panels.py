@@ -17,7 +17,7 @@ NOTATION = (
     ("line!", "Strong accent"),
     ("line|note", "Small Annotation"),
     ("[01:23.45]line", "LRC time"),
-    ("[A] [Chorus] [サビ]", "Section heading"),
+    ("[A] [Chorus] [Outro]", "Section heading"),
     ("# ...", "Comment"),
     ("[ti:Title] [ar:Artist]", "Meta data"),
 )
@@ -65,7 +65,7 @@ class LLB_PT_lyrics_notation(_Panel, bpy.types.Panel):
         col = self.layout.column(align=True)
         for sample, meaning in NOTATION:
             row = col.row()
-            row.label(text=sample, translate=False)
+            row.label(text=sample)
             row.label(text=meaning)
 
 
@@ -229,6 +229,13 @@ class LLB_PT_sections(_Panel, bpy.types.Panel):
             box.prop(ln, "persist")
             prop_above(box, ln, "guide")
             box.separator()
+            prop_above(box, ln, "gimmick")
+            sub = box.column()
+            sub.active = ln.gimmick != "none"
+            sub.prop(ln, "gimmick_show")
+            if ln.gimmick == "emblem":
+                sub.prop(ln, "gimmick_word")
+            box.separator()
             prop_above(box, ln, "particle")
             prop_above(box, ln, "background")
             prop_above(box, ln, "transition").active = ln.background != "AUTO"
@@ -243,8 +250,9 @@ class LLB_PT_effects(_Panel, bpy.types.Panel):
     def draw(self, context):
         proj = context.scene.llb
         col = self.layout.column()
-        for k in ("motion", "particles", "decor", "density", "world_switch", "guide"):
+        for k in ("motion", "particles", "decor", "density", "world_switch", "guide", "gimmick"):
             col.prop(proj.fx, k, slider=True)
+        col.prop(proj.fx, "spectrum")
         col.prop(proj.fx, "koma")
         col.prop(proj.fx, "flash")
         row = col.row(align=True)

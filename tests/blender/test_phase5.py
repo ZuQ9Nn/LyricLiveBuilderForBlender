@@ -123,10 +123,11 @@ def main():
     llb.unregister()
 
 
-try:
-    main()
-except Exception:
-    traceback.print_exc()
-    failures.append("exception")
-print("RESULT", "PASS" if not failures else f"FAIL {failures}")
-sys.exit(1 if failures else 0)
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception:
+        traceback.print_exc()
+        failures.append("exception")
+    print("RESULT", "PASS" if not failures else f"FAIL {failures}")
+    sys.exit(1 if failures else 0)

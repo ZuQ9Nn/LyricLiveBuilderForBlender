@@ -6,6 +6,7 @@ import math
 
 import numpy as np
 
+from . import gimmick_shapes
 from .rng import h_np
 
 
@@ -134,4 +135,6 @@ def build(key):
         return icosphere(2, 0.5)
     if kind == "shape":
         return particle_shape(arg)
+    if kind == "gimmick":
+        return gimmick_shapes.build(arg)
     raise KeyError(key)

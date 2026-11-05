@@ -13,7 +13,8 @@ SONG_STRIP = "LLB_Song"
 # per-line settings made by the user; they follow their line when the lyrics are edited
 LINE_DEFAULTS = {"tap_time": -1.0, "use_manual": False, "manual_start": 0.0, "is_3d": False, "depth": 0.15,
                  "bevel": "0.015", "layout": "AUTO", "enter": "AUTO", "hold": "AUTO", "exit": "AUTO",
-                 "distance_layer": "AUTO", "persist": "AUTO", "guide": "AUTO", "particle": "AUTO",
+                 "distance_layer": "AUTO", "persist": "AUTO", "guide": "AUTO", "gimmick": "AUTO", "gimmick_show": "AUTO",
+                 "gimmick_word": "", "particle": "AUTO",
                  "background": "AUTO", "transition": "AUTO", "locked": False, "lock_frozen": "", "seed_offset": 0}
 SECTION_USER_FIELDS = ("theme", "background", "transition", "locked", "lock_frozen")
 LINE_USER_FIELDS = tuple(LINE_DEFAULTS)
@@ -315,5 +316,6 @@ def line_inputs(proj):
             is_3d=ln.is_3d, depth=ln.depth, bevel=float(ln.bevel), layout=auto(ln.layout), enter=auto(ln.enter),
             hold=auto(ln.hold), exit=auto(ln.exit), distance=auto(ln.distance_layer), persist=auto(ln.persist),
             particle=auto(ln.particle), background=auto(ln.background), transition=auto(ln.transition),
-            guide=auto(ln.guide), seed_offset=ln.seed_offset))
+            guide=auto(ln.guide), gimmick=auto(ln.gimmick), gimmick_show=auto(ln.gimmick_show),
+            gimmick_word=ln.gimmick_word, seed_offset=ln.seed_offset))
     return out

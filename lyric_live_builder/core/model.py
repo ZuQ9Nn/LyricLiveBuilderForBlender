@@ -38,11 +38,14 @@ class LineInput:
     background: str = ""             # background preset from this line on
     transition: str = ""             # transition into that background
     guide: str = ""                  # "" (auto) | "on" | "off"
+    gimmick: str = ""                # "" (auto) | "none" | "emblem" | a tag
+    gimmick_show: str = ""           # way of appearing (core/parts/gimmicks.py)
+    gimmick_word: str = ""           # the emblem's word
     seed_offset: int = 0             # per-line re-roll count
 
 
 FX_DEFAULTS = {"motion": 0.7, "particles": 0.6, "decor": 0.5, "density": 0.5, "world_switch": 0.6, "koma": 0,
-               "guide": 0.7, "flash": True}
+               "guide": 0.7, "flash": True, "gimmick": 0.6, "spectrum": "chorus"}
 
 
 @dataclass
@@ -68,6 +71,9 @@ class Settings:
     energy_rate: float = 50.0
     beats: object = None             # beat times (seconds) or None
     panorama: bool = False           # a panorama image is set (the image background may be used)
+    spectrum: object = None          # band levels (frames, bands) 0..1 at energy_rate, or None
+    user_assets: dict = field(default_factory=dict)  # tag -> {"file", "name"} (the user's asset library)
+    user_words: dict = field(default_factory=dict)   # tag -> extra words (preferences)
 
     def fx_value(self, key):
         return self.fx.get(key, FX_DEFAULTS[key])
@@ -132,6 +138,8 @@ class Plan:
     world: list = field(default_factory=list)       # background changes: {t, dur, spec, transition}
     emitters: list = field(default_factory=list)    # particle emitter specs (core/parts/particles.py)
     events: list = field(default_factory=list)      # {type: flash|pulse, t, amp, dur, color}
+    gimmicks: list = field(default_factory=list)    # core/parts/gimmicks.py
+    spectrum: dict = None                           # {levels, rate, windows [(start, end, rgb)]}
 
 
 @dataclass

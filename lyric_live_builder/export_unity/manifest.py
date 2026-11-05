@@ -118,13 +118,13 @@ class Builder:
                 if not any(t.prop == "color" for t in tracks.get(n.id, [])):
                     self.extra_tracks.append((n.id, "color", "constant", np.array([0.0]), np.array([list(n.color)])))
                 continue
-            if n.material == "text" and self.mobile:
+            if n.material in ("text", "gimmick") and self.mobile:
                 # one text material (a palette, design §11): every letter then carries its colour curve
-                mat = self.material("text")
+                mat = self.material(n.material)
                 if not any(t.prop == "color" for t in tracks.get(n.id, [])):
                     self.extra_tracks.append((n.id, "color", "constant", np.array([0.0]), np.array([list(n.color)])))
-            elif n.material == "text":
-                mat = self.material("text", n.color[:3] + (1.0,))
+            elif n.material in ("text", "gimmick"):
+                mat = self.material(n.material, n.color[:3] + (1.0,))
             elif n.material == "text_line":
                 mat = self.material("text_vc")
             elif n.material == "far":

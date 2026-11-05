@@ -11,7 +11,7 @@ from .parts import backgrounds as bgs
 from .parts import particles as pts
 from .rng import Rng, h
 
-STAGE_THEME, STAGE_TEXT, STAGE_PARTICLES, STAGE_BACKGROUND = 1, 2, 3, 4
+STAGE_THEME, STAGE_TEXT, STAGE_PARTICLES, STAGE_BACKGROUND, STAGE_GIMMICK = 1, 2, 3, 4, 5
 FLASH_GAP = 0.4                      # strong flashes at least this far apart (≤ 3 per second, spec §7.5)
 STRONG = 0.3                         # flash amount that counts as a strong flash
 

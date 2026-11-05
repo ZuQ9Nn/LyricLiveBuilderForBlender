@@ -5,15 +5,18 @@ import time
 
 import bpy
 
-from ..core import audio, bake, color, model, omakase, planner, registry, themes
+from .. import prefs
+from ..core import audio, bake, color, gimmick_shapes, model, omakase, planner, registry, synonyms, themes
 from ..core.parts import backgrounds as bgs
+from ..core.parts import gimmicks
 from ..core.parts import particles as pts
+from ..preview import gimmick_assets
 from ..preview import scene as preview_scene
 from . import project
 
 AUTO = "AUTO"
 HISTORY_MAX = 30
-FX_FLOATS = ("motion", "particles", "decor", "density", "world_switch", "guide")
+FX_FLOATS = ("motion", "particles", "decor", "density", "world_switch", "guide", "gimmick")
 
 
 # ---------------- parts switched in the effects panel ----------------
@@ -27,6 +30,8 @@ def part_catalog():
     out += [("particle", k, pts.PRESETS[k]["name"]) for k in pts.AMBIENT]
     out += [("background", k, bgs.PRESETS[k]["name"]) for k in bgs.ORDER]
     out += [("transition", k, bgs.TRANSITIONS[k]["name"]) for k in bgs.TRANSITION_ORDER]
+    out += [("gimmick", k, v[0]) for k, v in gimmick_shapes.SHAPES.items()]
+    out += [("show", k, gimmicks.SHOWS[k]["name"]) for k in gimmicks.SHOW_ORDER]
     return out
 
 
@@ -56,6 +61,7 @@ def state(proj):
     fx = {k: round(getattr(proj.fx, k), 3) for k in FX_FLOATS}
     fx["koma"] = int(proj.fx.koma)
     fx["flash"] = bool(proj.fx.flash)
+    fx["spectrum"] = proj.fx.spectrum
     accent = color.to_hex(*(c * 255 for c in proj.accent)) if proj.use_accent else ""
     offsets = {str(k): v for k, v in enumerate(proj.stage_offsets) if v}
     return {"mood": proj.mood, "style": proj.style, "fx": fx, "disabled": disabled(proj), "accent": accent,
@@ -69,6 +75,7 @@ def apply_state(proj, st):
             setattr(proj.fx, k, st["fx"][k])
     proj.fx.koma = str(int(st["fx"].get("koma", 0)))
     proj.fx.flash = bool(st["fx"].get("flash", True))
+    proj.fx.spectrum = st["fx"].get("spectrum", model.FX_DEFAULTS["spectrum"])
     proj.use_accent = bool(st["accent"])
     if st["accent"]:
         proj.accent = tuple(v / 255 for v in color.rgb(st["accent"]))
@@ -104,8 +111,11 @@ def settings(proj):
     info = project.audio_info(proj)
     beats = audio.beat_grid(proj.bpm, proj.beat_offset, proj.duration) if proj.bpm > 0 else (info.beats if info else None)
     pano = bool(proj.panorama_path) and os.path.isfile(bpy.path.abspath(proj.panorama_path))
+    p = prefs.get(bpy.context)
     return omakase.settings(state(proj), energy=info.energy if info else None,
-                            energy_rate=info.energy_rate if info else 50.0, beats=beats, panorama=pano)
+                            energy_rate=info.energy_rate if info else 50.0, beats=beats, panorama=pano,
+                            spectrum=info.spectrum if info else None, user_assets=gimmick_assets.assets(),
+                            user_words=synonyms.parse_user(p.gimmick_words) if p else {})
 
 
 def make_plan(proj):
@@ -138,7 +148,7 @@ def build_preview(context):
 
 # ---------------- locks ----------------
 
-LINE_LOCK_FIELDS = ("layout", "enter", "hold", "exit", "distance_layer", "persist")
+LINE_LOCK_FIELDS = ("layout", "enter", "hold", "exit", "distance_layer", "persist", "gimmick", "gimmick_show")
 
 
 def lock_line(proj, index, plan=None):
@@ -148,6 +158,11 @@ def lock_line(proj, index, plan=None):
     lp = next(x for x in plan.lines if x.index == index)
     chosen = {"layout": lp.layout, "enter": lp.enter, "hold": lp.hold, "exit": lp.exit,
               "distance_layer": lp.distance, "persist": "section" if lp.persist else "next"}
+    g = next((x for x in plan.gimmicks if x["line"] == index), None)
+    if g is None:
+        chosen.update(gimmick="none", gimmick_show=AUTO)
+    else:                                                     # a user's tag is no item: it stays with the lyrics
+        chosen.update(gimmick={"builtin": g["tag"], "emblem": "emblem"}.get(g["source"], AUTO), gimmick_show=g["show"])
     frozen = []
     for f in LINE_LOCK_FIELDS:
         if getattr(ln, f) == AUTO:

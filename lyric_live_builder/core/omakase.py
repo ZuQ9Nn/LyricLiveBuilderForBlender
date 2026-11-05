@@ -9,8 +9,9 @@ from . import color, model, moods, registry, styles, themes, world
 from .parts import backgrounds as bgs
 from .parts import particles as pts
 
-TARGETS = ("style", "colors", "mood", "text", "particles", "background")
-STAGE_OF = {"text": world.STAGE_TEXT, "particles": world.STAGE_PARTICLES, "background": world.STAGE_BACKGROUND}
+TARGETS = ("style", "colors", "mood", "text", "particles", "background", "gimmicks")
+STAGE_OF = {"text": world.STAGE_TEXT, "particles": world.STAGE_PARTICLES, "background": world.STAGE_BACKGROUND,
+            "gimmicks": world.STAGE_GIMMICK}
 MIN_ON = {"layout": 6, "enter": 5, "hold": 3, "exit": 5, "theme": 4, "particle": 5, "transition": 3}
 ALWAYS_ON = {"hold": ("still",), "enter": ("pop_sing",), "exit": ("fade",)}
 BACKDROP = "#101018"                 # the accent is fitted against a typical dark dome

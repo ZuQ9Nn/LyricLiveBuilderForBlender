@@ -3,7 +3,7 @@ import bpy
 
 from ..core import meshes
 from ..text import glyphs
-from . import materials, particles
+from . import gimmick_assets, materials, particles
 
 BUILTIN = "llb_builtin"
 
@@ -20,7 +20,8 @@ def _builtin_mesh(key):
     return me
 
 
-MATERIALS = {"text": materials.text_material, "far": materials.far_material, "glow": materials.glow_material}
+MATERIALS = {"text": materials.text_material, "far": materials.far_material, "glow": materials.glow_material,
+             "gimmick": materials.gimmick_material}
 
 
 def build(baked, collections, font_paths, resolution=6, panorama=""):
@@ -43,6 +44,9 @@ def build(baked, collections, font_paths, resolution=6, panorama=""):
             if path is None:
                 continue                         # no font has it: leave it out rather than draw tofu
             data = glyphs.glyph_mesh(path, a["char"], src.kind == "glyph3d", a["depth"], a["bevel"], resolution)
+        elif n.mesh.startswith("user:"):
+            args = baked.meshes[n.mesh].args
+            data = gimmick_assets.mesh(args["file"], args["name"])
         elif n.mesh:
             data = _builtin_mesh(n.mesh)
         if data is not None:

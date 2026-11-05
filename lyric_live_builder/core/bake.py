@@ -3,7 +3,7 @@ import math
 
 import numpy as np
 
-from . import bake_world, guide, model, registry, xform
+from . import bake_gimmick, bake_world, guide, model, registry, xform
 from .lyrics import chunk_text
 from .model import BakedScene, MeshSource, Node, Track
 from .parts.common import in_out_sine, out_cubic
@@ -255,6 +255,10 @@ def bake(plan, metrics, eye=model.EYE_HEIGHT, rate=RATE, mobile=False, tmp=False
         tracks += d_tracks + f_tracks + e_tracks
         meshes.update(f_meshes)
         meshes[bake_world.DOME] = MeshSource(bake_world.DOME, "dome", {})
+    for part_nodes, part_tracks, part_meshes in (bake_gimmick.gimmicks(plan, metrics, _track), bake_gimmick.spectrum(plan, _track)):
+        nodes += part_nodes
+        tracks += part_tracks
+        meshes.update(part_meshes)
     return BakedScene(duration=plan.duration, nodes=nodes, meshes=meshes, tracks=tracks, sections=plan.sections,
                       emitters=emitters, guides=guides)
 

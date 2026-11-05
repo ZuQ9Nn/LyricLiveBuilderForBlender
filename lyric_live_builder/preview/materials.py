@@ -11,6 +11,8 @@ from ..core.parts import backgrounds as bgs
 TEXT = "LLB_Text"
 FAR = "LLB_Far"
 GLOW = "LLB_Glow"
+GIMMICK = "LLB_Gimmick"
+GIMMICK_VC = "LLB_GimmickVC"
 DOME = "LLB_Dome"
 DOME_SLOT = "LLB_DomeSlot"
 DOME_COLORS = ("top", "horizon", "bottom", "ink", "flash_color", "cue_dir")      # RGB nodes; the rest are Value
@@ -135,6 +137,36 @@ def far_material():
     if t is not None:
         info = t.node("ShaderNodeObjectInfo")
         _output(t, _emit_alpha(t, info.outputs["Color"], info.outputs["Alpha"], False))
+    return mat
+
+
+def gimmick_material(vertex_colors=False):
+    """Stage objects, opaque with a dissolve: noise above (1 - alpha) stays (LLB_Gimmick.shader).
+    vertex_colors: the user's assets, painted by preview/gimmick_assets.py."""
+    mat, t = _new_material(GIMMICK_VC if vertex_colors else GIMMICK, method="DITHERED")
+    if t is None:
+        return mat
+    info = t.node("ShaderNodeObjectInfo")
+    base = info.outputs["Color"]
+    if vertex_colors:
+        attr = t.node("ShaderNodeVertexColor", layer_name=COLOR_ATTR)
+        base = attr.outputs["Color"]
+    # a soft light from above and the viewer's side, so forms read without scene lights
+    geo = t.node("ShaderNodeNewGeometry")
+    down = t.math("ADD", t.math("MULTIPLY", t.vmath("DOT_PRODUCT", geo.outputs["Normal"], (0.0, -0.45, 0.89)), 0.5), 0.5)
+    light = t.math("ADD", 0.55, t.math("MULTIPLY", down, 0.55))
+    shade = t.node("ShaderNodeMix", {"Factor": 1.0}, data_type="RGBA", blend_type="MULTIPLY")
+    t.set(shade.inputs["A"], base)
+    grey = t.node("ShaderNodeCombineColor")
+    for k in ("Red", "Green", "Blue"):
+        t.set(grey.inputs[k], light)
+    t.set(shade.inputs["B"], grey.outputs["Color"])
+    tc = t.node("ShaderNodeTexCoord")
+    noise = t.node("ShaderNodeTexNoise", {"Scale": 7.0, "Detail": 2.0})
+    t.set(noise.inputs["Vector"], tc.outputs["Object"])
+    stretched = t.smooth(noise.outputs["Fac"], 0.25, 0.75)
+    keep = t.math("GREATER_THAN", t.math("ADD", stretched, 1e-3), t.math("SUBTRACT", 1.0, info.outputs["Alpha"]))
+    _output(t, _emit_alpha(t, shade.outputs["Result"], keep, False))
     return mat
 
 

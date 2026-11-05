@@ -220,7 +220,9 @@ namespace LyricLive.Editor
             }
             finally
             {
-                EditorSceneManager.ClosePreviewScene(scene);
+                // one tick later in the editor: UdonSharp's delayCall still touches the component made here
+                if (Application.isBatchMode) EditorSceneManager.ClosePreviewScene(scene);
+                else EditorApplication.delayCall += () => EditorSceneManager.ClosePreviewScene(scene);
             }
         }
 

@@ -4,6 +4,7 @@
 import math
 
 from . import lyrics, model, moods, registry, styles, world
+from .parts import gimmicks
 from .rng import Rng, h
 
 STAGE_TEXT = world.STAGE_TEXT        # seed stage of the text composition ("change only this" re-rolls stages)
@@ -171,9 +172,13 @@ def plan(lines, sections, duration, seed, bpm=0.0, settings=None):
             particle=ln.particle, impact=ln.impact))
     emitters = world.plan_particles(section_plans, out, seed, settings)
     events = world.plan_events(section_plans, out, world_, settings)
+    fx = {key: settings.fx_value(key) for key in model.FX_DEFAULTS}
+    gim = gimmicks.plan(out, lines, duration, world.stage_seed(settings, seed, world.STAGE_GIMMICK), fx, world.STAGE_GIMMICK,
+                        settings.disabled, settings.user_assets, settings.user_words, lyrics.chunk_text)
     return model.Plan(seed=seed, duration=duration, bpm=bpm, lines=out, sections=[(s.start, s.end) for s in secs],
-                      mood=settings.mood, style=style, fx={key: settings.fx_value(key) for key in model.FX_DEFAULTS},
-                      section_plans=section_plans, world=world_, emitters=emitters, events=events)
+                      mood=settings.mood, style=style, fx=fx, section_plans=section_plans, world=world_,
+                      emitters=emitters, events=events, gimmicks=gim,
+                      spectrum=gimmicks.plan_spectrum(section_plans, fx, settings.spectrum, settings.energy_rate))
 
 
 class _Ctx:

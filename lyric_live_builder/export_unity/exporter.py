@@ -12,6 +12,7 @@ from ..core import atlas, meshes
 from ..core.parts import particles as pts
 from ..text import glyphs
 from ..mesh_optimizer import api as mo
+from ..preview import gimmick_assets
 from . import convert, manifest, meshbin
 
 MARKER = "_llb_build.pending"          # not "_pending.llb": the phase 0 prototype in the test project watches that
@@ -115,7 +116,8 @@ def tmp_fonts(baked, font_paths):
         if path is None:
             continue
         fk = safe_name(os.path.splitext(os.path.basename(path))[0])
-        f = fonts.setdefault(fk, {"key": fk, "file": "fonts/" + safe_name(os.path.basename(path)), "chars": "", "path": path})
+        # "_": TextMesh Pro looks it up for underlines and warns on every letter when the atlas lacks it
+        f = fonts.setdefault(fk, {"key": fk, "file": "fonts/" + safe_name(os.path.basename(path)), "chars": "_", "path": path})
         if src.args["char"] not in f["chars"]:
             f["chars"] += src.args["char"]
         by_key[key] = fk
@@ -151,9 +153,13 @@ def pack_meshes(baked, font_paths, mobile=False, skip=()):
             line = _line(src.args["parts"], letters)
             if line:
                 add(key, meshbin.encode(line[0], line[1], flat=line[2], colors=line[3]))
+        elif src is not None and src.kind == "user":
+            data = gimmick_assets.arrays(src.args, mobile)
+            if data:
+                add(key, meshbin.encode(data[0], data[1], colors=data[2]))
         else:
             v, f = meshes.build(key)
-            add(key, meshbin.encode(v, f, flat=key.startswith("shape:")))
+            add(key, meshbin.encode(v, f, flat=key.startswith(("shape:", "gimmick:"))))
     return pack, tris
 
 

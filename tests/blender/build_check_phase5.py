@@ -78,4 +78,5 @@ def main():
     print("SAVED", out)
 
 
-main()
+if __name__ == "__main__":
+    main()

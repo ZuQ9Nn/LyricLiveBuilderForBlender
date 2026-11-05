@@ -2,6 +2,8 @@
 import bpy
 from bpy.app.translations import pgettext_iface as iface_
 
+from .. import prefs
+from ..preview import gimmick_assets
 from ..preview import scene as preview_scene
 from . import planning
 
@@ -57,4 +59,21 @@ class LLB_OT_view_audience(bpy.types.Operator):
         return {"FINISHED"}
 
 
-CLASSES = (LLB_OT_preview_build, LLB_OT_preview_clear, LLB_OT_view_audience)
+class LLB_OT_refresh_library(bpy.types.Operator):
+    bl_idname = "llb.refresh_library"
+    bl_label = "Refresh the Library"
+    bl_description = "Read the tags of every object in the asset library. Nothing is added to the open file"
+
+    def execute(self, context):
+        p = prefs.get(context)
+        folder = gimmick_assets.library_folder(p.asset_library) if p else ""
+        if not folder:
+            self.report({"ERROR"}, iface_("Choose an asset library first"))
+            return {"CANCELLED"}
+        count, tags = gimmick_assets.refresh(folder)
+        p.library_status = iface_("{} objects, {} tags").format(count, tags)
+        self.report({"INFO"}, p.library_status)
+        return {"FINISHED"}
+
+
+CLASSES = (LLB_OT_preview_build, LLB_OT_preview_clear, LLB_OT_view_audience, LLB_OT_refresh_library)

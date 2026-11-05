@@ -37,7 +37,10 @@ class _Clock:
         if self.pairs and scene.frame_current < self.pairs[-1][0]:
             self.done = True                       # wrapped around
             return
-        self.pairs.append((scene.frame_current, time.perf_counter()))
+        # the audio clock ticks in buffers of about one frame: a repeated frame is a frame late, and
+        # with enough of them the median below would be too
+        if not self.pairs or scene.frame_current != self.pairs[-1][0]:
+            self.pairs.append((scene.frame_current, time.perf_counter()))
         if scene.frame_current >= scene.frame_end:
             self.done = True
 
