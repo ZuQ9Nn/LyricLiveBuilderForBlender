@@ -6,7 +6,7 @@ from bpy.app.translations import pgettext_iface as iface_
 
 from ..core import registry
 from ..props import FONT_ROLES, SECTION_KIND_ITEMS
-from . import project
+from . import project, tap_sync
 from .lists import fmt_time
 
 ROLE_LABELS = {"display": "Heading Font", "serif": "Serif Font", "body": "Body Font", "mono": "Mono Font"}
@@ -123,7 +123,11 @@ class LLB_PT_sync(_Panel, bpy.types.Panel):
     def draw(self, context):
         proj = context.scene.llb
         col = self.layout.column()
-        col.operator("llb.tap_sync", icon="REC")
+        if tap_sync.tapping():
+            col.operator("llb.tap_stop", icon="CANCEL")
+        else:
+            col.operator("llb.tap_sync", icon="REC")
+        col.prop(proj, "tap_speed")
         tapped = sum(1 for ln in proj.lines if ln.tap_time >= 0)
         col.label(text=iface_("Tapped {} / {} lines").format(tapped, len(proj.lines)), translate=False)
         col.operator("llb.import_markers", icon="MARKER_HLT")

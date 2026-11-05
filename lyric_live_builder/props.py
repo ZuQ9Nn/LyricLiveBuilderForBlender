@@ -67,6 +67,7 @@ def _gimmick_items():
 
 
 GIMMICK_ITEMS, SHOW_ITEMS = _gimmick_items()
+TAP_SPEED_ITEMS = [("1", "Normal Speed", ""), ("0.75", "0.75× Speed", ""), ("0.5", "0.5× Speed", "")]
 SPECTRUM_ITEMS = [("off", "No Spectrum Bars", ""), ("chorus", "Bars in Choruses", ""), ("all", "Bars All Through", "")]
 GUIDE_ITEMS = [(AUTO, "Automatic Guide", "Only when the line appears away from where the audience is looking"),
                ("on", "Always Guide", ""), ("off", "No Guide", "")]
@@ -228,6 +229,9 @@ class LLBProject(bpy.types.PropertyGroup):
     tap_latency_ms: FloatProperty(name="Tap Latency (ms)", soft_min=-200.0, soft_max=300.0, update=_latency_set,
                                   description="Subtracted from tap times. Measure it, or enter it by hand")
     latency_measured: BoolProperty(default=False)
+    tap_speed: EnumProperty(name="Tap Speed", items=TAP_SPEED_ITEMS, default="1",
+                            description="Slow the song down while tapping, pitch kept. It can be changed while tapping. "
+                                        "The real times are stored")
     seed: IntProperty(name="Seed", default=1, min=0, description="Same seed, same result")
     latency_fps: FloatProperty(description="Scene frame rate when the latency was measured (0 = entered by hand)")
     sections_from_headings: BoolProperty(default=False)

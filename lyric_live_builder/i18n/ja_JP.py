@@ -472,4 +472,12 @@ MESSAGES = {
     'Choose an asset library first': '先にアセットライブラリを選んでください',
     '{} objects, {} tags': '物体 {} 個、タグ {} 種',
     '[A] [Chorus] [Outro]': '[A] [サビ] [アウトロ]',
+    'Tap Speed': 'タップの速さ',
+    'Normal Speed': '1×（通常）',
+    '0.75× Speed': '0.75×',
+    '0.5× Speed': '0.5×',
+    'Slow the song down while tapping, pitch kept. It can be changed while tapping. The real times are stored': 'タップの間だけ、音程を保ったまま曲を遅くします。タップの途中でも変えられます。記録するのは本来の速さの時刻です',
+    'Finish Tapping': '終了',
+    'End Tap Sync and keep the taps so far (the same as Esc)': 'タップ同期を終了し、ここまでのタップを残します（Esc と同じ）',
+    'There is no song to slow down: Tap Sync runs at normal speed': '遅くする曲がありません。通常の速さでタップ同期を行います',
 }

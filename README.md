@@ -29,7 +29,8 @@ add-on already contains it.
    `[Chorus]` starts a section, and LRC time tags are read.
 2. **Fonts**: set at least the Body font. Characters missing from a font are listed.
 3. **Song**: load it. Tempo and beats are estimated.
-4. **Sync**: measure the tap latency once, then press a key at each line while the song plays.
+4. **Sync**: measure the tap latency once, then press a key at each line while the song plays. **Tap Speed** slows
+   the song to 0.75× or 0.5× with its pitch kept; the real times are stored.
 5. **Make It for Me**: every press is a new proposal. **Change Only** re-rolls one aspect, and locked lines stay.
 6. **Sections and Lines**: fix what you want by hand. Each line has its own layout, motion, gaze guide, stage object
    and particles.
@@ -116,7 +117,7 @@ MIT, see [LICENSE](LICENSE). Parts of the logic are ported from JIZURA (MIT, Cop
 1. 歌詞を Blender のテキストに書く（`A/B` で区切り、`*語*` で強調、`行!` で強いアクセント、`[サビ]` でセクション）
 2. フォントを指定する（最低限「本文」）
 3. 曲を読み込む
-4. タップの遅延を一度測り、曲に合わせて行ごとにキーを押す
+4. タップの遅延を一度測り、曲に合わせて行ごとにキーを押す（「タップの速さ」で、音程を保ったまま 0.75×・0.5× に遅くできます。記録されるのは本来の速さの時刻です）
 5. 「おまかせ」を押す（押すたびに新しい案。「ここだけ変える」で一部だけ振り直し、鍵を掛けた行は残る）
 6. 「セクションと行」で、気になる行を手で直す
 7. 「Unity 出力」でプロジェクトを選んで出力する（Unity が開いていても閉じていても、自動で組み立てます）

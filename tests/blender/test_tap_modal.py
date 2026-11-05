@@ -160,6 +160,112 @@ def script():
           f"latency {proj.tap_latency_ms:.1f} ms matches the keys sent ({want:.1f} ms)")
     check(scene.frame_end == frame_end and len(scene.sequence_editor.strips) == strips
           and not scene.sequence_editor.strips[project.SONG_STRIP].mute, "scene restored after measuring")
+
+    # ---- Tap Sync below normal speed ----
+    fps = project.fps(scene)
+    for speed in (0.5, 0.75):
+        proj.tap_speed = str(speed)
+        before = (scene.render.fps, scene.render.fps_base, scene.sync_mode, scene.frame_end)
+        with bpy.context.temp_override(window=win, area=area, region=region):
+            bpy.ops.llb.tap_sync("INVOKE_DEFAULT")
+        start = time.perf_counter()
+        for wait in (1.0, 1.0, 1.5):
+            yield wait
+            press("T")
+        walked = (scene.frame_current - scene.frame_start) / fps
+        expected = (time.perf_counter() - start) * speed
+        check(abs(walked - expected) < 0.25, f"{speed}x: the frame follows the song ({walked:.2f} s, expected {expected:.2f} s)")
+        check(not bpy.context.screen.is_animation_playing, f"{speed}x: the scene itself does not play")
+        keys = pressed[-3:]
+        yield 0.3
+        press("ESC")
+        yield 0.5
+        taps = [ln.tap_time for ln in proj.lines[:3]]
+        gaps = [b - a for a, b in zip(taps, taps[1:])]
+        want = [(b - a) * speed for a, b in zip(keys, keys[1:])]
+        check(all(abs(g - w) < 0.02 for g, w in zip(gaps, want)), f"{speed}x: taps are stored in song time {gaps} vs {want}")
+        first = (keys[0] - start - proj.tap_latency_ms / 1000.0) * speed
+        check(abs(taps[0] - first) < 0.06, f"{speed}x: first tap {taps[0]:.3f} s, expected {first:.3f} s (latency scaled)")
+        check((scene.render.fps, scene.render.fps_base, scene.sync_mode, scene.frame_end) == before
+              and scene.frame_current == scene.frame_start, f"{speed}x: the scene is left as it was")
+    # the end of the song ends tapping by itself
+    proj.tap_speed = "0.5"
+    frame_end = scene.frame_end
+    scene.frame_end = scene.frame_start + int(2.0 * fps)
+    with bpy.context.temp_override(window=win, area=area, region=region):
+        bpy.ops.llb.tap_sync("INVOKE_DEFAULT")
+    yield 1.0
+    press("T")
+    yield 4.0
+    check(scene.frame_current == scene.frame_start and abs(proj.lines[0].tap_time - 0.5) < 0.15,
+          f"tapping ends with the scene range ({proj.lines[0].tap_time:.3f} s)")
+    scene.frame_end = frame_end
+    # ---- changing the speed while tapping ----
+    for start_speed, steps in (("0.5", ("1", "0.75")), ("1", ("0.5",))):
+        proj.tap_speed = start_speed
+        with bpy.context.temp_override(window=win, area=area, region=region):
+            bpy.ops.llb.tap_sync("INVOKE_DEFAULT")
+        check(not bpy.ops.llb.tap_sync.poll() and not bpy.ops.llb.measure_latency.poll() and bpy.ops.llb.tap_stop.poll(),
+              f"from {start_speed}x: tapping cannot be started twice, the stop button is there")
+        t0 = time.perf_counter()
+        marks = [(t0, float(start_speed))]                         # (wall, speed from then on)
+        yield 1.0
+        for speed in steps:
+            press("T")                                             # a pair of taps on each side of the change
+            yield 0.4
+            press("T")
+            proj.tap_speed = speed
+            marks.append((time.perf_counter(), float(speed)))
+            yield 1.0
+        press("T")
+        yield 0.4
+        press("T")
+        yield 0.3
+        check(not bpy.context.screen.is_animation_playing, f"from {start_speed}x: the song goes on on the audio device")
+        bpy.ops.llb.tap_stop()
+        yield 0.5
+        keys = pressed[-2 * len(marks):]
+        taps = [ln.tap_time for ln in proj.lines[:len(keys)]]
+        # inside one speed the taps are exact
+        got = [taps[k + 1] - taps[k] for k in range(0, len(taps), 2)]
+        want = [(keys[k + 1] - keys[k]) * m[1] for k, m in zip(range(0, len(keys), 2), marks)]
+        check(all(abs(g - w) < 0.02 for g, w in zip(got, want)), f"from {start_speed}x: spacing at each speed {got} vs {want}")
+        # across a change the song only loses the moment it takes to restart
+        ideal = [sum(max(0.0, min(b, k) - a) * sp for (a, sp), b in zip(marks, [m[0] for m in marks[1:]] + [k]))
+                 - proj.tap_latency_ms / 1000.0 * marks[i // 2][1] for i, k in enumerate(keys)]
+        late = [ideal[i] - taps[i] for i in range(len(keys))]
+        check(all(-0.05 < x < 0.2 * (i // 2) + 0.05 for i, x in enumerate(late)), f"from {start_speed}x: position kept across changes {late}")
+        check(bpy.ops.llb.tap_sync.poll() and not bpy.ops.llb.tap_stop.poll() and scene.frame_current == scene.frame_start,
+              f"from {start_speed}x: the stop button ends it")
+    # undo reaches taps made before the change
+    keep = proj.lines[1].tap_time
+    proj.tap_speed = "1"
+    with bpy.context.temp_override(window=win, area=area, region=region):
+        bpy.ops.llb.tap_sync("INVOKE_DEFAULT")
+    yield 1.0
+    press("T")
+    proj.tap_speed = "0.5"
+    yield 0.5
+    press("T")
+    yield 0.1
+    press("BACK_SPACE")
+    yield 0.1
+    press("BACK_SPACE")
+    yield 0.2
+    press("T")
+    yield 0.2
+    press("ESC")
+    yield 0.5
+    check(proj.lines[1].tap_time == keep and proj.lines[0].tap_time > 0.9, f"undo across a speed change ({proj.lines[0].tap_time:.3f} s)")
+    # no song to slow down: normal speed
+    song_path, proj.audio_path = proj.audio_path, ""
+    with bpy.context.temp_override(window=win, area=area, region=region):
+        bpy.ops.llb.tap_sync("INVOKE_DEFAULT")
+    yield 0.5
+    check(bpy.context.screen.is_animation_playing, "without a song the scene plays at normal speed")
+    press("ESC")
+    yield 0.5
+    proj.audio_path, proj.tap_speed = song_path, "1"
     finish()
 
 
