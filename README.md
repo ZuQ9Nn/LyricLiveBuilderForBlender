@@ -35,6 +35,7 @@ add-on already contains it.
 5. **Make It for Me**: every press is a new proposal. **Change Only** re-rolls one aspect, and locked lines stay.
 6. **Sections and Lines**: fix what you want by hand. Each line has its own layout, motion, gaze guide, stage object
    and particles.
+   **Line Cuts** shows a line in 2 to 6 parts, one after the other.
 7. **Unity Export**: choose the project and press Export. Unity builds the Prefab by itself, whether it is open or not.
 
 Put the Prefab in your scene. With **Udon Sync** on, a small white cube behind the audience is the start button: move
@@ -120,7 +121,7 @@ MIT, see [LICENSE](LICENSE). Parts of the logic are ported from JIZURA (MIT, Cop
 3. 曲を読み込む
 4. タップの遅延を一度測り、曲に合わせて行ごとにキーを押す（「タップの速さ」で、音程を保ったまま 0.75×・0.5× に遅くできます。記録されるのは本来の速さの時刻です。「カウントダウン」で 3、2、1 の後に始められ、行の詳細の「この行からタップ」で途中の行からやり直せます。Backspace で取り消すと、曲が少し戻ります）
 5. 「おまかせ」を押す（押すたびに新しい案。「ここだけ変える」で一部だけ振り直し、鍵を掛けた行は残る）
-6. 「セクションと行」で、気になる行を手で直す
+6. 「セクションと行」で、気になる行を手で直す（「カット」で、1 行を 2〜6 回に分けて順に見せられます）
 7. 「Unity 出力」でプロジェクトを選んで出力する（Unity が開いていても閉じていても、自動で組み立てます）
 
 ### ステージの物体

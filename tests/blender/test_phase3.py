@@ -188,6 +188,24 @@ def main():
     bpy.ops.llb.line_lock()                                     # unlock
     check(not proj.lines[3].locked and proj.lines[3].layout == "AUTO", "unlocking returns the line to automatic")
 
+    # a line in cuts: shown in turn, and locked cut by cut
+    def cuts():
+        return [(c.text, c.layout, c.enter, c.hold, c.exit, c.distance) for c in planning.make_plan(proj).lines[3].cuts]
+
+    proj.lines[3].cuts = "3"
+    bpy.ops.llb.preview_build()
+    check(len(cuts()) == 3 and all(any(o.name.startswith(f"LLB_L004{x}_") for o in bpy.data.objects) for x in ("", "-2", "-3")),
+          "a line in 3 cuts is previewed as 3 groups")
+    before = cuts()
+    bpy.ops.llb.line_lock()
+    for _ in range(3):
+        bpy.ops.llb.omakase()
+    check(cuts() == before, "a locked line keeps each cut")
+    bpy.ops.llb.line_lock()
+    check(not proj.lines[3].lock_cuts and proj.lines[3].cuts == "3", "unlocking forgets the cuts' parts, not their number")
+    proj.lines[3].cuts = "AUTO"
+    check(planning.make_plan(proj).lines[3].cuts is None, "Planner's Choice shows the line whole")
+
     # a locked section keeps its theme and background
     proj.section_active = 2
     bpy.ops.llb.section_lock()

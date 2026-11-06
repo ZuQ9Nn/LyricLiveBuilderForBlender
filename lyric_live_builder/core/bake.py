@@ -130,7 +130,7 @@ def bake(plan, metrics, eye=model.EYE_HEIGHT, rate=RATE, mobile=False, tmp=False
     rate = koma or rate
     motion = fx.get("motion", model.FX_DEFAULTS["motion"])
     k_motion = 0.55 + 0.65 * motion                       # 0.7 -> about 1 (the parts' own amplitude)
-    for ln in plan.lines:
+    for ln in (cut for line in plan.lines for cut in line.cuts or [line]):
         lp = registry.get("layout", ln.layout)
         m = metrics(ln.font_role)
         dist = model.DISTANCE[ln.distance]
@@ -142,8 +142,10 @@ def bake(plan, metrics, eye=model.EYE_HEIGHT, rate=RATE, mobile=False, tmp=False
             chunks=chunk_text(ln.text), char_times=ln.char_times, anchor=ln.anchor, span=(ln.start, ln.end))
         params = dict(ln.layout_params)
         pl = lp.place(ctx, params)
-        gid = f"line{ln.index:03d}"
-        nodes.append(Node(gid, f"L{ln.index + 1:03d}_{ln.text[:12]}", "", "text", "group",
+        # "line003_" finds the letters of all cuts of a line (the gaze estimate relies on it)
+        gid = f"line{ln.index:03d}_c{ln.cut}" if ln.cut else f"line{ln.index:03d}"
+        name = f"L{ln.index + 1:03d}-{ln.cut + 1}" if ln.cut else f"L{ln.index + 1:03d}"
+        nodes.append(Node(gid, f"{name}_{ln.text[:12]}", "", "text", "group",
                           loc=tuple(pl.loc), rot=tuple(pl.rot)))
         if not pl.glyphs:
             continue

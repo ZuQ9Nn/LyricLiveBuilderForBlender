@@ -169,6 +169,8 @@ def lock_line(proj, index, plan=None):
             setattr(ln, f, chosen[f])
             frozen.append(f)
     ln.lock_frozen = json.dumps(frozen)
+    ln.lock_cuts = json.dumps([{"layout": c.layout, "enter": c.enter, "hold": c.hold, "exit": c.exit, "distance": c.distance}
+                               for c in lp.cuts or ()])
     ln.locked = True
 
 
@@ -176,6 +178,8 @@ def unlock(item):
     for f in json.loads(item.lock_frozen or "[]"):
         setattr(item, f, AUTO)
     item.lock_frozen = ""
+    if hasattr(item, "lock_cuts"):                   # lines only, sections have no cuts
+        item.lock_cuts = ""
     item.locked = False
 
 

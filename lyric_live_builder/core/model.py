@@ -34,6 +34,8 @@ class LineInput:
     exit: str = ""
     distance: str = ""
     persist: str = ""                # "" | "next" | "section"
+    cuts: int = 0                    # shown in this many parts in turn (0 / 1 = whole, design §5.5.1)
+    cut_specs: list = None           # locked line: layout / motions / distance of each cut
     particle: str = ""               # particle preset added while the line is on stage
     background: str = ""             # background preset from this line on
     transition: str = ""             # transition into that background
@@ -109,6 +111,8 @@ class LinePlan:
     guide: str = ""
     particle: str = ""
     impact: bool = False
+    cut: int = 0                      # number of this cut within the line
+    cuts: list = None                 # a split line: a LinePlan per cut; these are baked instead of the line
 
 
 @dataclass

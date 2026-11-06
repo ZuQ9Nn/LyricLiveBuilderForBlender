@@ -1,4 +1,4 @@
-# Ported from JIZURA (src/08_planner.js parseLyrics / chunkText, src/06_layouts.js splitLines,
+# Ported from JIZURA (src/08_planner.js parseLyrics / chunkText / splitToCount / partition, src/06_layouts.js splitLines,
 # src/01_util.js script classes), MIT License, Copyright (c) 2026 hakoniwa.
 # Added: section headings ([A], [サビ], ...).
 """Lyric notation parsing and chunking."""
@@ -284,3 +284,59 @@ def chunk_text(text):
             out[i - 1] += out[i]
             del out[i]
     return out or [text]
+
+
+def split_to_count(chunks, n):
+    """Split the longest chunks until there are n, at a word boundary nearest the middle when there is one."""
+    out = list(chunks)
+    while len(out) < n:
+        sizes = [len(c.split()) if " " in c else len(c) for c in out]
+        big = max(sizes, default=0)
+        if big <= 1:
+            break
+        i = sizes.index(big)
+        c = out[i]
+        if " " in c:
+            words = c.split()
+            mid = (len(words) + 1) // 2
+            out[i:i + 1] = [" ".join(words[:mid]), " ".join(words[mid:])]
+            continue
+        cut, acc, best = (len(c) + 1) // 2, 0, 1e9
+        for sg in segments(c)[:-1]:
+            acc += len(sg)
+            if abs(acc - len(c) / 2) < best:
+                best, cut = abs(acc - len(c) / 2), acc
+        out[i:i + 1] = [c[:cut], c[cut:]]
+    return out
+
+
+def partition(chunks, k):
+    """Group neighbouring chunks into k groups of about the same length."""
+    lens = [len(c) + 1 for c in chunks]
+    target = sum(lens) / k
+    groups, cur, acc = [], [], 0
+    for i, c in enumerate(chunks):
+        left, need = len(chunks) - i, k - len(groups)
+        if cur and (acc + lens[i] / 2 > target or left < need) and len(groups) < k - 1:
+            groups.append(cur)
+            cur, acc = [], 0
+        cur.append(c)
+        acc += lens[i]
+    if cur:
+        groups.append(cur)
+    return groups
+
+
+def split_line(text, chunks, n):
+    """text cut into at most n pieces at chunk boundaries: [(offset in text, piece)]."""
+    parts = split_to_count(chunks, n)
+    groups = partition(parts, min(n, len(parts)))
+    starts, pos = [], 0
+    for g in groups:
+        for j, c in enumerate(g):
+            at = text.find(c, pos)
+            at = pos if at < 0 else at                     # lyrics edited since the notation was read
+            if j == 0:
+                starts.append(at)
+            pos = at + len(c)
+    return [(a, text[a:b].rstrip()) for a, b in zip(starts, starts[1:] + [len(text)])]

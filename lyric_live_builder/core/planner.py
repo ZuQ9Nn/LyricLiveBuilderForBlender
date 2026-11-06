@@ -1,7 +1,8 @@
 # Line composition follows JIZURA's plan() (src/08_planner.js: novelty weighting, emphasis,
-# per-line seeds), MIT License, Copyright (c) 2026 hakoniwa. Rewritten for 3D space.
+# per-line seeds, cut counts), MIT License, Copyright (c) 2026 hakoniwa. Rewritten for 3D space.
 """Plan: which layout / motions / distance each line uses and where it stands (design §5.5)."""
 import math
+from dataclasses import replace
 
 from . import lyrics, model, moods, registry, styles, world
 from .parts import gimmicks
@@ -17,6 +18,7 @@ GLIDE_LEAD = 0.9                     # seconds before the next line starts
 GLIDE_DUR = 1.0
 # kept lines leave together at the section end; these exits stay in place (no falling into the slot below)
 KEEP_EXITS = ("fade", "dust", "fly_away", "shrink")
+MIN_CUT = 0.22                       # seconds between the cuts of a line (JIZURA)
 
 
 def novelty(history, key, value):
@@ -106,6 +108,53 @@ def _compose(ln, rng, history, keep, stage_busy, settings):
             "distance": distance, "params": params}
 
 
+def _line_plan(ln, c, style, end, mask, seed, colors, anchor=(0.0, 0.0), glide=None, cut=0):
+    emphasis = ln.impact or bool(ln.emph_words)
+    enter_part, exit_part = registry.get("enter", c["enter"]), registry.get("exit", c["exit"])
+    role = "serif" if c["lp"].vertical else ("display" if emphasis else styles.STYLES[style]["body"])
+    return model.LinePlan(
+        index=ln.index, text=ln.text, start=ln.start, end=end, section_index=ln.section_index,
+        char_times=list(ln.char_times or [ln.start + 0.05 * i for i in range(len(ln.text))]), emph_mask=mask,
+        is_3d=ln.is_3d, depth=ln.depth, bevel=ln.bevel, font_role=role, layout=c["layout"], layout_params=c["params"],
+        enter=c["enter"], hold=c["hold"], exit=c["exit"], enter_dur=min(enter_part.duration, (end - ln.start) * 0.4),
+        exit_dur=min(exit_part.duration, (end - ln.start) * 0.3), distance=c["distance"], persist=c["keep"],
+        anchor=anchor, emphasis=emphasis, seed=seed, glide=glide, colors=colors, guide=ln.guide,
+        particle=ln.particle, impact=ln.impact, cut=cut)
+
+
+def _cut_lines(ln, end):
+    """The parts of a line set to several cuts: [(offset in the line, LineInput)], [] = shown whole (design §5.5.1)."""
+    pieces = lyrics.split_line(ln.text, ln.chunks or lyrics.chunk_text(ln.text),
+                               min(ln.cuts, int((end - ln.start) / MIN_CUT)))
+    if len(pieces) < 2:
+        return []
+    times = ln.char_times or [ln.start + 0.05 * i for i in range(len(ln.text))]
+    bounds = [ln.start] + [times[min(off, len(times) - 1)] for off, _ in pieces[1:]] + [end]
+    for k in range(1, len(pieces)):
+        bounds[k] = max(bounds[k], bounds[k - 1] + MIN_CUT)
+    for k in range(len(pieces) - 1, 0, -1):
+        bounds[k] = min(bounds[k], bounds[k + 1] - MIN_CUT)
+    specs = ln.cut_specs or []
+    return [(off, replace(ln, text=piece, start=bounds[k], end=bounds[k + 1], char_times=times[off:off + len(piece)],
+                          chunks=None, emph_words=[w for w in ln.emph_words if w in piece], impact=ln.impact and k == 0,
+                          **(specs[k] if k < len(specs) else {})))
+            for k, (off, piece) in enumerate(pieces)]
+
+
+def _compose_cuts(ln, end, history, settings, text_seed, style, world_):
+    """LinePlans of the cuts. Their draws stay inside the line, so other lines are left as they are."""
+    recent, out = list(history), []
+    mask = emph_mask(ln.text, ln.emph_words)
+    for k, (off, cut) in enumerate(_cut_lines(ln, end)):
+        # in front only: no gaze guide leads to a later cut
+        cut_seed = h(text_seed, STAGE_TEXT, ln.index + 1, 100 + k, ln.seed_offset)
+        c = _compose(cut, Rng(cut_seed), recent, False, True, settings)
+        recent.append({key: c[key] for key in ("layout", "enter", "hold", "exit")})
+        out.append(_line_plan(cut, c, style, cut.end, mask[off:off + len(cut.text)], h(cut_seed, 7),
+                              world.line_colors(world_, style, settings.accent, cut.start), cut=k))
+    return out
+
+
 def plan(lines, sections, duration, seed, bpm=0.0, settings=None):
     """lines: [model.LineInput] in time order; sections: [model.SectionInput] or [(start, end[, kind])]."""
     settings = settings or model.Settings()
@@ -121,7 +170,6 @@ def plan(lines, sections, duration, seed, bpm=0.0, settings=None):
         text = ln.text
         n = len(text.replace(" ", ""))
         nxt = lines[k + 1].start if k + 1 < len(lines) else duration
-        emphasis = ln.impact or bool(ln.emph_words)
         sec_end = secs[ln.section_index].end if 0 <= ln.section_index < len(secs) else duration
 
         # keep the line on stage until the section ends?
@@ -132,6 +180,7 @@ def plan(lines, sections, duration, seed, bpm=0.0, settings=None):
             keep = False
         else:
             keep = len(slots) < len(KEEP_SLOTS) and sec_end - ln.start > 4.0 and rng.chance(keep_chance)
+        keep = keep and ln.cuts < 2            # the parts follow each other: nothing can stand aside
         stage_busy = bool(slots)               # earlier lines of this section are still standing
         c = _compose(ln, rng, history, keep, stage_busy, settings)
         keep = c["keep"]
@@ -142,7 +191,6 @@ def plan(lines, sections, duration, seed, bpm=0.0, settings=None):
             c = _compose(ln, Rng(h(text_seed, STAGE_TEXT, ln.index + 1, ln.seed_offset)), history[:-1], keep,
                          stage_busy, settings)
             c["keep"] = keep = keep and c["keep"]
-        lp = c["lp"]
         anchor = (0.0, 0.0)
         if keep and nxt < sec_end:             # the last kept line of a section simply stays in front
             az, el = KEEP_SLOTS[len(slots)]
@@ -152,24 +200,16 @@ def plan(lines, sections, duration, seed, bpm=0.0, settings=None):
         # visible until the next line (or the section end when kept), JIZURA's visEnd rule
         end = sec_end if keep else min(nxt, ln.start + max(3.6, n * 0.5 + 1.2))
         end = max(end, ln.start + 0.5)
-        enter_part, exit_part = registry.get("enter", c["enter"]), registry.get("exit", c["exit"])
-        exit_dur = min(exit_part.duration, (end - ln.start) * 0.3)
-        enter_dur = min(enter_part.duration, (end - ln.start) * 0.4)
-        char_times = list(ln.char_times or [ln.start + 0.05 * i for i in range(len(text))])
         glide = None
         if keep and anchor != (0.0, 0.0):
             gs = max(ln.start, nxt - GLIDE_LEAD)
             glide = (gs, gs + GLIDE_DUR)
-        role = "serif" if lp.vertical else ("display" if emphasis else styles.STYLES[style]["body"])
-        out.append(model.LinePlan(
-            index=ln.index, text=text, start=ln.start, end=end, section_index=ln.section_index,
-            char_times=char_times, emph_mask=emph_mask(text, ln.emph_words), is_3d=ln.is_3d,
-            depth=ln.depth, bevel=ln.bevel, font_role=role, layout=c["layout"], layout_params=c["params"],
-            enter=c["enter"], hold=c["hold"], exit=c["exit"], enter_dur=enter_dur, exit_dur=exit_dur,
-            distance=c["distance"], persist=keep, anchor=anchor, emphasis=emphasis,
-            seed=h(text_seed, STAGE_TEXT, ln.index + 1, 7, ln.seed_offset), glide=glide,
-            colors=world.line_colors(world_, style, settings.accent, ln.start), guide=ln.guide,
-            particle=ln.particle, impact=ln.impact))
+        line = _line_plan(ln, c, style, end, emph_mask(text, ln.emph_words),
+                          h(text_seed, STAGE_TEXT, ln.index + 1, 7, ln.seed_offset),
+                          world.line_colors(world_, style, settings.accent, ln.start), anchor, glide)
+        if ln.cuts > 1:
+            line.cuts = _compose_cuts(ln, end, history[:-1], settings, text_seed, style, world_) or None
+        out.append(line)
     emitters = world.plan_particles(section_plans, out, seed, settings)
     events = world.plan_events(section_plans, out, world_, settings)
     fx = {key: settings.fx_value(key) for key in model.FX_DEFAULTS}

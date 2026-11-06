@@ -45,6 +45,7 @@ def main():
         ln.tap_time = 2.0 + i * 2.4
     project.recompute(scene)
     bpy.ops.llb.omakase()
+    proj.lines[2].cuts = "3"                                       # a line in cuts reaches Unity as separate groups
     check(unity_locate.is_project(unity_project), f"test project {unity_project}")
     st = proj.export
     st.project_path = unity_project
@@ -108,6 +109,9 @@ def main():
     clips = [f for f in os.listdir(os.path.join(gen, "Clips")) if f.endswith(".anim")] if os.path.isdir(gen) else []
     check(len(clips) == len(sections) * 4, f"{len(clips)} animation clips")
     check(not os.path.exists(os.path.join(folder, exporter.MARKER)), "the build marker is removed")
+    with open(os.path.join(gen, name + ".prefab"), encoding="utf-8") as f:
+        prefab = f.read()
+    check(all(f"L003{x}_" in prefab for x in ("", "-2", "-3")), "the prefab has a group per cut")
     translation_checks()
     llb.unregister()
 

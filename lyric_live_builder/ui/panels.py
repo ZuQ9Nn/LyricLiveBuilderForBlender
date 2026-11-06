@@ -232,7 +232,10 @@ class LLB_PT_sections(_Panel, bpy.types.Panel):
             box.prop(ln, "hold")
             box.prop(ln, "exit")
             box.prop(ln, "distance_layer")
-            box.prop(ln, "persist")
+            box.prop(ln, "cuts")
+            sub = box.row()
+            sub.active = ln.cuts in ("AUTO", "1")           # a split line never stays on stage
+            sub.prop(ln, "persist")
             prop_above(box, ln, "guide")
             box.separator()
             prop_above(box, ln, "gimmick")

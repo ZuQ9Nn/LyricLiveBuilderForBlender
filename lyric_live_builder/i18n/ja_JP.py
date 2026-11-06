@@ -158,6 +158,9 @@ MESSAGES = {
     "Middle Layer": "中景",
     "Far Layer": "遠景",
     "Leaves": "消え方",
+    "Line Cuts": "カット",
+    "Show this line in parts one after the other, as they are sung. Planner's Choice keeps it whole":
+        "この行を、歌に合わせていくつかに分けて順に見せます。おまかせでは分けません",
     "Until the Next Line": "次の行で消える",
     "Until the Section Ends": "セクションの終わりまで残る",
     "Stays on stage and leaves with the rest of the section": "空間に残り、セクションの終わりにまとめて退場します",

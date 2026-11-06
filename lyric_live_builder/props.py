@@ -27,6 +27,9 @@ PERSIST_ITEMS = [(AUTO, "Planner's Choice", ""), ("next", "Until the Next Line",
 BEVEL_ITEMS = [("0.0", "No Bevel", ""), ("0.015", "Small Bevel", ""), ("0.04", "Large Bevel", "")]
 
 
+CUT_ITEMS = [(AUTO, "Planner's Choice", "")] + [(str(n), str(n), "") for n in range(1, 7)]
+
+
 def _part_items(kind):
     from .core import registry
     items = [(AUTO, "Planner's Choice", "Chosen by the planner")]
@@ -199,6 +202,8 @@ class LLBLine(bpy.types.PropertyGroup):
     hold: EnumProperty(name="Hold", items=HOLD_ITEMS)
     exit: EnumProperty(name="Exit Motion", items=EXIT_ITEMS)
     distance_layer: EnumProperty(name="Distance Layer", items=DISTANCE_ITEMS)
+    cuts: EnumProperty(name="Line Cuts", items=CUT_ITEMS,
+                       description="Show this line in parts one after the other, as they are sung. Planner's Choice keeps it whole")
     persist: EnumProperty(name="Leaves", items=PERSIST_ITEMS)
     guide: EnumProperty(name="Gaze Guide", items=GUIDE_ITEMS)
     gimmick: EnumProperty(name="Stage Object", items=GIMMICK_ITEMS)
@@ -210,6 +215,7 @@ class LLBLine(bpy.types.PropertyGroup):
     transition: EnumProperty(name="Transition", items=TRANSITION_ITEMS)
     locked: BoolProperty(name="Lock State", description="Make It for Me and re-rolls keep this line as it is")
     lock_frozen: StringProperty(description="Fields the lock filled in (set back to automatic on unlock)")
+    lock_cuts: StringProperty(description="JSON of what each cut had when the line was locked")
     seed_offset: IntProperty(name="Re-roll Count", min=0)
 
 
