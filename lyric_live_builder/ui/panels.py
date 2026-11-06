@@ -128,6 +128,7 @@ class LLB_PT_sync(_Panel, bpy.types.Panel):
         else:
             col.operator("llb.tap_sync", icon="REC")
         col.prop(proj, "tap_speed")
+        col.prop(proj, "tap_countdown")
         tapped = sum(1 for ln in proj.lines if ln.tap_time >= 0)
         col.label(text=iface_("Tapped {} / {} lines").format(tapped, len(proj.lines)), translate=False)
         col.operator("llb.import_markers", icon="MARKER_HLT")
@@ -211,6 +212,7 @@ class LLB_PT_sections(_Panel, bpy.types.Panel):
             sub = row.row()
             sub.active = ln.use_manual
             sub.prop(ln, "manual_start", text="")
+            box.operator("llb.tap_sync", text="Tap from This Line", icon="REC").first_line = proj.line_active
             row = box.row(align=True)
             row.operator("llb.line_lock", text="Unlock Line" if ln.locked else "Lock Line",
                          icon="UNLOCKED" if ln.locked else "LOCKED", depress=ln.locked)

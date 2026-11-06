@@ -1,3 +1,5 @@
+# The tap speeds, the countdown, tapping from a line and undo with a jump back follow JIZURA's tap sync
+# (src/12_ui.js), MIT License, Copyright (c) 2026 hakoniwa.
 """Tap Sync and tap latency measurement (modal operators).
 
 Taps store time.perf_counter(); a frame_change_post handler pairs played frames with the same
@@ -6,7 +8,8 @@ jitter of AUDIO_SYNC playback and gives sub-frame precision (prototype S0-08).
 
 Below normal speed the scene does not play at all (it has no playback speed): _SlowClock plays the
 song stretched, pitch kept, straight on the audio device and moves the frame along with it. Changing
-the speed while tapping restarts the song from its current place, also on _SlowClock (even at 1×).
+the speed, undoing a tap or starting from a later line plays the song from that place, also on
+_SlowClock (even at 1×).
 """
 import os
 import statistics
@@ -25,6 +28,11 @@ from .overlay import Overlay
 
 CLICK_STRIP = "LLB_Click"
 _current = None                  # the running Tap Sync or Measure Latency: only one at a time
+COUNT_FROM, COUNT_STEP = 3, 0.7  # the countdown before the song starts
+LEAD_IN = 2.5                    # tapping from a line starts this long before it, never before the previous line
+REWIND = 3.0                     # undo jumps back this far...
+RETAP_LEAD = 1.0                 # ...and at least this far before the tap it took away
+KEEP_GAP = 0.2                   # a later line tapped earlier must start this long after the last tap
 
 
 def tapping():
@@ -140,9 +148,16 @@ def latency_ms(context):
     return p.tap_latency_ms if p else 0.0
 
 
-def _play(context):
+def _start_of(lines, first):
+    """Where in the song tapping from line `first` begins."""
+    if first == 0:
+        return 0.0
+    return max(0.0, lines[first - 1].start + 0.01, lines[first].start - LEAD_IN)
+
+
+def _play(context, offset=0.0):
     scene = context.scene
-    scene.frame_set(scene.frame_start)
+    scene.frame_set(scene.frame_start + int(offset * project.fps(scene)))
     if not context.screen.is_animation_playing:
         bpy.ops.screen.animation_play()
 
@@ -155,7 +170,8 @@ def _stop(context):
 class LLB_OT_tap_sync(bpy.types.Operator):
     bl_idname = "llb.tap_sync"
     bl_label = "Tap Sync"
-    bl_description = "Play the song and press T where each line starts (Backspace: undo, Esc: finish)"
+    bl_description = "Play the song and press T where each line starts (Backspace: undo and jump back, Esc: finish)"
+    first_line: bpy.props.IntProperty(default=0, min=0, options={"HIDDEN", "SKIP_SAVE"})
 
     @classmethod
     def poll(cls, context):
@@ -177,21 +193,49 @@ class LLB_OT_tap_sync(bpy.types.Operator):
         self.taps = []                                         # wall clock, on the current clock
         self.song = []                                         # song time, settled when a clock ends
         self.stop_asked = False
-        if self.speed < 1.0:
-            _stop(context)
-            scene.frame_set(scene.frame_start)
-            self._slow_clock(context, 0.0)
-        else:
-            self.clock = _Clock()
-            self.clock.start(context)
-            _play(context)
+        self.first = min(self.first_line, len(proj.lines) - 1)
+        self.offset = _start_of(proj.lines, self.first)
+        self.clock = None
+        self.count = COUNT_FROM if proj.tap_countdown else 0
         _current = self
-        _redraw(context)
         context.window_manager.modal_handler_add(self)
         self.overlay = Overlay(lambda: self._guide(bpy.context))
         self.overlay.start()
+        if self.count:
+            _stop(context)
+            scene.frame_set(scene.frame_start + int(self.offset * f))
+            self.count_timer = context.window_manager.event_timer_add(0.05, window=context.window)
+            self.count_next = time.perf_counter() + COUNT_STEP
+        else:
+            self._begin(context)
+        _redraw(context)
         self._status(context)
         return {"RUNNING_MODAL"}
+
+    def _begin(self, context):
+        """Start the song. From the top at normal speed the scene plays it, otherwise the audio device."""
+        if self.path and (self.speed < 1.0 or self.offset > 0.0):
+            _stop(context)
+            self._slow_clock(context, self.offset)
+        else:
+            self.clock = _Clock()
+            self.clock.start(context)
+            _play(context, self.offset)
+
+    def _tick_countdown(self, context):
+        if time.perf_counter() < self.count_next:
+            return
+        self.count -= 1
+        self.count_next += COUNT_STEP
+        if not self.count:
+            self._end_countdown(context)
+            self._begin(context)
+        self._status(context)
+        _redraw(context)
+
+    def _end_countdown(self, context):
+        context.window_manager.event_timer_remove(self.count_timer)
+        self.count = 0
 
     def _slow_clock(self, context, offset):
         scene = context.scene
@@ -201,30 +245,40 @@ class LLB_OT_tap_sync(bpy.types.Operator):
 
     def _settle(self, context):
         """The taps of the clock ending now -> song times. A delay in real time is shorter in song time."""
-        times = self.clock.song_times(context.scene, self.taps) or []
+        times = (self.clock.song_times(context.scene, self.taps) or []) if self.clock else []
         shift = latency_ms(context) / 1000.0 * self.speed
         self.song += [max(0.0, t - shift) for t in times]
         self.taps = []
 
-    def _change_speed(self, context, speed):
-        """Go on from the same place in the song at the new speed."""
-        now = self.clock.song_times(context.scene, [time.perf_counter()])
-        if now is None:
-            return                                             # just started: the next timer event tries again
+    def _restart(self, context, speed, offset):
+        """Go on from a place in the song at a speed."""
         self._settle(context)
         self.clock.stop(context)
         _stop(context)
         self.speed = speed
-        self._slow_clock(context, now[0])
+        self._slow_clock(context, offset)
         self._status(context)
+
+    def _now(self, context):
+        """The song time now, None just after the start (a later timer event tries again)."""
+        times = self.clock.song_times(context.scene, [time.perf_counter()])
+        return times[0] if times else None
+
+    def _undo(self, context):
+        """Take the last tap away and jump back so that the line can be tapped again."""
+        times = self.clock.song_times(context.scene, self.taps[-1:]) if self.taps else self.song[-1:]
+        (self.taps or self.song).pop()
+        now = self._now(context)
+        if self.path and times and now is not None:
+            self._restart(context, self.speed, max(0.0, min(now - REWIND, times[0] - RETAP_LEAD)))
 
     def _guide(self, context):
         lines = context.scene.llb.lines
-        k = len(self.song) + len(self.taps)
+        k = self.first + len(self.song) + len(self.taps)
         nxt = lines[k].text if k < len(lines) else iface_("All lines recorded (Esc)")
         speed = f"  {self.speed:g}×" if self.speed < 1.0 else ""
         return [(iface_("Tap Sync  next line {} / {}").format(min(k + 1, len(lines)), len(lines)) + speed, 14),
-                (nxt, 26),
+                (str(self.count) if self.count else nxt, 26),
                 (iface_("T: line start   Backspace: undo   Esc: finish"), 12)]
 
     def _status(self, context):
@@ -233,30 +287,36 @@ class LLB_OT_tap_sync(bpy.types.Operator):
     def modal(self, context, event):
         scene = context.scene
         direct = isinstance(self.clock, _SlowClock)
-        if self.stop_asked:
+        if self.stop_asked or (self.count and event.type == "ESC" and event.value == "PRESS"):
             self._finish(context)
             return {"FINISHED"}
+        if self.count:
+            if event.type == "TIMER":
+                self._tick_countdown(context)
+            return {"RUNNING_MODAL"} if event.type in ("T", "SPACE", "BACK_SPACE") else {"PASS_THROUGH"}
         if event.type == "TIMER":
-            wanted = float(scene.llb.tap_speed)
+            wanted, now = float(scene.llb.tap_speed), None
             if self.path and wanted != self.speed:
-                self._change_speed(context, wanted)
+                now = self._now(context)
+            if now is not None:
+                self._restart(context, wanted, now)
             elif direct:
                 self.clock.tick(scene)
         elif direct and event.type == "SPACE":
             return {"RUNNING_MODAL"}                      # scene playback would start the song a second time
-        tapped = len(self.song) + len(self.taps)
+        count = len(self.song) + len(self.taps)
+        tapped = self.first + count
         if event.value == "PRESS" and not event.is_repeat:
             if event.type == "T" and tapped < len(scene.llb.lines):
                 self.taps.append(time.perf_counter())
                 scene.timeline_markers.new(project.marker_name(tapped) + "*", frame=scene.frame_current)
                 self._status(context)
                 return {"RUNNING_MODAL"}
-            if event.type == "BACK_SPACE" and tapped:
-                name = project.marker_name(tapped - 1) + "*"
-                (self.taps or self.song).pop()
-                m = scene.timeline_markers.get(name)
+            if event.type == "BACK_SPACE" and count:
+                m = scene.timeline_markers.get(project.marker_name(tapped - 1) + "*")
                 if m:
                     scene.timeline_markers.remove(m)
+                self._undo(context)
                 self._status(context)
                 return {"RUNNING_MODAL"}
         ended = self.clock.ended(context)
@@ -269,11 +329,12 @@ class LLB_OT_tap_sync(bpy.types.Operator):
         global _current
         _current = None
         scene = context.scene
-        direct = isinstance(self.clock, _SlowClock)
+        if self.count:
+            self._end_countdown(context)
         _stop(context)
-        self.clock.stop(context)
-        if direct:
-            scene.frame_set(scene.frame_start)
+        if self.clock:
+            self.clock.stop(context)
+        scene.frame_set(scene.frame_start)
         self.overlay.stop()
         context.workspace.status_text_set(None)
         for m in [m for m in scene.timeline_markers if m.name.startswith(project.MARKER_PREFIX) and m.name.endswith("*")]:
@@ -285,8 +346,11 @@ class LLB_OT_tap_sync(bpy.types.Operator):
             return
         lines = scene.llb.lines
         for i, t in enumerate(self.song):
-            lines[i].tap_time = t
-        project.set_line_markers(scene, range(len(self.song)))
+            lines[self.first + i].tap_time = t
+        for ln in lines[self.first + len(self.song):]:         # taps of an earlier pass that would now come first
+            if 0.0 <= ln.tap_time <= self.song[-1] + KEEP_GAP:
+                ln.tap_time = -1.0
+        project.set_line_markers(scene, range(self.first, len(lines)))
         project.recompute(scene)
         self.report({"INFO"}, iface_("Recorded {} lines").format(len(self.song)))
 

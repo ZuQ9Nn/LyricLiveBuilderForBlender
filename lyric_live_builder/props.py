@@ -229,6 +229,7 @@ class LLBProject(bpy.types.PropertyGroup):
     tap_latency_ms: FloatProperty(name="Tap Latency (ms)", soft_min=-200.0, soft_max=300.0, update=_latency_set,
                                   description="Subtracted from tap times. Measure it, or enter it by hand")
     latency_measured: BoolProperty(default=False)
+    tap_countdown: BoolProperty(name="Countdown", description="Count 3, 2, 1 before the song starts")
     tap_speed: EnumProperty(name="Tap Speed", items=TAP_SPEED_ITEMS, default="1",
                             description="Slow the song down while tapping, pitch kept. It can be changed while tapping. "
                                         "The real times are stored")

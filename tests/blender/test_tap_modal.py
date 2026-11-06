@@ -256,7 +256,71 @@ def script():
     yield 0.2
     press("ESC")
     yield 0.5
-    check(proj.lines[1].tap_time == keep and proj.lines[0].tap_time > 0.9, f"undo across a speed change ({proj.lines[0].tap_time:.3f} s)")
+    check(proj.lines[1].tap_time == keep and proj.lines[0].tap_time < 0.5, f"undo reaches across a speed change and jumps back ({proj.lines[0].tap_time:.3f} s)")
+    # ---- countdown ----
+    proj.tap_speed, proj.tap_countdown = "1", True
+    with bpy.context.temp_override(window=win, area=area, region=region):
+        bpy.ops.llb.tap_sync("INVOKE_DEFAULT")
+    yield 0.3
+    press("T")                                                 # too early: ignored
+    yield 0.3
+    check(not bpy.context.screen.is_animation_playing and bpy.ops.llb.tap_stop.poll(), "the song waits for the countdown")
+    yield 1.8
+    check(bpy.context.screen.is_animation_playing, "the song starts after the countdown")
+    yield 0.8
+    press("T")
+    yield 0.2
+    press("ESC")
+    yield 0.5
+    check(0.3 < proj.lines[0].tap_time < 1.3, f"a tap during the countdown does not count ({proj.lines[0].tap_time:.3f} s)")
+    with bpy.context.temp_override(window=win, area=area, region=region):
+        bpy.ops.llb.tap_sync("INVOKE_DEFAULT")
+    yield 0.3
+    bpy.ops.llb.tap_stop()
+    yield 0.3
+    check(bpy.ops.llb.tap_sync.poll() and not bpy.context.screen.is_animation_playing, "the stop button ends the countdown")
+    proj.tap_countdown = False
+
+    # ---- tapping from a line ----
+    for k, t in enumerate((1.0, 2.0, 3.0, 2.3, 5.0)):
+        proj.lines[k].tap_time = t
+    project.recompute(scene)
+    lead = proj.lines[1].start + 0.01
+    times_before = (proj.lines[0].tap_time, proj.lines[1].tap_time)
+    with bpy.context.temp_override(window=win, area=area, region=region):
+        bpy.ops.llb.tap_sync("INVOKE_DEFAULT", first_line=2)
+    start = time.perf_counter()
+    yield 0.5
+    press("T")
+    key = pressed[-1]
+    walked = (scene.frame_current - scene.frame_start) / fps
+    check(abs(walked - (lead + 0.5)) < 0.2, f"playback starts just after the previous line ({walked:.2f} s)")
+    yield 0.2
+    press("ESC")
+    yield 0.5
+    t = proj.lines[2].tap_time
+    check(abs(t - (lead + key - start - proj.tap_latency_ms / 1000.0)) < 0.12, f"the tap lands on the chosen line ({t:.3f} s)")
+    check((proj.lines[0].tap_time, proj.lines[1].tap_time) == times_before, "earlier lines keep their times")
+    check(proj.lines[3].tap_time < 0 and abs(proj.lines[4].tap_time - 5.0) < 1e-6, "a later tap that would now come first goes, the others stay")
+
+    # ---- undo jumps back ----
+    with bpy.context.temp_override(window=win, area=area, region=region):
+        bpy.ops.llb.tap_sync("INVOKE_DEFAULT")
+    yield 4.0
+    press("T")
+    yield 0.3
+    press("BACK_SPACE")
+    yield 0.3
+    walked = (scene.frame_current - scene.frame_start) / fps
+    check(0.8 < walked < 2.2, f"undo jumps back about 3 s ({walked:.2f} s)")
+    yield 0.7
+    press("T")
+    yield 0.2
+    press("ESC")
+    yield 0.5
+    t = proj.lines[0].tap_time
+    check(1.2 < t < 3.2, f"the line is tapped again ({t:.3f} s)")
+
     # no song to slow down: normal speed
     song_path, proj.audio_path = proj.audio_path, ""
     with bpy.context.temp_override(window=win, area=area, region=region):

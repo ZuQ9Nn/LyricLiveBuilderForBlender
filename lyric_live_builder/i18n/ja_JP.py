@@ -20,8 +20,8 @@ MESSAGES = {
     "Import from Markers": "マーカーから取り込む",
     "Use the positions of the LLB timeline markers as the line start times": "LLB のタイムラインマーカーの位置を、行の開始時刻にします",
     "Tap Sync": "タップで同期",
-    "Play the song and press T where each line starts (Backspace: undo, Esc: finish)":
-        "曲を再生し、各行の歌い始めで T を押します（Backspace：取り消し、Esc：終了）",
+    "Play the song and press T where each line starts (Backspace: undo and jump back, Esc: finish)":
+        "曲を再生し、各行の歌い始めで T を押します（Backspace：取り消して少し戻る、Esc：終了）",
     "Measure Latency": "遅延の測定",
     "Press T on each click (16 clicks after a 4-click count-in) to measure the tap delay":
         "クリック音に合わせて T を押し（4 回の予備拍の後に 16 回）、タップの遅れを測ります",
@@ -72,7 +72,7 @@ MESSAGES = {
     "No taps were recorded": "タップが記録されませんでした",
     "Recorded {} lines": "{} 行を記録しました",
     "Tap Sync  next line {} / {}": "タップで同期　次の行 {} / {}",
-    "T: line start   Backspace: undo   Esc: finish": "T：歌い始め　Backspace：取り消し　Esc：終了",
+    "T: line start   Backspace: undo   Esc: finish": "T：歌い始め　Backspace：取り消して少し戻る　Esc：終了",
     "Count-in {} / {}: just listen": "予備拍 {} / {}：聞くだけ",
     "Press T on each click  ({} / {})": "クリックに合わせて T（{} / {}）",
     "Ends by itself after the clicks. Esc: cancel": "クリックが終わると自動で終了。Esc：中止",
@@ -480,4 +480,7 @@ MESSAGES = {
     'Finish Tapping': '終了',
     'End Tap Sync and keep the taps so far (the same as Esc)': 'タップ同期を終了し、ここまでのタップを残します（Esc と同じ）',
     'There is no song to slow down: Tap Sync runs at normal speed': '遅くする曲がありません。通常の速さでタップ同期を行います',
+    'Countdown': 'カウントダウン',
+    'Count 3, 2, 1 before the song starts': '曲が始まる前に 3、2、1 と数えます',
+    'Tap from This Line': 'この行からタップ',
 }
