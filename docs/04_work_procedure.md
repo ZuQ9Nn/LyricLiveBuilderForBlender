@@ -376,8 +376,14 @@
   - 鍵：カットごとの構成が、おまかせの後も変わらない。
   - 出力：Unity の Prefab にカットごとの文字が出る。
 
+- リリース前の追加：歌詞の入力（外部エディタ、クリップボード、ファイル）。`tests/core/test_lyrics_timing.py` と `tests/blender/test_lyrics_input.py` に追加した。完了の条件は次のとおり。
+  - 外部エディタ：既定のアプリで開き、保存すると歌詞と行が更新され、同じ行のタップが残る。保存の途中や空のファイルを取り込まない。タップ同期の間は待つ。
+  - クリップボード：日本語を貼り付けられる。今の歌詞がある場合は確認が出る。空なら何も変えない。
+  - ファイル：UTF-8・BOM 付き・UTF-16・Shift_JIS の `.txt` と `.lrc` を読める。
+
 確認者の確認の補足：
 
+- 歌詞の入力：「外部エディタで編集」を押すとメモ帳などが開くこと。日本語を入力して保存すると、数秒以内に行リストが更新されること。Web などからコピーして「クリップボードから貼り付け」で取り込めること。Shift_JIS のテキストファイルも文字化けせずに読めること。
 - カウントダウン：「同期」パネルの「カウントダウン」を ON にして「タップ同期」を押す。3、2、1 の後に曲が始まり、数えている間の T は記録されないこと。
 - 途中の行から：行を選び、行の詳細の「この行からタップ」を押す。その行の少し前から再生され、前の行の時刻が変わらないこと。
 - 巻き戻し：タップの後に Backspace を押す。取り消されて約 3 秒戻り、押し直せること。
@@ -403,6 +409,7 @@ tests/run_core.sh            # Blender 同梱の Python で python -m unittest d
 ```
 blender --background --factory-startup --python tests/blender/test_phase1.py     # test_phase2 〜 6 も同様（4〜6 は -- --project <閉じたプロジェクト>）
 blender --factory-startup --enable-event-simulate tests/manual/check_phase1.blend --python tests/blender/test_tap_modal.py -- <結果のファイル>
+blender --factory-startup --python tests/blender/test_lyrics_input.py -- <結果のファイル>   # 歌詞の入力。タイマーとクリップボードに GUI が要る
 ```
 
 2 つ目は、キー入力を送ってモーダル操作を確かめます。ウィンドウが開き、約 30 秒クリック音が鳴ります。

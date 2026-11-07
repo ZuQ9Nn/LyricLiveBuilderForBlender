@@ -6,7 +6,7 @@ from bpy.app.translations import pgettext_iface as iface_
 
 from ..core import registry
 from ..props import FONT_ROLES, SECTION_KIND_ITEMS
-from . import project, tap_sync
+from . import operators_input, project, tap_sync
 from .lists import fmt_time
 
 ROLE_LABELS = {"display": "Heading Font", "serif": "Serif Font", "body": "Body Font", "mono": "Mono Font"}
@@ -51,6 +51,12 @@ class LLB_PT_lyrics(_Panel, bpy.types.Panel):
     def draw(self, context):
         proj = context.scene.llb
         col = self.layout.column()
+        col.operator("llb.edit_lyrics", icon="GREASEPENCIL")
+        if operators_input.watching():
+            labels(col, "Saving in the editor\nupdates the lyrics here", "INFO")
+        col.operator("llb.paste_lyrics", icon="PASTEDOWN")
+        col.operator("llb.load_lyrics", icon="FILE_TEXT")
+        col.separator()
         col.operator("llb.open_lyrics", icon="TEXT")
         col.prop(proj, "lyrics_text", text="")
         col.operator("llb.refresh", icon="FILE_REFRESH")

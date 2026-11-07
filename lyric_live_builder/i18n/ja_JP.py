@@ -8,7 +8,23 @@ MESSAGES = {
     "Sections and Lines": "セクションと行",
     # operators
     "Open Lyrics": "歌詞を開く",
-    "Create the lyrics text if needed and open it in the Text Editor": "歌詞のテキストを（無ければ作って）テキストエディタで開きます",
+    "Edit in External Editor": "外部エディタで編集",
+    "Paste from Clipboard": "クリップボードから貼り付け",
+    "Load Lyrics File": "ファイルから読み込む",
+    "Open the lyrics in your system's text editor, where Japanese can be typed. Saving there updates them here":
+        "メモ帳など、OS の既定のテキストエディタで歌詞を開きます。日本語を入力でき、保存すると自動で取り込みます",
+    "Replace the lyrics with the text copied to the clipboard": "コピーしたテキストで歌詞を置き換えます",
+    "Replace the lyrics with a text or LRC file (UTF-8, UTF-16 or Shift_JIS)":
+        "テキストファイルや LRC ファイルで歌詞を置き換えます（UTF-8・UTF-16・Shift_JIS）",
+    "Create the lyrics text if needed and open it in Blender's Text Editor (no Japanese typing there; pasting works)":
+        "必要なら歌詞のテキストを作り、Blender のテキストエディタで開きます（日本語の直接入力はできません。貼り付けはできます）",
+    "Saving in the editor\nupdates the lyrics here": "エディタで保存すると\n歌詞に自動で取り込みます",
+    "Could not open a text editor ({})": "テキストエディタを開けませんでした（{}）",
+    "Could not read the file ({})": "ファイルを読めませんでした（{}）",
+    "Replace the Lyrics?": "歌詞を置き換えますか？",
+    "The current lyrics are replaced": "今の歌詞は置き換えられます",
+    "The clipboard has no text": "クリップボードにテキストがありません",
+    "The file has no text": "ファイルにテキストがありません",
     "Read Lyrics": "歌詞を読み込む",
     "Read the lyrics again and update the lines and sections (taps and manual times are kept)":
         "歌詞を読み直して、行とセクションを更新します（タップと手動の時刻は残ります）",

@@ -15,7 +15,7 @@ license = ["SPDX:MIT"]
 copyright = ["2026 ZuQ9Nn", "2026 hakoniwa (JIZURA, ported logic)"]
 
 [permissions]
-files = "Read lyrics, fonts and audio; write export files for Unity"
+files = "Read lyrics, fonts, audio; write lyric edits and Unity exports"
 
 [build]
 paths_exclude_pattern = ["__pycache__/", "*.pyc", "mesh_optimizer/blender_manifest.toml"]

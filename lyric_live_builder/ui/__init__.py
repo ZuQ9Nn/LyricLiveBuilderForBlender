@@ -14,6 +14,7 @@ def register():
 
 
 def unregister():
+    operators_input.stop_watch()
     from ..preview import particles
     particles.unregister()
     for c in reversed(CLASSES):

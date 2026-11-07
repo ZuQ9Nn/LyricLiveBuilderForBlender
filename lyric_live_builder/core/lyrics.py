@@ -9,6 +9,16 @@ from dataclasses import dataclass, field
 
 from .rng import js_round
 
+def decode_text(data):
+    """Bytes of a text file: UTF-16 with a BOM, UTF-8 with or without one, else Shift_JIS."""
+    if data[:2] in (b"\xff\xfe", b"\xfe\xff"):
+        return data.decode("utf-16", errors="replace")
+    try:
+        return data.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        return data.decode("cp932", errors="replace")
+
+
 # ---- script classes for Japanese text ----
 _KANJI = re.compile(r"[㐀-鿿豈-﫿々〆ヶ]")
 _HIRA = re.compile(r"[ぁ-ゟ]")

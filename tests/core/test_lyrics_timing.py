@@ -166,6 +166,13 @@ class TestChunks(unittest.TestCase):
                          "きみのことを\nずっとずっとお\nもいだしてしま\nうよるのそら")
 
 
+class TestDecodeText(unittest.TestCase):
+    def test_encodings(self):
+        text = "夜明けの色を覚えてる\n[サビ]\nHello world"
+        for data in (text.encode("utf-8"), text.encode("utf-8-sig"), text.encode("utf-16"), text.encode("cp932")):
+            self.assertEqual(lyrics.decode_text(data), text)
+
+
 class TestParse(unittest.TestCase):
     def test_jizura_notation(self):
         p = lyrics.parse(SAMPLE)

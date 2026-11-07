@@ -25,7 +25,8 @@ add-on already contains it.
 
 ## From lyrics to a world
 
-1. **Lyrics**: write them in a Blender text. `A/B` breaks a chunk, `*word*` emphasizes, `line!` is a strong accent,
+1. **Lyrics**: **Edit in External Editor** opens them in your system's text editor and saving there updates them here;
+   you can also paste from the clipboard or load a file. `A/B` breaks a chunk, `*word*` emphasizes, `line!` is a strong accent,
    `[Chorus]` starts a section, and LRC time tags are read.
 2. **Fonts**: set at least the Body font. Characters missing from a font are listed.
 3. **Song**: load it. Tempo and beats are estimated.
@@ -116,7 +117,7 @@ MIT, see [LICENSE](LICENSE). Parts of the logic are ported from JIZURA (MIT, Cop
 
 ### 使い方
 
-1. 歌詞を Blender のテキストに書く（`A/B` で区切り、`*語*` で強調、`行!` で強いアクセント、`[サビ]` でセクション）
+1. 「外部エディタで編集」で歌詞を書く（メモ帳などが開き、保存すると自動で取り込みます。Blender のテキストエディタは日本語を直接入力できません。「クリップボードから貼り付け」「ファイルから読み込む」も使えます。`A/B` で区切り、`*語*` で強調、`行!` で強いアクセント、`[サビ]` でセクション）
 2. フォントを指定する（最低限「本文」）
 3. 曲を読み込む
 4. タップの遅延を一度測り、曲に合わせて行ごとにキーを押す（「タップの速さ」で、音程を保ったまま 0.75×・0.5× に遅くできます。記録されるのは本来の速さの時刻です。「カウントダウン」で 3、2、1 の後に始められ、行の詳細の「この行からタップ」で途中の行からやり直せます。Backspace で取り消すと、曲が少し戻ります）
