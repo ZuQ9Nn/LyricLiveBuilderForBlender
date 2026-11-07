@@ -23,9 +23,16 @@ def _collection(name, parent):
     return coll
 
 
-def clear(scene):
+def _suffix(root):
+    """Collections and the dome material of another root (the trial's Before / After) get its suffix."""
+    return "" if root == ROOT else root[len(ROOT):]
+
+
+def clear(scene, root=ROOT):
     """Remove the preview objects and their actions (shared glyph and built-in meshes stay for reuse)."""
-    root = bpy.data.collections.get(ROOT)
+    from . import materials
+    dome = bpy.data.materials.get(materials.DOME + _suffix(root))
+    root = bpy.data.collections.get(root)
     if root is None:
         return 0
     obs = [ob for ob in root.all_objects if ob.name != CAMERA_OBJECT]
@@ -38,8 +45,7 @@ def clear(scene):
         if data is not None and data.users == 0:
             bpy.data.meshes.remove(data)
     particles._cache.clear()
-    from . import materials
-    animation.clear_dome(bpy.data.materials.get(materials.DOME))
+    animation.clear_dome(dome)
     return len(obs)
 
 
@@ -61,13 +67,15 @@ def audience_camera(scene, coll):
     return ob
 
 
-def build(scene, baked, font_paths, resolution=6, panorama=""):
-    clear(scene)
-    root = _collection(ROOT, scene.collection)
-    cams = _collection(CAMERA, root)
-    audience_camera(scene, cams)
-    colls = {cat: _collection(name, root) for cat, name in CATEGORY_COLLECTIONS.items()}
-    obs = objects.build(baked, colls, font_paths, resolution, panorama)
+def build(scene, baked, font_paths, resolution=6, panorama="", root=ROOT):
+    from . import materials
+    clear(scene, root)
+    sfx = _suffix(root)
+    root = _collection(root, scene.collection)
+    if not sfx:
+        audience_camera(scene, _collection(CAMERA, root))
+    colls = {cat: _collection(name + sfx, root) for cat, name in CATEGORY_COLLECTIONS.items()}
+    obs = objects.build(baked, colls, font_paths, resolution, panorama, dome=materials.DOME + sfx)
     by_node = {}
     for tr in baked.tracks:
         by_node.setdefault(tr.node, []).append(tr)

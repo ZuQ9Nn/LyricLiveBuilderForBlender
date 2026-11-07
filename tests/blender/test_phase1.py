@@ -145,6 +145,18 @@ def main():
     check(tr == "セクションと行", f"Japanese translation ({tr})")
     bpy.context.preferences.view.language = "en_US"
 
+    # the pages at the top of the LyricLive tab: each panel shows on its own page only
+    from lyric_live_builder.ui import panels
+    ctx = type("Ctx", (), {"scene": bpy.context.scene})()
+    shown = {}
+    for page in ("setup", "compose", "output"):
+        proj.ui_page = page
+        shown[page] = {c.__name__ for c in panels.CLASSES
+                       if (not hasattr(c, "poll") or c.poll(ctx)) and not getattr(c, "bl_parent_id", "")}
+    check(shown["setup"] == {"LLB_PT_pages", "LLB_PT_lyrics", "LLB_PT_fonts", "LLB_PT_song", "LLB_PT_sync"}
+          and shown["compose"] == {"LLB_PT_pages", "LLB_PT_omakase", "LLB_PT_sections"}
+          and shown["output"] == {"LLB_PT_pages", "LLB_PT_effects", "LLB_PT_preview", "LLB_PT_export"}, f"pages {shown}")
+
     llb.unregister()
     check(not hasattr(bpy.types.Scene, "llb"), "unregister")
 

@@ -23,7 +23,7 @@ from bpy.app.translations import pgettext_iface as iface_
 
 from .. import prefs
 from ..core.timing import LATENCY_BPM, LATENCY_COUNT_IN, LATENCY_TAPS, tap_latency
-from . import project
+from . import project, trial
 from .overlay import Overlay
 
 CLICK_STRIP = "LLB_Click"
@@ -179,6 +179,7 @@ class LLB_OT_tap_sync(bpy.types.Operator):
 
     def invoke(self, context, event):
         global _current
+        trial.close_views()                  # its loop range would stop the playback
         # the frame clock has a bias of up to one frame; it cancels only at the measuring frame rate
         proj, f = context.scene.llb, project.fps(context.scene)
         if proj.latency_measured and proj.latency_fps > 0 and abs(proj.latency_fps - f) > 0.01:
@@ -397,6 +398,7 @@ class LLB_OT_measure_latency(bpy.types.Operator):
 
     def invoke(self, context, event):
         global _current
+        trial.close_views()
         scene = context.scene
         n = LATENCY_COUNT_IN + LATENCY_TAPS
         path = os.path.join(bpy.app.tempdir, "llb_click_120bpm.wav")

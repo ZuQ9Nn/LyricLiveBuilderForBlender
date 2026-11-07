@@ -24,7 +24,7 @@ MATERIALS = {"text": materials.text_material, "far": materials.far_material, "gl
              "gimmick": materials.gimmick_material}
 
 
-def build(baked, collections, font_paths, resolution=6, panorama=""):
+def build(baked, collections, font_paths, resolution=6, panorama="", dome=materials.DOME):
     """collections: {category: collection}; font_paths(role) -> font files to try. Returns {node id: object}."""
     obs = {}
     emitters = {e["node"]: e["spec"] for e in baked.emitters}
@@ -51,7 +51,7 @@ def build(baked, collections, font_paths, resolution=6, panorama=""):
             data = _builtin_mesh(n.mesh)
         if data is not None:
             # the dome material is refreshed every time (the panorama may have changed)
-            mat = materials.dome_material(panorama) if n.material == "dome" else None
+            mat = materials.dome_material(panorama, dome) if n.material == "dome" else None
             if not data.materials:
                 data.materials.append(mat or MATERIALS[n.material]())
         ob = bpy.data.objects.new(f"LLB_{n.name}", data)

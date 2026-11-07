@@ -6,7 +6,7 @@ from bpy.app.translations import pgettext_iface as iface_
 
 from ..core import registry
 from ..props import FONT_ROLES, SECTION_KIND_ITEMS
-from . import operators_input, project, tap_sync
+from . import operators_input, project, tap_sync, trial
 from .lists import fmt_time
 
 ROLE_LABELS = {"display": "Heading Font", "serif": "Serif Font", "body": "Body Font", "mono": "Mono Font"}
@@ -38,9 +38,30 @@ def prop_above(layout, data, name):
 
 
 class _Panel:
+    """One of the pages switched at the top of the LyricLive tab (design §13)."""
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "LyricLive"
+    page = "setup"
+
+    @classmethod
+    def poll(cls, context):
+        return context.scene.llb.ui_page == cls.page
+
+
+class LLB_PT_pages(bpy.types.Panel):
+    """Setup | Compose | Effects & Output: shorter than every panel in one column."""
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "LyricLive"
+    bl_label = "LyricLive Pages"
+    bl_options = {"HIDE_HEADER"}
+    bl_order = 0
+
+    def draw(self, context):
+        row = self.layout.row(align=True)
+        row.scale_y = 1.3
+        row.prop(context.scene.llb, "ui_page", expand=True)
 
 
 class LLB_PT_lyrics(_Panel, bpy.types.Panel):
@@ -151,6 +172,7 @@ class LLB_PT_sync(_Panel, bpy.types.Panel):
 
 
 class LLB_PT_omakase(_Panel, bpy.types.Panel):
+    page = "compose"
     bl_label = "Auto Compose"
     bl_order = 5
 
@@ -179,86 +201,102 @@ class LLB_PT_omakase(_Panel, bpy.types.Panel):
 
 
 class LLB_PT_sections(_Panel, bpy.types.Panel):
+    page = "compose"
     bl_label = "Sections and Lines"
     bl_order = 6
 
     def draw(self, context):
         proj = context.scene.llb
         col = self.layout.column()
-        labels(col, "Sections from headings" if proj.sections_from_headings else "Sections estimated\n(no headings)", "INFO")
-        col.template_list("LLB_UL_sections", "", proj, "sections", proj, "section_active", rows=4)
-        if 0 <= proj.section_active < len(proj.sections):
-            sec = proj.sections[proj.section_active]
-            col.prop(sec, "kind")
-            col.label(text=f"{fmt_time(sec.start)} – {fmt_time(sec.end)}", translate=False)
-            box = col.box()
-            box.enabled = not sec.locked
-            box.prop(sec, "theme")
-            box.prop(sec, "background")
-            prop_above(box, sec, "transition")
-            col.operator("llb.section_lock", text="Unlock Section" if sec.locked else "Lock Section",
-                         icon="UNLOCKED" if sec.locked else "LOCKED", depress=sec.locked)
+        if trial.is_open():
+            trial.draw_buttons(col, proj)
+            col.operator("llb.trial_refresh", icon="FILE_REFRESH")
+            if trial.error:
+                labels(col, trial.error, "ERROR")
+        else:
+            col.operator("llb.trial_open", icon="SPLIT_VERTICAL")
+        labels(col, "Changes show in the preview\nafter Generate", "INFO")
         col.separator()
-        col.template_list("LLB_UL_lines", "", proj, "lines", proj, "line_active", rows=6)
-        if 0 <= proj.line_active < len(proj.lines):
-            ln = proj.lines[proj.line_active]
-            box = col.box()
-            box.label(text=ln.text, translate=False)
-            box.label(text=iface_("Start {}  End {}  ({})").format(
-                fmt_time(ln.start), fmt_time(ln.end), iface_(ln.bl_rna.properties["source"].enum_items[ln.source].name)),
-                translate=False)
-            if 0 <= ln.section_index < len(proj.sections):
-                sec = proj.sections[ln.section_index]
-                box.label(text=iface_("Section {}").format(
-                    f"{ln.section_index + 1}. {sec.label or iface_(KIND_LABELS[sec.kind])}"), translate=False)
-            if ln.tap_time >= 0:
-                box.label(text=iface_("Tap {}").format(fmt_time(ln.tap_time)), translate=False)
-            row = box.row()
-            row.prop(ln, "use_manual")
-            sub = row.row()
-            sub.active = ln.use_manual
-            sub.prop(ln, "manual_start", text="")
-            box.operator("llb.tap_sync", text="Tap from This Line", icon="REC").first_line = proj.line_active
+        draw_sections(col, proj)
+
+
+def draw_sections(col, proj):
+    """Sections, lines and their details (the main panel and the trial window)."""
+    labels(col, "Sections from headings" if proj.sections_from_headings else "Sections estimated\n(no headings)", "INFO")
+    col.template_list("LLB_UL_sections", "", proj, "sections", proj, "section_active", rows=4)
+    if 0 <= proj.section_active < len(proj.sections):
+        sec = proj.sections[proj.section_active]
+        col.prop(sec, "kind")
+        col.label(text=f"{fmt_time(sec.start)} – {fmt_time(sec.end)}", translate=False)
+        box = col.box()
+        box.enabled = not sec.locked
+        box.prop(sec, "theme")
+        box.prop(sec, "background")
+        prop_above(box, sec, "transition")
+        col.operator("llb.section_lock", text="Unlock Section" if sec.locked else "Lock Section",
+                     icon="UNLOCKED" if sec.locked else "LOCKED", depress=sec.locked)
+    col.separator()
+    col.template_list("LLB_UL_lines", "", proj, "lines", proj, "line_active", rows=6)
+    if 0 <= proj.line_active < len(proj.lines):
+        ln = proj.lines[proj.line_active]
+        box = col.box()
+        box.label(text=ln.text, translate=False)
+        box.label(text=iface_("Start {}  End {}  ({})").format(
+            fmt_time(ln.start), fmt_time(ln.end), iface_(ln.bl_rna.properties["source"].enum_items[ln.source].name)),
+            translate=False)
+        if 0 <= ln.section_index < len(proj.sections):
+            sec = proj.sections[ln.section_index]
+            box.label(text=iface_("Section {}").format(
+                f"{ln.section_index + 1}. {sec.label or iface_(KIND_LABELS[sec.kind])}"), translate=False)
+        if ln.tap_time >= 0:
+            box.label(text=iface_("Tap {}").format(fmt_time(ln.tap_time)), translate=False)
+        row = box.row()
+        row.prop(ln, "use_manual")
+        sub = row.row()
+        sub.active = ln.use_manual
+        sub.prop(ln, "manual_start", text="")
+        box.operator("llb.tap_sync", text="Tap from This Line", icon="REC").first_line = proj.line_active
+        row = box.row(align=True)
+        row.operator("llb.line_lock", text="Unlock Line" if ln.locked else "Lock Line",
+                     icon="UNLOCKED" if ln.locked else "LOCKED", depress=ln.locked)
+        sub = row.row(align=True)
+        sub.enabled = not ln.locked
+        sub.operator("llb.line_reroll", icon="FILE_REFRESH")
+        box.separator()
+        box.prop(ln, "is_3d")
+        if ln.is_3d:
             row = box.row(align=True)
-            row.operator("llb.line_lock", text="Unlock Line" if ln.locked else "Lock Line",
-                         icon="UNLOCKED" if ln.locked else "LOCKED", depress=ln.locked)
-            sub = row.row(align=True)
-            sub.enabled = not ln.locked
-            sub.operator("llb.line_reroll", icon="FILE_REFRESH")
-            box.separator()
-            box.prop(ln, "is_3d")
-            if ln.is_3d:
-                row = box.row(align=True)
-                row.prop(ln, "depth")
-                row.prop(ln, "bevel", text="")
-            prop_above(box, ln, "layout")
-            if not ln.is_3d and ln.layout != "AUTO" and getattr(registry.get("layout", ln.layout), "only_3d", False):
-                labels(box, "This layout is for 3D lines.\nIt is chosen automatically", "ERROR")
-            box.prop(ln, "enter")
-            box.prop(ln, "hold")
-            box.prop(ln, "exit")
-            box.prop(ln, "distance_layer")
-            box.prop(ln, "cuts")
-            sub = box.row()
-            sub.active = ln.cuts in ("AUTO", "1")           # a split line never stays on stage
-            sub.prop(ln, "persist")
-            prop_above(box, ln, "guide")
-            box.separator()
-            prop_above(box, ln, "gimmick")
-            sub = box.column()
-            sub.active = ln.gimmick != "none"
-            sub.prop(ln, "gimmick_show")
-            if ln.gimmick == "emblem":
-                sub.prop(ln, "gimmick_word")
-            box.separator()
-            prop_above(box, ln, "particle")
-            prop_above(box, ln, "background")
-            prop_above(box, ln, "transition").active = ln.background != "AUTO"
-            if ln.background == "panorama" and not proj.panorama_path:
-                labels(box, "Set the panorama image\nin the Effects panel", "ERROR")
+            row.prop(ln, "depth")
+            row.prop(ln, "bevel", text="")
+        prop_above(box, ln, "layout")
+        if not ln.is_3d and ln.layout != "AUTO" and getattr(registry.get("layout", ln.layout), "only_3d", False):
+            labels(box, "This layout is for 3D lines.\nIt is chosen automatically", "ERROR")
+        box.prop(ln, "enter")
+        box.prop(ln, "hold")
+        box.prop(ln, "exit")
+        box.prop(ln, "distance_layer")
+        box.prop(ln, "cuts")
+        sub = box.row()
+        sub.active = ln.cuts in ("AUTO", "1")           # a split line never stays on stage
+        sub.prop(ln, "persist")
+        prop_above(box, ln, "guide")
+        box.separator()
+        prop_above(box, ln, "gimmick")
+        sub = box.column()
+        sub.active = ln.gimmick != "none"
+        sub.prop(ln, "gimmick_show")
+        if ln.gimmick == "emblem":
+            sub.prop(ln, "gimmick_word")
+        box.separator()
+        prop_above(box, ln, "particle")
+        prop_above(box, ln, "background")
+        prop_above(box, ln, "transition").active = ln.background != "AUTO"
+        if ln.background == "panorama" and not proj.panorama_path:
+            labels(box, "Set the panorama image\nin the Effects panel", "ERROR")
 
 
 class LLB_PT_effects(_Panel, bpy.types.Panel):
+    page = "output"
     bl_label = "Stage Effects"
     bl_order = 7
 
@@ -286,6 +324,7 @@ class LLB_PT_effects(_Panel, bpy.types.Panel):
 
 
 class LLB_PT_preview(_Panel, bpy.types.Panel):
+    page = "output"
     bl_label = "Preview"
     bl_order = 8
 
@@ -326,6 +365,7 @@ def draw_budget(layout, st):
 
 
 class LLB_PT_export(_Panel, bpy.types.Panel):
+    page = "output"
     bl_label = "Unity Export"
     bl_order = 9
 
@@ -364,5 +404,5 @@ class LLB_PT_export(_Panel, bpy.types.Panel):
                 box.label(text=st.log_path, translate=False)
 
 
-CLASSES = (LLB_PT_lyrics, LLB_PT_lyrics_notation, LLB_PT_fonts, LLB_PT_song, LLB_PT_sync, LLB_PT_omakase,
+CLASSES = (LLB_PT_pages, LLB_PT_lyrics, LLB_PT_lyrics_notation, LLB_PT_fonts, LLB_PT_song, LLB_PT_sync, LLB_PT_omakase,
            LLB_PT_sections, LLB_PT_effects, LLB_PT_preview, LLB_PT_export)

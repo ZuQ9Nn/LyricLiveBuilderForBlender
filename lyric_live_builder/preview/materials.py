@@ -266,8 +266,8 @@ def _slot_group():
     return ng
 
 
-def dome_material(panorama_path=""):
-    mat, t = _new_material(DOME, method="DITHERED", version=3)
+def dome_material(panorama_path="", name=DOME):
+    mat, t = _new_material(name, method="DITHERED", version=3)
     if t is None:
         _set_panorama(mat, panorama_path)
         return mat

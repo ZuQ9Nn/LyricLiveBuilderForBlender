@@ -27,6 +27,8 @@ class Overlay:
             lines = self.lines_fn()
         except Exception:
             return
+        if not lines:
+            return
         scale = bpy.context.preferences.system.ui_scale
         font = 0
         pad = 12 * scale

@@ -293,19 +293,36 @@ def metrics(proj):
     return get
 
 
-def section_inputs(proj):
+class _Saved:
+    """An item's properties, with the values saved for the trial's Before taking their place."""
+
+    def __init__(self, item, saved):
+        self._item, self._saved = item, saved or {}
+
+    def __getattr__(self, name):
+        return self._saved[name] if name in self._saved else getattr(self._item, name)
+
+
+def _saved(items, saved, same):
+    """saved[i] for the items it still belongs to (same text / same count), else nothing."""
+    return [_Saved(x, saved[i] if saved and i < len(saved) and same(x, saved[i]) else None) for i, x in enumerate(items)]
+
+
+def section_inputs(proj, snap=None):
+    """snap: the trial's saved state (ui/trial.py); its values replace the section settings."""
     from ..core.model import SectionInput
     auto = lambda v: "" if v == "AUTO" else v
-    return [SectionInput(s.start, s.end, s.kind, auto(s.theme), auto(s.background), auto(s.transition))
-            for s in proj.sections]
+    secs = _saved(proj.sections, snap and snap["sections"], lambda x, s: len(snap["sections"]) == len(proj.sections))
+    return [SectionInput(s.start, s.end, s.kind, auto(s.theme), auto(s.background), auto(s.transition)) for s in secs]
 
 
-def line_inputs(proj):
-    """Scene lines -> core LineInputs (notation flags re-read from the lyrics)."""
+def line_inputs(proj, snap=None):
+    """Scene lines -> core LineInputs (notation flags re-read from the lyrics).
+    snap: the trial's saved state; its values replace the settings of lines whose text is unchanged."""
     from ..core.model import LineInput
     parsed = lyrics.parse(lyrics_source(proj)).lines
     out = []
-    for i, ln in enumerate(proj.lines):
+    for i, ln in enumerate(_saved(proj.lines, snap and snap["lines"], lambda x, s: x.text == s["text"])):
         src = parsed[i] if i < len(parsed) else None
         auto = lambda v: "" if v == "AUTO" else v
         out.append(LineInput(

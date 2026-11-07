@@ -18,7 +18,8 @@ It makes world content only, not avatars.
 ## Install
 
 1. In Blender: **Edit > Preferences > Get Extensions**, the arrow at the top right, **Install from Disk**.
-2. Choose `lyric_live_builder-<version>.zip`. The **LyricLive** tab appears in the 3D View sidebar (`N`).
+2. Choose `lyric_live_builder-<version>.zip`. The **LyricLive** tab appears in the 3D View sidebar (`N`). The buttons at its
+   top switch between **Setup**, **Compose** and **Effects & Output**, in the order of the work.
 
 `mesh_optimizer-<version>.zip` is the text and mesh clean-up on its own, for use without the main add-on. The main
 add-on already contains it.
@@ -37,6 +38,7 @@ add-on already contains it.
 6. **Sections and Lines**: fix what you want by hand. Each line has its own layout, motion, gaze guide, stage object
    and particles.
    **Line Cuts** shows a line in 2 to 6 parts, one after the other.
+   **Try Out (Before / After)** adds two views beside the sidebar, showing the picked line as last generated and as set now.
 7. **Unity Export**: choose the project and press Export. Unity builds the Prefab by itself, whether it is open or not.
 
 Put the Prefab in your scene. With **Udon Sync** on, a small white cube behind the audience is the start button: move
@@ -112,7 +114,7 @@ MIT, see [LICENSE](LICENSE). Parts of the logic are ported from JIZURA (MIT, Cop
 ### インストール
 
 「編集 → プリファレンス → 拡張機能」の右上の矢印から「ディスクからインストール」で
-`lyric_live_builder-<版>.zip` を入れると、3D ビューのサイドバー（`N`）に「LyricLive」タブが出ます。
+`lyric_live_builder-<版>.zip` を入れると、3D ビューのサイドバー（`N`）に「LyricLive」タブが出ます。上部のボタンで、作業の順に「準備」「構成」「演出・出力」を切り替えます。
 `mesh_optimizer-<版>.zip` は、文字とメッシュの整理だけを単体で使うためのものです（本体には含まれています）。
 
 ### 使い方
@@ -122,7 +124,7 @@ MIT, see [LICENSE](LICENSE). Parts of the logic are ported from JIZURA (MIT, Cop
 3. 曲を読み込む
 4. タップの遅延を一度測り、曲に合わせて行ごとにキーを押す（「タップの速さ」で、音程を保ったまま 0.75×・0.5× に遅くできます。記録されるのは本来の速さの時刻です。「カウントダウン」で 3、2、1 の後に始められ、行の詳細の「この行からタップ」で途中の行からやり直せます。Backspace で取り消すと、曲が少し戻ります）
 5. 「おまかせ」を押す（押すたびに新しい案。「ここだけ変える」で一部だけ振り直し、鍵を掛けた行は残る）
-6. 「セクションと行」で、気になる行を手で直す（「カット」で、1 行を 2〜6 回に分けて順に見せられます）
+6. 「セクションと行」で、気になる行を手で直す（「カット」で、1 行を 2〜6 回に分けて順に見せられます。「試し見」で、変える前と後を 3D ビューの横に並べて見られます）
 7. 「Unity 出力」でプロジェクトを選んで出力する（Unity が開いていても閉じていても、自動で組み立てます）
 
 ### ステージの物体

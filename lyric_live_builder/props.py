@@ -107,6 +107,30 @@ def _kind_set_by_user(self, context):
     from .ui import project
     if not project.is_busy():
         self.user_kind = True
+    _trial(self, context)
+
+
+def _trial(self, context):
+    """A line / section setting changed: the trial window's After follows (spec §6.3)."""
+    from .ui import trial
+    trial.changed()
+
+
+def _trial_mute(self, context):
+    from .ui import trial
+    trial.set_mute(context.scene)
+
+
+def _pick_line(self, context):
+    from .ui import trial
+    self.trial_focus = "line"
+    trial.changed(both=True)
+
+
+def _pick_section(self, context):
+    from .ui import trial
+    self.trial_focus = "section"
+    trial.changed(both=True)
 
 
 class LLBFx(bpy.types.PropertyGroup):
@@ -172,9 +196,9 @@ class LLBSection(bpy.types.PropertyGroup):
     label: StringProperty(name="Heading Text", description="Heading text from the lyrics")
     start: FloatProperty(name="Start", unit="TIME_ABSOLUTE")
     end: FloatProperty(name="End", unit="TIME_ABSOLUTE")
-    theme: EnumProperty(name="Theme", items=THEME_ITEMS)
-    background: EnumProperty(name="Background", items=BACKGROUND_ITEMS)
-    transition: EnumProperty(name="Transition", items=TRANSITION_ITEMS)
+    theme: EnumProperty(name="Theme", items=THEME_ITEMS, update=_trial)
+    background: EnumProperty(name="Background", items=BACKGROUND_ITEMS, update=_trial)
+    transition: EnumProperty(name="Transition", items=TRANSITION_ITEMS, update=_trial)
     locked: BoolProperty(name="Lock State", description="Keep the theme, background and transition")
     lock_frozen: StringProperty(description="Fields the lock filled in (set back to automatic on unlock)")
 
@@ -193,30 +217,30 @@ class LLBLine(bpy.types.PropertyGroup):
                              description="Use the time entered here instead of the tap / estimate")
     manual_start: FloatProperty(name="Manual Start", min=0.0, unit="TIME_ABSOLUTE", update=_recompute)
     # text details (spec §6.2); AUTO = left to the planner
-    is_3d: BoolProperty(name="3D Text", description="Extruded letters with visible sides")
+    is_3d: BoolProperty(name="3D Text", description="Extruded letters with visible sides", update=_trial)
     depth: FloatProperty(name="Text Thickness", default=0.15, min=0.02, max=1.0, subtype="FACTOR",
-                         description="Thickness of 3D letters relative to their size")
-    bevel: EnumProperty(name="Bevel", items=BEVEL_ITEMS, default="0.015")
-    layout: EnumProperty(name="Layout", items=LAYOUT_ITEMS)
-    enter: EnumProperty(name="Entrance", items=ENTER_ITEMS)
-    hold: EnumProperty(name="Hold", items=HOLD_ITEMS)
-    exit: EnumProperty(name="Exit Motion", items=EXIT_ITEMS)
-    distance_layer: EnumProperty(name="Distance Layer", items=DISTANCE_ITEMS)
+                         description="Thickness of 3D letters relative to their size", update=_trial)
+    bevel: EnumProperty(name="Bevel", items=BEVEL_ITEMS, default="0.015", update=_trial)
+    layout: EnumProperty(name="Layout", items=LAYOUT_ITEMS, update=_trial)
+    enter: EnumProperty(name="Entrance", items=ENTER_ITEMS, update=_trial)
+    hold: EnumProperty(name="Hold", items=HOLD_ITEMS, update=_trial)
+    exit: EnumProperty(name="Exit Motion", items=EXIT_ITEMS, update=_trial)
+    distance_layer: EnumProperty(name="Distance Layer", items=DISTANCE_ITEMS, update=_trial)
     cuts: EnumProperty(name="Line Cuts", items=CUT_ITEMS,
-                       description="Show this line in parts one after the other, as they are sung. Planner's Choice keeps it whole")
-    persist: EnumProperty(name="Leaves", items=PERSIST_ITEMS)
-    guide: EnumProperty(name="Gaze Guide", items=GUIDE_ITEMS)
-    gimmick: EnumProperty(name="Stage Object", items=GIMMICK_ITEMS)
-    gimmick_show: EnumProperty(name="How It Appears", items=SHOW_ITEMS)
-    gimmick_word: StringProperty(name="Emblem Word", description="The emblem's text (empty = the keyword or the longest chunk)")
+                       description="Show this line in parts one after the other, as they are sung. Planner's Choice keeps it whole", update=_trial)
+    persist: EnumProperty(name="Leaves", items=PERSIST_ITEMS, update=_trial)
+    guide: EnumProperty(name="Gaze Guide", items=GUIDE_ITEMS, update=_trial)
+    gimmick: EnumProperty(name="Stage Object", items=GIMMICK_ITEMS, update=_trial)
+    gimmick_show: EnumProperty(name="How It Appears", items=SHOW_ITEMS, update=_trial)
+    gimmick_word: StringProperty(name="Emblem Word", description="The emblem's text (empty = the keyword or the longest chunk)", update=_trial)
     particle: EnumProperty(name="Line Particles", items=PARTICLE_ITEMS,
-                           description="Particles added while this line is on stage")
-    background: EnumProperty(name="Background from Here", items=BACKGROUND_ITEMS)
-    transition: EnumProperty(name="Transition", items=TRANSITION_ITEMS)
+                           description="Particles added while this line is on stage", update=_trial)
+    background: EnumProperty(name="Background from Here", items=BACKGROUND_ITEMS, update=_trial)
+    transition: EnumProperty(name="Transition", items=TRANSITION_ITEMS, update=_trial)
     locked: BoolProperty(name="Lock State", description="Make It for Me and re-rolls keep this line as it is")
     lock_frozen: StringProperty(description="Fields the lock filled in (set back to automatic on unlock)")
-    lock_cuts: StringProperty(description="JSON of what each cut had when the line was locked")
-    seed_offset: IntProperty(name="Re-roll Count", min=0)
+    lock_cuts: StringProperty(description="JSON of what each cut had when the line was locked", update=_trial)
+    seed_offset: IntProperty(name="Re-roll Count", min=0, update=_trial)
 
 
 class LLBProject(bpy.types.PropertyGroup):
@@ -244,8 +268,16 @@ class LLBProject(bpy.types.PropertyGroup):
     sections_from_headings: BoolProperty(default=False)
     sections: CollectionProperty(type=LLBSection)
     lines: CollectionProperty(type=LLBLine)
-    section_active: IntProperty()
-    line_active: IntProperty()
+    section_active: IntProperty(update=_pick_section)
+    line_active: IntProperty(update=_pick_line)
+    ui_page: EnumProperty(name="LyricLive Page", items=[("setup", "Setup", "Lyrics, fonts, song and sync"),
+                                              ("compose", "Compose", "Make It for Me, sections and lines"),
+                                              ("output", "Effects & Output", "Stage effects, preview and Unity export")])
+    trial_focus: EnumProperty(items=[("line", "Lyric Line", ""), ("section", "Section", "")],
+                              description="What the trial window shows: the line or the section picked last")
+    trial_mute: BoolProperty(name="Mute the Song", update=_trial_mute,
+                             description="Silence the song while trying things out (back to as it was on close)")
+    trial_snapshot: StringProperty(description="JSON of the settings at the last Generate (the trial's Before)")
     # Make It for Me (spec §6.1)
     mood: EnumProperty(name="Mood", items=MOOD_ITEMS, default="chaos")
     style: EnumProperty(name="Style", items=STYLE_ITEMS, default="noir")

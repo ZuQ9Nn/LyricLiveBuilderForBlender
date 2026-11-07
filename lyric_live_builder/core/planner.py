@@ -227,3 +227,12 @@ class _Ctx:
     def __init__(self, text, chunks):
         self.text = text
         self.chunks = chunks or lyrics.chunk_text(text)
+
+
+def subset(plan, t0, t1, line=None):
+    """What the trial view shows from t0 to t1: one line (or none) with its stage object, and the world around it."""
+    return replace(plan, lines=[x for x in plan.lines if x.index == line],
+                   gimmicks=[g for g in plan.gimmicks if g["line"] == line],
+                   emitters=[e for e in plan.emitters if e["start"] < t1 and e["end"] > t0],
+                   events=[e for e in plan.events if t0 <= e["t"] <= t1])
+

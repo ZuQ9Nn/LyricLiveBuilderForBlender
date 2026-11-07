@@ -107,25 +107,28 @@ def history_state(proj, index):
 
 # ---------------- plan ----------------
 
-def settings(proj):
+def settings(proj, st=None):
     info = project.audio_info(proj)
     beats = audio.beat_grid(proj.bpm, proj.beat_offset, proj.duration) if proj.bpm > 0 else (info.beats if info else None)
     pano = bool(proj.panorama_path) and os.path.isfile(bpy.path.abspath(proj.panorama_path))
     p = prefs.get(bpy.context)
-    return omakase.settings(state(proj), energy=info.energy if info else None,
+    return omakase.settings(st or state(proj), energy=info.energy if info else None,
                             energy_rate=info.energy_rate if info else 50.0, beats=beats, panorama=pano,
                             spectrum=info.spectrum if info else None, user_assets=gimmick_assets.assets(),
                             user_words=synonyms.parse_user(p.gimmick_words) if p else {})
 
 
-def make_plan(proj):
+def make_plan(proj, snap=None):
+    """snap: the trial's saved state (Before); None = the settings now."""
     sync_parts(proj)
-    return planner.plan(project.line_inputs(proj), project.section_inputs(proj), proj.duration, proj.seed,
-                        bpm=proj.bpm, settings=settings(proj))
+    st = snap["state"] if snap else None
+    return planner.plan(project.line_inputs(proj, snap), project.section_inputs(proj, snap), proj.duration,
+                        st["seed"] if st else proj.seed, bpm=proj.bpm, settings=settings(proj, st))
 
 
 def build_preview(context):
     """Plan, bake and build the preview. Returns (characters, seconds); raises ValueError on bad input."""
+    from . import trial
     scene = context.scene
     proj = scene.llb
     if not project.has_any_font(proj):
@@ -142,6 +145,7 @@ def build_preview(context):
                                   panorama=proj.panorama_path)
     finally:
         wm.progress_end()
+    trial.built(scene)
     n = sum(1 for nid, ob in obs.items() if nid.startswith("line") and ob.type == "MESH")
     return n, time.perf_counter() - t0
 
