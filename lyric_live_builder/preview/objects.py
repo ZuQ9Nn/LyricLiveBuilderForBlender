@@ -21,6 +21,7 @@ def _builtin_mesh(key):
 
 
 MATERIALS = {"text": materials.text_material, "far": materials.far_material, "glow": materials.glow_material,
+             "line_fx": materials.line_fx_material,
              "gimmick": materials.gimmick_material}
 
 

@@ -388,11 +388,39 @@ class TestOmakase(unittest.TestCase):
         for _ in range(40):
             state = omakase.omakase(state, rnd)
             seen.add(state["mood"])
-        self.assertEqual(seen, set(moods.ORDER))
+        self.assertEqual(seen, set(moods.ORDER) - set(moods.STICKY))       # horror is never rolled
         r = omakase.reroll(state, "text", rnd)
         self.assertEqual(r["stage_offsets"], {"2": 1})
         self.assertEqual({k: v for k, v in r.items() if k != "stage_offsets"},
                          {k: v for k, v in state.items() if k != "stage_offsets"})
+
+
+    def test_horror_is_the_users_choice(self):
+        rnd = Rng(5)
+        state = {"mood": "pop", "style": "", "fx": {}, "disabled": {}, "accent": "", "seed": 1, "stage_offsets": {}}
+        for _ in range(60):
+            state = omakase.omakase(state, rnd)
+            self.assertNotEqual(state["mood"], "horror")
+            self.assertFalse(state["style"].startswith("hr_"), state["style"])     # horror styles: horror only
+        state["mood"] = "horror"
+        for _ in range(10):
+            state = omakase.omakase(state, rnd)
+            self.assertEqual(state["mood"], "horror")                            # kept once chosen
+            self.assertIn(state["style"], moods.MOODS["horror"]["styles"] + tuple(
+                k for k in styles.ORDER if "horror" in styles.STYLES[k].get("moods", ("horror",))))
+
+    def test_part_groups_follow_the_mood(self):
+        from lyric_live_builder.core import registry
+        lines = inputs(24)
+        duration = lines[-1].end + 2.0
+        for mood, banned in (("calm", ("kinetic", "typo", "horror")), ("pop", ("typo", "horror")),
+                             ("editorial", ("kinetic", "horror")), ("horror", ("kinetic", "typo"))):
+            p = planner.plan(lines, sections_for(duration), duration, 7, bpm=120, settings=model.Settings(mood=mood))
+            used = {registry.get(kind, getattr(lp, kind)).group for lp in p.lines for kind in ("enter", "hold", "exit")}
+            self.assertFalse(used & set(banned), (mood, used))
+        lines[2].hold = "hr_twitch"                                                 # set by hand: always used
+        p = planner.plan(lines, sections_for(duration), duration, 7, bpm=120, settings=model.Settings(mood="calm"))
+        self.assertEqual(p.lines[2].hold, "hr_twitch")
 
 
 class TestAudioSpectrum(unittest.TestCase):

@@ -133,6 +133,8 @@ def build(key):
                 "city": city, "water": water}[arg]()
     if kind == "orb":
         return icosphere(2, 0.5)
+    if kind == "quad":
+        return quad()
     if kind == "shape":
         return particle_shape(arg)
     if kind == "gimmick":

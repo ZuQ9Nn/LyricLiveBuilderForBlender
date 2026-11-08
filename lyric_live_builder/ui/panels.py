@@ -220,6 +220,37 @@ class LLB_PT_sections(_Panel, bpy.types.Panel):
         draw_sections(col, proj)
 
 
+def part_field(layout, proj, ln, field, above=False):
+    """A layout / motion field; with a group picked, a menu of that group's parts only (design §13)."""
+    if proj.part_group == "all":
+        (prop_above(layout, ln, field) if above else layout.prop(ln, field))
+        return
+    prop = ln.bl_rna.properties[field]
+    current = iface_(prop.enum_items[getattr(ln, field)].name)
+    row = layout.column(align=True) if above else layout.row()
+    row.label(text=iface_(prop.name) + ("" if above else ":"), translate=False)
+    row.menu(f"LLB_MT_pick_{field}", text=current, translate=False)
+
+
+class _PickMenu:
+    bl_label = "Parts of the Group"
+    field = ""
+
+    def draw(self, context):
+        proj = context.scene.llb
+        col = self.layout.column()
+        op = col.operator("llb.pick_part", text=iface_("Planner's Choice"), translate=False)
+        op.field, op.key = self.field, "AUTO"
+        for part in registry.parts(self.field):
+            if part.group == proj.part_group:
+                op = col.operator("llb.pick_part", text=iface_(part.name), translate=False)
+                op.field, op.key = self.field, part.key
+
+
+PICK_MENUS = tuple(type(f"LLB_MT_pick_{f}", (_PickMenu, bpy.types.Menu), {"bl_idname": f"LLB_MT_pick_{f}", "field": f})
+                   for f in ("layout", "enter", "hold", "exit"))
+
+
 def draw_sections(col, proj):
     """Sections, lines and their details (the main panel and the trial window)."""
     labels(col, "Sections from headings" if proj.sections_from_headings else "Sections estimated\n(no headings)", "INFO")
@@ -268,12 +299,12 @@ def draw_sections(col, proj):
             row = box.row(align=True)
             row.prop(ln, "depth")
             row.prop(ln, "bevel", text="")
-        prop_above(box, ln, "layout")
+        box.prop(proj, "part_group", text="")
+        part_field(box, proj, ln, "layout", above=True)
         if not ln.is_3d and ln.layout != "AUTO" and getattr(registry.get("layout", ln.layout), "only_3d", False):
             labels(box, "This layout is for 3D lines.\nIt is chosen automatically", "ERROR")
-        box.prop(ln, "enter")
-        box.prop(ln, "hold")
-        box.prop(ln, "exit")
+        for field in ("enter", "hold", "exit"):
+            part_field(box, proj, ln, field)
         box.prop(ln, "distance_layer")
         box.prop(ln, "cuts")
         sub = box.row()
@@ -404,5 +435,5 @@ class LLB_PT_export(_Panel, bpy.types.Panel):
                 box.label(text=st.log_path, translate=False)
 
 
-CLASSES = (LLB_PT_pages, LLB_PT_lyrics, LLB_PT_lyrics_notation, LLB_PT_fonts, LLB_PT_song, LLB_PT_sync, LLB_PT_omakase,
+CLASSES = PICK_MENUS + (LLB_PT_pages, LLB_PT_lyrics, LLB_PT_lyrics_notation, LLB_PT_fonts, LLB_PT_song, LLB_PT_sync, LLB_PT_omakase,
            LLB_PT_sections, LLB_PT_effects, LLB_PT_preview, LLB_PT_export)

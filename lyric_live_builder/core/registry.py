@@ -6,6 +6,15 @@ import numpy as np
 from . import xform
 
 _parts = {"layout": {}, "enter": {}, "hold": {}, "exit": {}}
+GROUPS = ("basic", "extra", "kinetic", "typo", "horror")
+# moods in which おまかせ may pick a part of the group (spec §7.4); a part set by hand is always used
+GROUP_MOODS = {"kinetic": ("pop", "glitch", "graphic", "chaos"), "typo": ("editorial", "graphic", "chaos"),
+               "horror": ("horror",)}
+
+
+def group_ok(part, mood):
+    allowed = GROUP_MOODS.get(getattr(part, "group", "basic"))
+    return allowed is None or (mood or "chaos") in allowed
 
 
 def register(kind, key):
@@ -34,7 +43,7 @@ def parts(kind):
 
 def _load():
     # importing the part modules runs their @register decorators
-    from .parts import layouts_3d, layouts_basic, motions_enter, motions_exit, motions_hold  # noqa: F401
+    from .parts import layouts_3d, layouts_basic, motions_enter, motions_exit, motions_hold, motions_hold_jz  # noqa: F401
 
 
 # ---------------- layouts ----------------
@@ -75,6 +84,7 @@ class LayoutPart:
     name = ""
     tags = ()
     weight = 1.0
+    group = "basic"
     supports_2d = True
     supports_3d = True
     only_3d = False
@@ -110,18 +120,20 @@ class Delta:
     """Offsets added to the rest pose, per glyph (G) and time sample (T); location is in the
     glyph's own rest frame (x along the text, z up, -y toward the viewer)."""
 
-    def __init__(self, g, t, loc=None, rot=None, scale=None, alpha=None):
+    def __init__(self, g, t, loc=None, rot=None, scale=None, alpha=None, mask=None):
         shape = (g, t)
         self.loc = np.zeros(shape + (3,)) if loc is None else np.broadcast_to(loc, shape + (3,)).astype(np.float64)
         self.rot = np.broadcast_to(xform.IDENTITY, shape + (4,)).copy() if rot is None else \
             np.broadcast_to(rot, shape + (4,)).astype(np.float64)
         self.scale = np.ones(shape + (3,)) if scale is None else np.broadcast_to(scale, shape + (3,)).astype(np.float64)
         self.alpha = np.ones(shape) if alpha is None else np.broadcast_to(alpha, shape).astype(np.float64)
+        # how much of the glyph its part's mask shows (1 = all; design §5.6)
+        self.mask = np.ones(shape) if mask is None else np.broadcast_to(mask, shape).astype(np.float64)
 
     def then(self, other):
         """Combine two deltas (both apply)."""
         return Delta(self.loc.shape[0], self.loc.shape[1], self.loc + other.loc, xform.mul(other.rot, self.rot),
-                     self.scale * other.scale, self.alpha * other.alpha)
+                     self.scale * other.scale, self.alpha * other.alpha, self.mask * other.mask)
 
 
 @dataclass
@@ -135,13 +147,25 @@ class MotionCtx:
     bpm: float
     seed: int
     strength: float = 0.7             # fx motion (0..1)
+    words: np.ndarray = None          # (G,) number of the chunk (word) each glyph belongs to
+    chars: tuple = None               # (G,) the glyphs' characters
 
 
 class MotionPart:
     name = ""
     tags = ()
     weight = 1.0
+    group = "basic"
     stagger = 0.04                    # seconds between glyphs
+    uses_mask = False                 # returns Delta.mask; mask_shape() says how it cuts
+    line_fx = False                   # draws on a plane in front of the line too (wipe bar, checker tiles)
+    band_copies = 0                   # slides the glyphs in as this many horizontal bands (copies, design §5.6)
+
+    def mask_shape(self, ctx):
+        """(kind, value, seed, 0): 1 wipe (value 0 from the left, 1 from the right), 2 bands (value: count,
+        alternate sides), 3 checker (value: cell size in em), 4 one band only (value: count, seed: the band).
+        See LLBMask.cginc / preview materials.mask_reveal."""
+        return (0.0, 0.0, 0.0, 0.0)
 
     def windows(self, ctx, dur):
         """Per glyph start times (G,) of this motion's window of length dur."""

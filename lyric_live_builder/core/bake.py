@@ -9,7 +9,7 @@ from .model import BakedScene, MeshSource, Node, Track
 from .parts.common import in_out_sine, out_cubic
 
 RATE = 30.0                                      # samples per second
-TOL = {"location": 0.001, "rotation": 0.2 * math.pi / 180 / 2, "scale": 0.005, "color": 1 / 255}
+TOL = {"location": 0.001, "rotation": 0.2 * math.pi / 180 / 2, "scale": 0.005, "color": 1 / 255, "mask": 0.002}
 ACCENT = (1.0, 0.82, 0.3)
 WHITE = (1.0, 1.0, 1.0)
 
@@ -117,6 +117,108 @@ def _line_meshes(candidates, nodes, meshes, tracks):
                               np.array([[x[1]] for x in keys], dtype=np.float32))
 
 
+MASK_MARGIN = 0.6                                # em around the glyph centres: the mask covers the whole line
+
+
+def _mask_boxes(rest_loc, rest_rot, em):
+    """(G, 4) the line's extent (x0, y0, x1, y1) in each glyph's own coordinates (em; glyph x, glyph up)."""
+    lo, hi = rest_loc.min(axis=0) - MASK_MARGIN * em, rest_loc.max(axis=0) + MASK_MARGIN * em
+    out = np.zeros((len(rest_loc), 4))
+    for k in range(len(rest_loc)):
+        corners = np.array([[x, rest_loc[k, 1], z] for x in (lo[0], hi[0]) for z in (lo[2], hi[2])]) - rest_loc[k]
+        inv = rest_rot[k] * np.array([1.0, -1.0, -1.0, -1.0])
+        local = xform.rotate(np.broadcast_to(inv, (4, 4)), corners) / em
+        out[k] = (local[:, 0].min(), local[:, 2].min(), local[:, 0].max(), local[:, 2].max())
+    return out
+
+
+def _mask_tracks(nid, times, mask, masked, exit_start, box, interp):
+    """The mask's progress, its shape (the entrance's, then the exit's from exit_start) and the line box."""
+    (enter_on, enter_shape), (exit_on, exit_shape) = masked
+    out = [_track(nid, "mask", times, mask[:, None], (1.0,), interp)]
+    keys = [(float(times[0]), enter_shape if enter_on else (0.0,) * 4)]
+    if exit_on:
+        keys.append((max(exit_start, keys[0][0] + 1e-3), exit_shape))
+    out.append(Track(nid, "mask_shape", "constant", np.array([k[0] for k in keys], dtype=np.float32),
+                     np.array([k[1] for k in keys], dtype=np.float32)))
+    out.append(Track(nid, "mask_box", "constant", np.array([float(times[0])], dtype=np.float32),
+                     np.array([box], dtype=np.float32)))
+    return out
+
+
+LINE_FX_GAP = 0.005                              # metres the line's effect plane stands in front of its glyphs
+BAND_COPY = "_s"                                 # id suffix (+ band number) of a glyph's sliding band copy
+
+
+def is_band_copy(nid):
+    """A copy that only flies in during a slice: not where the line stands (gaze, overlap checks)."""
+    head, sep, tail = nid.rpartition(BAND_COPY)
+    return bool(sep) and tail.isdigit() and "_g" in head
+
+
+def _band_copies(nodes, tracks, part, nid, mesh, ch, gid, rest_loc, k, rot, em, color, box, on, dur, rate, interp):
+    """Copies of a glyph, one per horizontal band of the line, sliding in from alternate sides while the
+    entrance lasts (design §5.6). Each shows only its band (mask kind 4)."""
+    n = part.band_copies
+    width = (rest_loc[:, 0].max() - rest_loc[:, 0].min()) + 2 * MASK_MARGIN * em
+    end = on + dur
+    times = np.unique(np.round(np.concatenate([np.arange(on, end, 1.0 / rate), [end]]), 4))
+    p = (times - on) / max(dur, 1e-6)
+    rest = rest_loc[k]
+    for b in range(n):
+        cid = f"{nid}{BAND_COPY}{b}"
+        nodes.append(Node(cid, ch, gid, "text", "glyph", mesh=mesh, material="text", loc=tuple(rest), rot=tuple(rot),
+                          scale=(em,) * 3, color=color, default_active=False))
+        keys = [(0.0, 0.0), (on, 1.0), (end, 0.0)] if on > 0 else [(on, 1.0), (end, 0.0)]
+        tracks.append(Track(cid, "active", "constant", np.array([x[0] for x in keys], dtype=np.float32),
+                            np.array([[x[1]] for x in keys], dtype=np.float32)))
+        loc = np.broadcast_to(rest, (len(times), 3)).copy()
+        loc[:, 0] += part.band_offset(p, b) * (1 if b % 2 else -1) * width * 1.2
+        tr = _track(cid, "location", times, loc, rest, interp)
+        if tr:
+            tracks.append(tr)
+        t0 = np.array([on], dtype=np.float32)
+        tracks += [Track(cid, "mask", "constant", t0, np.array([[0.5]], dtype=np.float32)),
+                   Track(cid, "mask_shape", "constant", t0, np.array([[4.0, float(n), float(b), 0.0]], dtype=np.float32)),
+                   Track(cid, "mask_box", "constant", t0, np.array([box], dtype=np.float32))]
+
+
+def _line_fx(nodes, meshes, tracks, gid, name, rest_loc, em, accent, shape, times, mask, on, end, interp):
+    """A plane in front of the line for what is drawn regardless of the glyph shapes: the wipe's bar and
+    the checker's tiles (design §5.6), shown while the entrance lasts."""
+    lo, hi = rest_loc.min(axis=0) - MASK_MARGIN * em, rest_loc.max(axis=0) + MASK_MARGIN * em
+    w, h = hi[0] - lo[0], hi[2] - lo[2]
+    fid = f"{gid}_fx"
+    meshes.setdefault("quad", MeshSource("quad", "quad", {}))
+    col = tuple(accent) + (1.0,)
+    nodes.append(Node(fid, name, gid, "text", "line_fx", mesh="quad", material="line_fx",
+                      loc=((lo[0] + hi[0]) / 2, rest_loc[:, 1].min() - LINE_FX_GAP, (lo[2] + hi[2]) / 2),
+                      rot=tuple(xform.IDENTITY), scale=(w, 1.0, h), color=col, default_active=False))
+    keys = [(0.0, 0.0), (on, 1.0), (end, 0.0)] if on > 0 else [(on, 1.0), (end, 0.0)]
+    tracks.append(Track(fid, "active", "constant", np.array([x[0] for x in keys], dtype=np.float32),
+                        np.array([[x[1]] for x in keys], dtype=np.float32)))
+    tr = _track(fid, "mask", times, mask[:, None], (1.0,), interp)
+    if tr:
+        tracks.append(tr)
+    t0 = np.array([on], dtype=np.float32)
+    tracks += [Track(fid, "mask_shape", "constant", t0, np.array([shape], dtype=np.float32)),
+               Track(fid, "mask_box", "constant", t0, np.array([[-w / 2 / em, -h / 2 / em, w / 2 / em, h / 2 / em]],
+                                                                 dtype=np.float32)),
+               Track(fid, "color", "constant", t0, np.array([col], dtype=np.float32))]
+
+
+def _word_of(text, chunks):
+    """Chunk (word) number of each character of the line."""
+    out, pos = [0] * len(text), 0
+    for w, c in enumerate(chunks):
+        at = text.find(c, pos)
+        at = pos if at < 0 else at
+        for i in range(at, len(text)):
+            out[i] = w
+        pos = at + len(c)
+    return out
+
+
 def bake(plan, metrics, eye=model.EYE_HEIGHT, rate=RATE, mobile=False, tmp=False, udon=False):
     """metrics(role) -> object with advance_em(ch) / vadvance_em(ch). mobile: add line meshes (§11.3);
     tmp: flat lines become TextMesh Pro letters in Unity, so only 3D lines get line meshes;
@@ -155,9 +257,11 @@ def bake(plan, metrics, eye=model.EYE_HEIGHT, rate=RATE, mobile=False, tmp=False
         ci = [gp.char_index for gp in pl.glyphs]
 
         # motion windows
+        word = _word_of(ln.text, ctx.chunks)
         mctx = registry.MotionCtx(n=g, rest=rest_loc, em=pl.em, start=ln.start, end=ln.end,
                                   char_times=np.array([ln.char_times[i] for i in ci]), bpm=plan.bpm, seed=ln.seed,
-                                  strength=motion)
+                                  strength=motion, words=np.array([word[i] for i in ci]),
+                                  chars=tuple(ln.text[i] for i in ci))
         enter, hold, exit_ = (registry.get(k, n) for k, n in (("enter", ln.enter), ("hold", ln.hold), ("exit", ln.exit)))
         in_start = np.asarray(enter.windows(mctx, ln.enter_dur), dtype=np.float64)
         in_start = np.clip(in_start, ln.start, ln.end - ln.exit_dur - ln.enter_dur)
@@ -202,6 +306,10 @@ def bake(plan, metrics, eye=model.EYE_HEIGHT, rate=RATE, mobile=False, tmp=False
             inv = g_rot * np.array([1, -1, -1, -1])
             loc = xform.rotate(inv[None], pushed - g_loc[None])
 
+        # parts that cut the glyphs with a mask: their shapes in order (entrance, exit), design §5.6
+        masked = [(part.uses_mask, part.mask_shape(mctx)) for part in (enter, exit_)]
+        masked = masked if any(u for u, _ in masked) else None
+        boxes = _mask_boxes(rest_loc, rest_rot, pl.em) if masked or enter.band_copies else None
         fg, accent = (ln.colors["fg"], ln.colors["accent"]) if ln.colors else (WHITE, ACCENT)
         base = [tuple(accent) if ln.emph_mask[i] else tuple(fg) for i in ci]
         narrow = lp.shown(ctx, params, pl)
@@ -236,6 +344,14 @@ def bake(plan, metrics, eye=model.EYE_HEIGHT, rate=RATE, mobile=False, tmp=False
             tr = _track(nid, "color", times, col, color, interp)
             if tr:
                 tracks.append(tr)
+            if masked and (d.mask[k] < 0.999).any():
+                tracks += _mask_tracks(nid, times, d.mask[k], masked, float(out_start[k]), boxes[k], interp)
+            if enter.band_copies:
+                _band_copies(nodes, tracks, enter, nid, key, ch, gid, rest_loc, k, rest_rot[k], pl.em, color, boxes[k],
+                             float(in_start[k]), ln.enter_dur, rate, interp)
+        if enter.line_fx and parts:
+            _line_fx(nodes, meshes, tracks, gid, f"{name}_fx", rest_loc, pl.em, accent, enter.mask_shape(mctx),
+                     times, d.mask[0], float(in_start.min()), float(in_end.max()), interp)
         t_on, t_off = float(in_end.max()), float(out_start.min())
         if (mobile and ln.hold == "still" and not narrow and len(parts) > 1 and t_off - t_on >= LINE_MIN_STILL
                 and (ln.is_3d or not tmp)):
@@ -283,7 +399,7 @@ def world_positions(baked, t):
 
     out = {}
     for n in baked.nodes:
-        if n.kind != "glyph" or value(n.id, "active", [1.0])[0] < 0.5:
+        if n.kind != "glyph" or is_band_copy(n.id) or value(n.id, "active", [1.0])[0] < 0.5:
             continue
         p = by_id[n.parent]
         g_loc = value(p.id, "location", p.loc)

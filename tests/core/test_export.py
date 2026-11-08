@@ -151,6 +151,16 @@ class TestManifest(unittest.TestCase):
         self.assertNotIn("material.None", attrs)
 
 
+    def test_mask_bindings(self):
+        from lyric_live_builder.export_unity import manifest
+        t, f, v = manifest.binding("glyph_tmp", "mask", np.array([[0.0], [1.0]]))[:3], None, None
+        self.assertEqual(t[:2], ("MeshRenderer", "material._Mask"))
+        typ, attr, fields, vals = manifest.binding("glyph", "mask_box", np.array([[-1.0, -2.0, 3.0, 4.0]]))
+        self.assertEqual((attr, fields), ("material._MaskBox", ["x", "y", "z", "w"]))
+        np.testing.assert_allclose(vals, [[-1.0, -2.0, 3.0, 4.0]])           # glyph coordinates: not converted
+        self.assertEqual(manifest.binding("glyph", "mask_shape", np.zeros((1, 4)))[1], "material._MaskShape")
+
+
 class TestMobile(unittest.TestCase):
     def plan(self, hold="still", **over):
         lines = inputs(10, sec_len=16.0, hold=hold, **over)

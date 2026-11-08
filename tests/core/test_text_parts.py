@@ -58,10 +58,11 @@ class TestContracts(unittest.TestCase):
         np.testing.assert_allclose(np.abs(d.rot[..., 0]), 1, atol=1e-9, err_msg=msg)
         np.testing.assert_allclose(d.scale, 1, atol=1e-9, err_msg=msg)
         np.testing.assert_allclose(d.alpha, 1, atol=1e-9, err_msg=msg)
+        np.testing.assert_allclose(d.mask, 1, atol=1e-9, err_msg=msg)
 
     def test_counts(self):
-        self.assertEqual(len(registry.keys("enter")), 10)
-        self.assertEqual(len(registry.keys("hold")), 6)
+        self.assertEqual(len(registry.keys("enter")), 14)
+        self.assertEqual(len(registry.keys("hold")), 45)
         self.assertEqual(len(registry.keys("exit")), 7)
         self.assertEqual(len([p for p in registry.parts("layout") if not p.only_3d]), 7)
         self.assertEqual(len([p for p in registry.parts("layout") if p.only_3d]), 6)
@@ -71,7 +72,8 @@ class TestContracts(unittest.TestCase):
         for part in registry.parts("enter"):
             self.assert_identity(part.evaluate(c, np.ones((6, 3))), part.key)
             d0 = part.evaluate(c, np.zeros((6, 3)))
-            changed = (d0.alpha < 0.5).any() or (np.abs(d0.scale - 1) > 0.1).any() or (np.abs(d0.loc) > 1e-3).any()
+            changed = (d0.alpha < 0.5).any() or (np.abs(d0.scale - 1) > 0.1).any() or (np.abs(d0.loc) > 1e-3).any() \
+                or (d0.mask < 0.5).any()
             self.assertTrue(changed, part.key)
 
     def test_exit_identity_at_0(self):
@@ -95,6 +97,68 @@ class TestContracts(unittest.TestCase):
         for kind in ("enter", "exit"):
             for part in registry.parts(kind):
                 self.assertGreaterEqual(part.evaluate(c, p).loc[..., 1].min(), -1e-9, part.key)
+        s = np.linspace(0, 20, 120)[None].repeat(6, 0)
+        for part in registry.parts("hold"):
+            self.assertGreaterEqual(part.evaluate(c, s).loc[..., 1].min(), -1e-9, part.key)
+
+    def test_word_holds_move_words_together(self):
+        n = 6
+        c = registry.MotionCtx(n=n, rest=np.zeros((n, 3)), em=0.2, start=1.0, end=5.0, char_times=np.linspace(1, 2, n),
+                               bpm=120, seed=3, words=np.array([0, 0, 0, 1, 1, 1]))
+        s = np.linspace(0, 6, 60)[None].repeat(n, 0)
+        d = registry.get("hold", "kn_word_pulse").evaluate(c, s)
+        same = np.abs(d.scale[0, :, 0] - d.scale[1, :, 0]).max() < 1e-9
+        apart = np.abs(d.scale[0, :, 0] - d.scale[3, :, 0]).max() > 0.01
+        self.assertTrue(same and apart)
+
+    def test_masked_glyphs_get_mask_tracks(self):
+        lines = inputs(4)
+        lines[0].enter, lines[1].enter, lines[2].enter = "wipe", "checker", "fade"
+        lines[2].exit = lines[1].exit = "fade"
+        duration = lines[-1].end + 2.0
+        p = planner.plan(lines, sections_for(duration), duration, 7, bpm=120)
+        b = bake.bake(p, metrics)
+        by = {}
+        for t in b.tracks:
+            by.setdefault((t.node.split("_")[0], t.prop), []).append(t)
+        self.assertIn(("line000", "mask"), by)
+        self.assertNotIn(("line002", "mask"), by)                        # no mask, no tracks
+        mask = by[("line000", "mask")][0]
+        self.assertAlmostEqual(float(mask.values[0, 0]), 0.0, places=3)
+        self.assertAlmostEqual(float(mask.values[-1, 0]), 1.0, places=3)
+        shape = by[("line001", "mask_shape")][0]
+        self.assertEqual(float(shape.values[0, 0]), 3.0)                 # checker
+        box = by[("line000", "mask_box")][0].values[0]
+        self.assertTrue(box[0] < -0.5 and box[2] > 0.5 and box[1] < -0.5 and box[3] > 0.5)   # wider than the glyph
+        # the boxes of one line describe the same region: shifted by each glyph's place
+        boxes = [t.values[0] for t in by[("line000", "mask_box")]]
+        widths = {round(float(x[2] - x[0]), 3) for x in boxes}
+        self.assertEqual(len(widths), 1)
+
+    def test_slice_copies_and_line_planes(self):
+        lines = inputs(4)
+        lines[0].enter, lines[1].enter, lines[2].enter = "slice", "wipe", "checker"
+        lines[3].enter = "fade"
+        duration = lines[-1].end + 2.0
+        b = bake.bake(planner.plan(lines, sections_for(duration), duration, 7, bpm=120), metrics)
+        copies = [n for n in b.nodes if bake.is_band_copy(n.id)]
+        real = [n for n in b.nodes if n.kind == "glyph" and n.id.startswith("line000") and not bake.is_band_copy(n.id)]
+        self.assertEqual(len(copies), 7 * len(real))
+        self.assertTrue(all(n.id.startswith("line000") for n in copies))
+        tr = {(t.node, t.prop): t for t in b.tracks}
+        c0 = copies[0].id
+        self.assertEqual(float(tr[(c0, "mask_shape")].values[0, 0]), 4.0)          # one band only
+        x = tr[(c0, "location")].values[:, 0]
+        self.assertGreater(abs(x[0] - x[-1]), 0.5)                                # slides in from aside
+        on = tr[(c0, "active")]
+        self.assertEqual(float(on.values[-1, 0]), 0.0)                           # gone once landed
+        planes = {n.id: n for n in b.nodes if n.kind == "line_fx"}
+        self.assertEqual(set(planes), {"line001_fx", "line002_fx"})
+        self.assertEqual([float(tr[(f, "mask_shape")].values[0, 0]) for f in sorted(planes)], [1.0, 3.0])
+        self.assertFalse(any(bake.is_band_copy(k) for k in bake.world_positions(b, lines[0].start + 0.2)))
+
+    def test_word_of(self):
+        self.assertEqual(bake._word_of("光の粒を集めて", ["光の粒を", "集めて"]), [0, 0, 0, 0, 1, 1, 1])
 
 
 class TestLayouts(unittest.TestCase):

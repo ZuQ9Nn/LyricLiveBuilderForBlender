@@ -33,11 +33,17 @@ MOODS = {
                   "koma": (12, 0), "flash": 0.6, "pulse": False,
                   "styles": ("noir", "paper", "hud", "mono", "crimson"),
                   "transitions": ("crossfade", "ring", "whiteout", "dissolve")},
+    "horror": {"name": "Horror", "fx": {"motion": (0.4, 0.75), "particles": (0.25, 0.5), "decor": (0.3, 0.6),
+                                        "density": (0.35, 0.6), "world_switch": (0.3, 0.6)},
+               "koma": (12, 0, 8), "flash": 0.55, "pulse": False,
+               "styles": ("hr_ruin", "hr_night_rec", "hr_curse", "noir", "mono", "crimson"),
+               "transitions": ("blackout", "dissolve", "crossfade")},
     "chaos": {"name": "Everything", "fx": {"motion": (0.5, 1.0), "particles": (0.45, 0.95), "decor": (0.4, 1.0),
                                            "density": (0.45, 0.9), "world_switch": (0.4, 0.9)},
               "koma": (12, 8, 0), "flash": 0.65, "pulse": True, "styles": None, "transitions": None},
 }
 ORDER = list(MOODS)
+STICKY = ("horror",)                  # never rolled; once the user picks it, おまかせ keeps it
 DEFAULT = "chaos"                     # no bias: every style, theme and part is equally welcome
 
 

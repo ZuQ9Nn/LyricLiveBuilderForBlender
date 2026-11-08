@@ -4,7 +4,9 @@
 import bpy
 import numpy as np
 
-PATHS = {"location": "location", "rotation": "rotation_quaternion", "scale": "scale", "color": "color"}
+PATHS = {"location": "location", "rotation": "rotation_quaternion", "scale": "scale", "color": "color",
+         "mask": '["llb_mask"]', "mask_shape": '["llb_mask_shape"]', "mask_box": '["llb_mask_box"]'}
+MASK_PROPS = {"mask": "llb_mask", "mask_shape": "llb_mask_shape", "mask_box": "llb_mask_box"}
 EXPORT_ONLY = ("emit_rate",)                # the particle preview evaluates the emitter spec itself
 LINEAR, CONSTANT = 1, 0                     # keyframe interpolation enum values
 
@@ -35,6 +37,9 @@ def apply(ob, tracks, fps, frame_start):
     """Write the tracks of one node onto its object (and the dome's onto its material)."""
     own = [tr for tr in tracks if not tr.prop.startswith("dome:") and tr.prop not in EXPORT_ONLY]
     dome = [tr for tr in tracks if tr.prop.startswith("dome:")]
+    for tr in own:                                 # custom properties must exist before they are animated
+        if tr.prop in MASK_PROPS:
+            ob[MASK_PROPS[tr.prop]] = 1.0 if tr.values.shape[1] == 1 else [float(x) for x in tr.values[0]]
     if own:
         cb = _action(ob, "OBJECT", ob.name)
         for tr in own:

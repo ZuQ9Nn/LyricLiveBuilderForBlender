@@ -150,7 +150,8 @@ class Bake(unittest.TestCase):
     def test_a_group_per_cut_with_every_letter(self):
         groups = [n.id for n in self.baked.nodes if n.kind == "group" and n.id.startswith("line004")]
         self.assertEqual(groups, ["line004", "line004_c1", "line004_c2"])
-        glyphs = [n for n in self.baked.nodes if n.kind == "glyph" and n.id.startswith("line004")]
+        glyphs = [n for n in self.baked.nodes if n.kind == "glyph" and n.id.startswith("line004")
+                  and not bake.is_band_copy(n.id)]
         self.assertEqual(len(glyphs), len(self.lines[4].text.replace(" ", "")))
 
     def test_one_cut_at_a_time(self):

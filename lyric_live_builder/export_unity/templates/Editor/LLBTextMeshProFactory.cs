@@ -41,7 +41,7 @@ namespace LyricLive.Editor
                 if (!System.IO.File.Exists(src))
                 {
                     var kept = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(path);
-                    if (kept != null) { result[f.key] = (kept, EmSize(kept, f.chars)); continue; }
+                    if (kept != null) { UseOurShader(kept.material); result[f.key] = (kept, EmSize(kept, f.chars)); continue; }
                     Debug.LogError("[LLB][ERROR] no font file and no font asset for " + f.key + ": export again from Blender");
                     continue;
                 }
@@ -62,11 +62,7 @@ namespace LyricLive.Editor
                     AssetDatabase.AddObjectToAsset(fa.atlasTextures[i], fa);
                 }
                 fa.material.name = f.key + " Material";
-                if (mobile)
-                {
-                    var sh = Shader.Find("TextMeshPro/Mobile/Distance Field");
-                    if (sh != null) fa.material.shader = sh;
-                }
+                UseOurShader(fa.material);
                 AssetDatabase.AddObjectToAsset(fa.material, fa);
                 // forget the font file: all three references (S0-06), then delete the copy
                 var so = new SerializedObject(fa);
@@ -84,6 +80,17 @@ namespace LyricLive.Editor
             if (AssetDatabase.IsValidFolder(dir) && System.IO.Directory.GetFiles(dir, "*", System.IO.SearchOption.AllDirectories).Length == 0)
                 AssetDatabase.DeleteAsset(dir);
             return result;
+        }
+
+        /// <summary>LyricLive/TextSDF: the same look, plus the glyph mask (design §5.6). It keeps the atlas in _MainTex.</summary>
+        static void UseOurShader(Material mat)
+        {
+            var sh = Shader.Find("LyricLive/TextSDF");
+            if (sh == null) { Debug.LogError("[LLB][ERROR] LyricLive/TextSDF is missing: the letters keep TextMesh Pro's shader"); return; }
+            var atlas = mat.GetTexture("_MainTex");
+            mat.shader = sh;
+            mat.SetTexture("_MainTex", atlas);
+            EditorUtility.SetDirty(mat);
         }
 
         static void Directory(string path)

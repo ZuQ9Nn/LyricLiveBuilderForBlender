@@ -152,7 +152,8 @@ def main():
     for page in ("setup", "compose", "output"):
         proj.ui_page = page
         shown[page] = {c.__name__ for c in panels.CLASSES
-                       if (not hasattr(c, "poll") or c.poll(ctx)) and not getattr(c, "bl_parent_id", "")}
+                       if issubclass(c, bpy.types.Panel) and (not hasattr(c, "poll") or c.poll(ctx))
+                       and not getattr(c, "bl_parent_id", "")}
     check(shown["setup"] == {"LLB_PT_pages", "LLB_PT_lyrics", "LLB_PT_fonts", "LLB_PT_song", "LLB_PT_sync"}
           and shown["compose"] == {"LLB_PT_pages", "LLB_PT_omakase", "LLB_PT_sections"}
           and shown["output"] == {"LLB_PT_pages", "LLB_PT_effects", "LLB_PT_preview", "LLB_PT_export"}, f"pages {shown}")

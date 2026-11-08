@@ -40,13 +40,15 @@ def frame_of(scene, t):
 def check_against_core(scene, baked, times):
     """Blender's evaluated positions / visibility == core's world_positions."""
     obs = objects_by_node()
+    # where the line stands: its glyphs, not the slice's band copies or the effect planes (design §5.6)
+    glyphs = {n.id for n in baked.nodes if n.kind == "glyph" and not bake.is_band_copy(n.id)}
     worst, vis_bad = 0.0, 0
     for t in times:
         f = frame_of(scene, t)
         scene.frame_set(int(math.floor(f)), subframe=f - math.floor(f))
         want = bake.world_positions(baked, t)
         for nid, ob in obs.items():
-            if ob.type != "MESH":
+            if ob.type != "MESH" or nid not in glyphs:
                 continue
             shown = not ob.hide_viewport
             if shown != (nid in want):
@@ -74,7 +76,8 @@ def main():
     plan, baked = baked_now(proj)
     obs = objects_by_node()
     glyph_nodes = [n for n in baked.nodes if n.kind == "glyph"]
-    meshes = [ob for ob in obs.values() if ob.type == "MESH"]
+    glyph_ids = {n.id for n in glyph_nodes}
+    meshes = [ob for nid, ob in obs.items() if ob.type == "MESH" and nid in glyph_ids]
     check(len(meshes) == len(glyph_nodes) > 100, f"one object per glyph ({len(meshes)})")
     check(scene.camera and scene.camera.name == preview_scene.CAMERA_OBJECT, "audience camera is the scene camera")
     check(plan.lines[0].layout == "slanted_wall" and plan.lines[3].layout != "slanted_wall", "3D-only layout only on the 3D line")

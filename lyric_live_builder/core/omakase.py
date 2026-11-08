@@ -53,8 +53,10 @@ def _subset(mood, rnd):
 
 
 def _roll_mood(state, rnd):
-    choices = [k for k in moods.ORDER if k != state.get("mood")]
-    mood = _pick(rnd, choices)
+    if state.get("mood") in moods.STICKY:
+        mood = state["mood"]                     # chosen by the user: new proposals keep it
+    else:
+        mood = _pick(rnd, [k for k in moods.ORDER if k != state.get("mood") and k not in moods.STICKY])
     m = moods.MOODS[mood]
     fx = dict(model.FX_DEFAULTS)
     fx.update(state.get("fx") or {})
@@ -66,9 +68,10 @@ def _roll_mood(state, rnd):
 
 
 def _roll_style(mood, current, rnd):
+    fits = [k for k in styles.ORDER if mood in styles.STYLES[k].get("moods", (mood,))]   # horror styles: horror only
     suits = list((moods.MOODS[mood].get("styles") or ()))
-    pool = suits if suits and rnd() < 0.72 else styles.ORDER
-    pool = [k for k in pool if k != current] or [k for k in styles.ORDER if k != current]
+    pool = suits if suits and rnd() < 0.72 else fits
+    pool = [k for k in pool if k != current] or [k for k in fits if k != current]
     return _pick(rnd, pool)
 
 

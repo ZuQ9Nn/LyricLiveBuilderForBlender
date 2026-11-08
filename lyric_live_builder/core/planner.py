@@ -34,7 +34,7 @@ def _pick(rng, kind, history, allowed, emphasis=False, is_3d=False, settings=Non
     off = settings.disabled.get(kind, ()) if settings else ()
     mood = settings.mood if settings else ""
     for part in registry.parts(kind):
-        if not allowed(part):
+        if not allowed(part) or not registry.group_ok(part, mood):
             continue
         w = part.weight * novelty(history, kind, part.key) * moods.favours(mood, part.tags)
         if is_3d and getattr(part, "only_3d", False):

@@ -71,6 +71,10 @@ def _gimmick_items():
 
 
 GIMMICK_ITEMS, SHOW_ITEMS = _gimmick_items()
+PART_GROUP_ITEMS = [("all", "Every Part Group", ""), ("basic", "Basic", ""), ("extra", "Extra Parts", ""),
+                    ("kinetic", "Kinetic", "Word by word; Make It for Me uses them with pop, glitch and graphic moods"),
+                    ("typo", "Typography", "Make It for Me uses them with editorial and graphic moods"),
+                    ("horror", "Horror", "Make It for Me uses them only with the horror mood")]
 TAP_SPEED_ITEMS = [("1", "Normal Speed", ""), ("0.75", "0.75× Speed", ""), ("0.5", "0.5× Speed", "")]
 SPECTRUM_ITEMS = [("off", "No Spectrum Bars", ""), ("chorus", "Bars in Choruses", ""), ("all", "Bars All Through", "")]
 GUIDE_ITEMS = [(AUTO, "Automatic Guide", "Only when the line appears away from where the audience is looking"),
@@ -271,6 +275,8 @@ class LLBProject(bpy.types.PropertyGroup):
     lines: CollectionProperty(type=LLBLine)
     section_active: IntProperty(update=_pick_section)
     line_active: IntProperty(update=_pick_line)
+    part_group: EnumProperty(name="Part Group", items=PART_GROUP_ITEMS,
+                             description="Show only the layouts and motions of one group in the line details")
     ui_page: EnumProperty(name="LyricLive Page", items=[("setup", "Setup", "Lyrics, fonts, song and sync"),
                                               ("compose", "Compose", "Make It for Me, sections and lines"),
                                               ("output", "Effects & Output", "Stage effects, preview and Unity export")])

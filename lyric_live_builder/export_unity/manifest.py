@@ -46,6 +46,10 @@ def binding(node_kind, prop, values):
         return renderer, "material._Color", RGBA, convert.rgba(v)
     if prop == "emit_rate":
         return "ParticleSystem", "EmissionModule.rateOverTime.scalar", [""], v[:, :1]
+    if prop == "mask":                             # glyph coordinates already match Unity's (x, up): no conversion
+        return "MeshRenderer", "material._Mask", [""], v[:, :1]
+    if prop in ("mask_shape", "mask_box"):
+        return "MeshRenderer", "material._" + ("MaskShape" if prop == "mask_shape" else "MaskBox"), XYZW, v[:, :4]
     if prop.startswith("dome:"):
         name = dome_property(prop[5:])
         if name is None:
@@ -131,6 +135,8 @@ class Builder:
                 mat = self.material("far", n.color[:3] + (1.0,))
             elif n.material == "glow":
                 mat = self.material("glow")
+            elif n.material == "line_fx":
+                mat = self.material("line_fx")
             elif n.material == "dome":
                 mat = self.material("dome", params=dome_params)
             if n.kind != "emitter":

@@ -14,6 +14,7 @@ namespace LyricLive.Editor
             { "gimmick", new[] { "LyricLive/Gimmick", "Unlit/Color" } },
             { "far", new[] { "LyricLive/Far", "Unlit/Transparent", "Unlit/Color" } },
             { "glow", new[] { "LyricLive/Glow", "Particles/Standard Unlit", "Unlit/Color" } },
+            { "line_fx", new[] { "LyricLive/LineFx", "Unlit/Transparent" } },
             { "dome", new[] { "LyricLive/Dome", "Unlit/Color" } },
             { "particle", new[] { "LyricLive/Particle", "Particles/Standard Unlit", "Unlit/Color" } },
         };

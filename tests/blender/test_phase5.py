@@ -84,7 +84,8 @@ def main():
     mobile = json.loads(st.budget)
     check(all(v <= lim for v, lim, _ in mobile.values()), f"mobile export within the limits {mobile}")
     check(mobile["letter_flat"][0] <= normal["letter_flat"][0] and mobile["particles"][0] < normal["particles"][0]
-          and mobile["materials"][0] < normal["materials"][0], "mobile lowers letters, particles and materials")
+          and mobile["materials"][0] <= normal["materials"][0],                  # fewer only when the show has 3D particles
+          f"mobile lowers letters and particles, never adds materials {normal} {mobile}")
 
     # TextMesh Pro in a project without the package: refused before writing
     import shutil
