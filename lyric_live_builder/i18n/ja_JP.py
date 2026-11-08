@@ -531,4 +531,5 @@ MESSAGES = {
     'The main preview changes only with Confirm or Generate': 'メインのプレビューは「確定」か「生成」を押すまで変わりません',
     'Mute the Song': '消音',
     'Silence the song while trying things out (back to as it was on close)': '試し見の間、曲の音を消します（閉じると元に戻ります）',
+    'A word in the line picks the particles (none: Planner\'s Choice)': '行の言葉からパーティクルを選びます（合う言葉が無ければ、おまかせ）',
 }

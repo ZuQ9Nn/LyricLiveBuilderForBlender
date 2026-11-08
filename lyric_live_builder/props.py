@@ -58,6 +58,7 @@ ENTER_ITEMS = _part_items("enter")
 HOLD_ITEMS = _part_items("hold")
 EXIT_ITEMS = _part_items("exit")
 THEME_ITEMS, BACKGROUND_ITEMS, TRANSITION_ITEMS, PARTICLE_ITEMS, MOOD_ITEMS, STYLE_ITEMS = _world_items()
+PARTICLE_ITEMS.insert(1, ("lyrics", "From the Lyrics", "A word in the line picks the particles (none: Planner's Choice)"))
 
 
 def _gimmick_items():

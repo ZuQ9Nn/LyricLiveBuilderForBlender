@@ -6,12 +6,13 @@ import math
 
 import numpy as np
 
-from . import color, model, moods, styles, themes, xform
+from . import color, model, moods, styles, synonyms, themes, xform
 from .parts import backgrounds as bgs
 from .parts import particles as pts
 from .rng import Rng, h
 
 STAGE_THEME, STAGE_TEXT, STAGE_PARTICLES, STAGE_BACKGROUND, STAGE_GIMMICK = 1, 2, 3, 4, 5
+LYRIC_PARTICLES = "lyrics"             # a line's particles picked from its words
 FLASH_GAP = 0.4                      # strong flashes at least this far apart (≤ 3 per second, spec §7.5)
 STRONG = 0.3                         # flash amount that counts as a strong flash
 
@@ -193,10 +194,13 @@ def plan_particles(section_plans, line_plans, seed, settings):
         origin = [float(x) for x in pts.EYE + model.DISTANCE[lp.distance] *
                   xform.direction(*(lp.anchor if not lp.glide else (0.0, 0.0)))]
         lseed = h(pseed, STAGE_PARTICLES, 5000 + lp.index)
-        if lp.particle in pts.PRESETS:
-            p = pts.PRESETS[lp.particle]
+        key = lp.particle
+        if key == LYRIC_PARTICLES:              # the first word of the line that names a preset (none: automatic)
+            key = next((k for k in synonyms.particles(lp.text) if _ok(settings, "particle", k)), "")
+        if key in pts.PRESETS:
+            p = pts.PRESETS[key]
             bursts = [{"t": hit, "origin": origin}] if p["emitter"] == "burst" else None
-            out.append(emitter(lp.particle, lp.start, lp.end, lseed, sp.palette, settings, bursts=bursts))
+            out.append(emitter(key, lp.start, lp.end, lseed, sp.palette, settings, bursts=bursts))
         elif lp.impact or (lp.emphasis and Rng(lseed).chance(0.3 * settings.fx_value("decor"))):
             out.append(emitter("sparkle_burst", lp.start, lp.end, lseed, sp.palette, settings,
                                bursts=[{"t": hit, "origin": origin}]))

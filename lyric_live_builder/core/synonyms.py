@@ -41,6 +41,21 @@ WORDS = {
     "fire": ("炎", "ほのお", "ファイア", "fire", "flame"),
     "sea": ("海", "うみ", "シー", "sea", "ocean"),
 }
+# particle preset -> words, for a line's particles set to "From the Lyrics" (longer words win: 花火 over 花)
+PARTICLE_WORDS = {
+    "stars": ("星", "ほし", "スター", "star", "stars", "☆", "★", "星空", "ほしぞら", "キラキラ", "きらきら", "twinkle"),
+    "shooting": ("流れ星", "ながれぼし", "流星", "りゅうせい", "meteor"),
+    "snow": ("雪", "ゆき", "スノー", "snow", "❄", "粉雪", "こなゆき"),
+    "petals": ("花", "はな", "花びら", "はなびら", "桜", "さくら", "flower", "flowers", "petal", "petals", "blossom"),
+    "bubbles": ("泡", "あわ", "シャボン", "bubble", "bubbles", "海", "うみ", "sea", "ocean"),
+    "fireworks": ("花火", "はなび", "firework", "fireworks"),
+    "hearts": ("心", "こころ", "ハート", "heart", "hearts", "♡", "♥", "恋", "こい", "愛", "好き", "love"),
+    "notes": ("音符", "おんぷ", "メロディ", "メロディー", "melody", "音楽", "おんがく", "music", "♪", "♫", "歌", "song"),
+    "motes": ("光", "ひかり", "light", "lights", "粒", "つぶ"),
+    "shard_ring": ("欠片", "かけら", "破片", "はへん", "shards"),
+    "warp": ("ワープ", "warp", "加速", "かそく", "スピード", "speed"),
+    "sparkle_burst": ("輝き", "かがやき", "輝く", "かがやく", "煌めき", "きらめき", "sparkle", "shine"),
+}
 # longer words that merely contain a keyword; blanked out before matching
 STOP = ("ほしい", "ほしく", "ほしか", "ほしがる", "ほしがっ", "つきあ", "つきな", "うそつき", "くっつき", "おもいつき", "気づき",
         "月曜", "月日", "年月", "木曜", "花火", "はなび", "はなし", "はなれ", "はなす", "はなさ", "はなせ", "はなそ", "はなつ",
@@ -62,11 +77,12 @@ def _pattern(word):
 _cache = {}
 
 
-def _table(extra):
+def _table(extra, table=None):
     """[(normalized word, compiled pattern, tag)], longest first so 三日月 wins over 月."""
-    key = tuple(sorted((k, tuple(v)) for k, v in (extra or {}).items()))
+    table = table or WORDS
+    key = (id(table),) + tuple(sorted((k, tuple(v)) for k, v in (extra or {}).items()))
     if key not in _cache:
-        words = {t: list(ws) for t, ws in WORDS.items()}
+        words = {t: list(ws) for t, ws in table.items()}
         for tag, ws in (extra or {}).items():
             words.setdefault(canonical(tag), []).extend(ws)
         rows = [(normalize(w), re.compile(_pattern(w)), t) for t, ws in words.items() for w in ws]
@@ -74,13 +90,14 @@ def _table(extra):
     return _cache[key]
 
 
-def find(text, extra=None):
-    """[(tag, word as written in the lyric)] in order of appearance. extra: {tag: [words]} (the user's)."""
+def find(text, extra=None, table=None, stop=STOP):
+    """[(tag, word as written in the lyric)] in order of appearance. extra: {tag: [words]} (the user's);
+    table: another dictionary than the stage objects' (PARTICLE_WORDS)."""
     folded = normalize(text)
-    for s in STOP:
+    for s in stop:
         folded = folded.replace(normalize(s), " " * len(normalize(s)))
     hits = []
-    for _, pattern, tag in _table(extra):
+    for _, pattern, tag in _table(extra, table):
         for m in pattern.finditer(folded):
             hits.append((m.start(), m.end(), tag))
             folded = folded[:m.start()] + " " * (m.end() - m.start()) + folded[m.end():]
@@ -108,3 +125,13 @@ def parse_user(text):
         if tag.strip() and words:
             out.setdefault(canonical(tag), []).extend(words)
     return out
+
+
+# for particles 花火 is a keyword itself, not a word to keep 花 from matching
+PARTICLE_STOP = tuple(s for s in STOP if s not in ("花火", "はなび"))
+
+
+def particles(text):
+    """Particle presets named by the words of a line, in order of appearance."""
+    return [tag for tag, _ in find(text, table=PARTICLE_WORDS, stop=PARTICLE_STOP)]
+

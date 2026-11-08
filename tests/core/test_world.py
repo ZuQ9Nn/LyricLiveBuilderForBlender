@@ -108,6 +108,41 @@ class TestParticles(unittest.TestCase):
             self.assertLessEqual(n, spec["pool"])
 
 
+class TestLyricParticles(unittest.TestCase):
+    """A line's particles "From the Lyrics" (spec §6.2)."""
+
+    def plan(self, particle, line=4, settings=None):
+        lines = inputs(12)
+        lines[line].particle = particle
+        duration = lines[-1].end + 2.0
+        return planner.plan(lines, sections_for(duration), duration, 7, bpm=120, settings=settings), lines[line]
+
+    def test_words(self):
+        from lyric_live_builder.core import synonyms
+        self.assertEqual(synonyms.particles("ホシが降る夜"), ["stars"])
+        self.assertEqual(synonyms.particles("STAR light"), ["stars", "motes"])
+        self.assertEqual(synonyms.particles("花火があがる"), ["fireworks"])             # not petals
+        self.assertEqual(synonyms.particles("桜が舞う"), ["petals"])
+        self.assertEqual(synonyms.particles("きみがほしい"), [])                        # not 星
+        self.assertEqual(synonyms.particles("窓の外はまだ青くて"), [])
+
+    def test_the_word_picks_the_preset_for_the_line(self):
+        p, ln = self.plan("lyrics")                                                 # 光の粒を集めて
+        lp = p.lines[4]
+        self.assertTrue(any(e["key"] == "motes" and e["start"] == lp.start and e["end"] == lp.end for e in p.emitters))
+
+    def test_no_word_is_planners_choice(self):
+        auto, _ = self.plan("", line=0)                                            # 夜明けの色を覚えてる
+        lyr, _ = self.plan("lyrics", line=0)
+        sig = lambda p: [(e["key"], e["start"], e["end"], e["seed"]) for e in p.emitters]
+        self.assertEqual(sig(lyr), sig(auto))
+
+    def test_switched_off_presets_are_skipped(self):
+        p, _ = self.plan("lyrics", settings=model.Settings(disabled={"particle": ["motes"]}))
+        lp = p.lines[4]
+        self.assertFalse(any(e["start"] == lp.start and e["end"] == lp.end and e["key"] == "motes" for e in p.emitters))
+
+
 class TestAtlasAndMeshes(unittest.TestCase):
     def test_atlas(self):
         a = atlas.draw(256)
