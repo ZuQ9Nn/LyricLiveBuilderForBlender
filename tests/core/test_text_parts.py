@@ -63,7 +63,7 @@ class TestContracts(unittest.TestCase):
     def test_counts(self):
         self.assertEqual(len(registry.keys("enter")), 74)
         self.assertEqual(len(registry.keys("hold")), 45)
-        self.assertEqual(len(registry.keys("exit")), 7)
+        self.assertEqual(len(registry.keys("exit")), 63)
         self.assertEqual(len([p for p in registry.parts("layout") if not p.only_3d]), 7)
         self.assertEqual(len([p for p in registry.parts("layout") if p.only_3d]), 6)
 
@@ -156,6 +156,30 @@ class TestContracts(unittest.TestCase):
         self.assertEqual(set(planes), {"line001_fx", "line002_fx"})
         self.assertEqual([float(tr[(f, "mask_shape")].values[0, 0]) for f in sorted(planes)], [1.0, 3.0])
         self.assertFalse(any(bake.is_band_copy(k) for k in bake.world_positions(b, lines[0].start + 0.2)))
+
+    def test_exit_copies_planes_and_windows(self):
+        lines = inputs(4)
+        for ln, ex in zip(lines, ("slice", "wipe", "sink", "fade")):
+            ln.exit = ex
+        duration = lines[-1].end + 2.0
+        p = planner.plan(lines, sections_for(duration), duration, 7, bpm=120)
+        b = bake.bake(p, metrics)
+        copies = [n for n in b.nodes if bake.is_band_copy(n.id)]
+        real = [n for n in b.nodes if n.kind == "glyph" and n.id.startswith("line000") and not bake.is_band_copy(n.id)]
+        self.assertEqual(len(copies), 7 * len(real))
+        self.assertTrue(all(n.id.startswith("line000") and n.id.rsplit("_s", 1)[1] >= "100" for n in copies))
+        tr = {(t.node, t.prop): t for t in b.tracks}
+        on = tr[(copies[0].id, "active")]
+        self.assertAlmostEqual(float(on.times[-1]), p.lines[0].end, places=3)              # until the line ends
+        x = tr[(copies[0].id, "location")].values[:, 0]
+        self.assertGreater(abs(x[-1] - x[0]), 0.5)                                         # flies out aside
+        self.assertIn("line001_fxo", {n.id for n in b.nodes if n.kind == "line_fx"})       # the wipe's bar
+        shape = tr[("line002_g00", "mask_shape")]
+        self.assertEqual(float(shape.values[-1, 0]), 9.0)                                 # a window from the exit
+        box = tr[("line002_g00", "mask_box")].values[-1]
+        self.assertAlmostEqual(float(box[1]), -0.66, places=3)                            # the glyph's own frame
+        m = tr[("line002_g00", "mask")].values[:, 0]
+        self.assertLess(float(m[-1]), 0.05)
 
     def test_word_of(self):
         self.assertEqual(bake._word_of("光の粒を集めて", ["光の粒を", "集めて"]), [0, 0, 0, 0, 1, 1, 1])

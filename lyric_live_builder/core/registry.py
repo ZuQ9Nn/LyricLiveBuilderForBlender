@@ -43,7 +43,7 @@ def parts(kind):
 
 def _load():
     # importing the part modules runs their @register decorators
-    from .parts import layouts_3d, layouts_basic, motions_enter, motions_enter_jz, motions_exit, motions_hold, motions_hold_jz  # noqa: F401
+    from .parts import layouts_3d, layouts_basic, motions_enter, motions_enter_jz, motions_exit, motions_exit_jz, motions_hold, motions_hold_jz  # noqa: F401
 
 
 # ---------------- layouts ----------------
@@ -173,6 +173,10 @@ class MotionPart:
     def band_motion(self, p, b, n, k, g, width, height, em):
         """(dx, dz) in metres of band b (of n) of glyph k (of g) at progress p."""
         return 0.0 * p, 0.0 * p
+
+    def band_fade(self, p, b, n, k, g):
+        """Opacity of a band copy at progress p (None: always opaque)."""
+        return None
 
     def mask_shape(self, ctx):
         """(kind, value, seed, w): 1 wipe (value 0 from the left, 1 from the right), 2 bands (value: count,

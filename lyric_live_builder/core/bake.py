@@ -132,11 +132,13 @@ def _mask_boxes(rest_loc, rest_rot, em):
     return out
 
 
-def _mask_tracks(nid, times, mask, masked, enter_end, exit_start, box, interp):
+def _mask_tracks(nid, times, mask, masked, enter_end, exit_start, boxes, interp, tag=0.0):
     """The mask's progress, its shape (the entrance's, none once it has ended, then the exit's from exit_start)
-    and the box."""
+    and the box. tag goes in the shape's unused w: glyphs whose mask values are all the same would otherwise
+    share one property block, and Unity's dynamic batching would merge them into world space (design §5.6)."""
     (enter_on, enter_shape), (exit_on, exit_shape) = masked
-    out = [_track(nid, "mask", times, mask[:, None], (1.0,), interp)]
+    enter_shape, exit_shape = (tuple(sh[:3]) + (tag,) for sh in (enter_shape, exit_shape))
+    out = [t for t in [_track(nid, "mask", times, mask[:, None], (1.0,), interp)] if t]
     keys = [(float(times[0]), enter_shape if enter_on else (0.0,) * 4)]
     if enter_on:
         keys.append((max(enter_end, keys[0][0] + 1e-3), (0.0,) * 4))           # a window never cuts a hold
@@ -144,8 +146,9 @@ def _mask_tracks(nid, times, mask, masked, enter_end, exit_start, box, interp):
         keys.append((max(exit_start, keys[-1][0] + 1e-3), exit_shape))
     out.append(Track(nid, "mask_shape", "constant", np.array([k[0] for k in keys], dtype=np.float32),
                      np.array([k[1] for k in keys], dtype=np.float32)))
-    out.append(Track(nid, "mask_box", "constant", np.array([float(times[0])], dtype=np.float32),
-                     np.array([box], dtype=np.float32)))
+    box_keys = [(float(times[0]), boxes[0])] + ([(keys[-1][0], boxes[1])] if exit_on else [])   # a window: the glyph's frame
+    out.append(Track(nid, "mask_box", "constant", np.array([k[0] for k in box_keys], dtype=np.float32),
+                     np.array([k[1] for k in box_keys], dtype=np.float32)))
     return out
 
 
@@ -159,7 +162,8 @@ def is_band_copy(nid):
     return bool(sep) and tail.isdigit() and "_g" in head
 
 
-def _band_copies(nodes, tracks, part, nid, mesh, ch, gid, rest_loc, k, rot, em, color, box, on, dur, rate, interp):
+def _band_copies(nodes, tracks, part, nid, mesh, ch, gid, rest_loc, k, rot, em, color, box, on, dur, rate, interp,
+                 first=0, at=None):
     """Copies of a glyph, one per band of the line (horizontal or vertical), moving in while the entrance lasts
     (design §5.6). Each shows only its band (mask kind 4 or 10)."""
     width = (rest_loc[:, 0].max() - rest_loc[:, 0].min()) + 2 * MASK_MARGIN * em
@@ -169,9 +173,9 @@ def _band_copies(nodes, tracks, part, nid, mesh, ch, gid, rest_loc, k, rot, em, 
     end = on + dur
     times = np.unique(np.round(np.concatenate([np.arange(on, end, 1.0 / rate), [end]]), 4))
     p = (times - on) / max(dur, 1e-6)
-    rest = rest_loc[k]
+    rest = rest_loc[k] if at is None else at                # an exit starts where the hold has taken the glyph
     for b in range(n):
-        cid = f"{nid}{BAND_COPY}{b}"
+        cid = f"{nid}{BAND_COPY}{first + b}"
         nodes.append(Node(cid, ch, gid, "text", "glyph", mesh=mesh, material="text", loc=tuple(rest), rot=tuple(rot),
                           scale=(em,) * 3, color=color, default_active=False))
         start = on + part.band_start(b, k, g) * dur
@@ -185,18 +189,24 @@ def _band_copies(nodes, tracks, part, nid, mesh, ch, gid, rest_loc, k, rot, em, 
         tr = _track(cid, "location", times, loc, rest, interp)
         if tr:
             tracks.append(tr)
+        fade = part.band_fade(p, b, n, k, g)
+        if fade is not None:
+            col = np.concatenate([np.broadcast_to(color[:3], (len(times), 3)), np.asarray(fade)[:, None]], axis=1)
+            tr = _track(cid, "color", times, col, color, interp)
+            if tr:
+                tracks.append(tr)
         t0 = np.array([on], dtype=np.float32)
         tracks += [Track(cid, "mask", "constant", t0, np.array([[0.5]], dtype=np.float32)),
                    Track(cid, "mask_shape", "constant", t0, np.array([[kind, float(n), float(b), 0.0]], dtype=np.float32)),
                    Track(cid, "mask_box", "constant", t0, np.array([box], dtype=np.float32))]
 
 
-def _line_fx(nodes, meshes, tracks, gid, name, rest_loc, em, accent, shape, times, mask, on, end, interp):
+def _line_fx(nodes, meshes, tracks, gid, name, rest_loc, em, accent, shape, times, mask, on, end, interp, suffix="_fx"):
     """A plane in front of the line for what is drawn regardless of the glyph shapes: the wipe's bar and
     the checker's tiles (design §5.6), shown while the entrance lasts."""
     lo, hi = rest_loc.min(axis=0) - MASK_MARGIN * em, rest_loc.max(axis=0) + MASK_MARGIN * em
     w, h = hi[0] - lo[0], hi[2] - lo[2]
-    fid = f"{gid}_fx"
+    fid = gid + suffix
     meshes.setdefault("quad", MeshSource("quad", "quad", {}))
     col = tuple(accent) + (1.0,)
     nodes.append(Node(fid, name, gid, "text", "line_fx", mesh="quad", material="line_fx",
@@ -317,9 +327,8 @@ def bake(plan, metrics, eye=model.EYE_HEIGHT, rate=RATE, mobile=False, tmp=False
         # parts that cut the glyphs with a mask: their shapes in order (entrance, exit), design §5.6
         masked = [(part.uses_mask, part.mask_shape(mctx)) for part in (enter, exit_)]
         masked = masked if any(u for u, _ in masked) else None
-        boxes = _mask_boxes(rest_loc, rest_rot, pl.em) if masked or enter.band_copies else None
-        if masked and enter.uses_mask and enter.mask_cell:              # each glyph's own frame (a window)
-            boxes = np.broadcast_to(np.asarray(enter.mask_cell, dtype=np.float64), (len(rest_loc), 4)).copy()
+        boxes = _mask_boxes(rest_loc, rest_rot, pl.em) if masked or enter.band_copies or exit_.band_copies else None
+        cell = lambda part: None if not part.mask_cell else np.asarray(part.mask_cell, dtype=np.float64)
         fg, accent = (ln.colors["fg"], ln.colors["accent"]) if ln.colors else (WHITE, ACCENT)
         base = [tuple(accent) if ln.emph_mask[i] else tuple(fg) for i in ci]
         narrow = lp.shown(ctx, params, pl)
@@ -355,14 +364,22 @@ def bake(plan, metrics, eye=model.EYE_HEIGHT, rate=RATE, mobile=False, tmp=False
             if tr:
                 tracks.append(tr)
             if masked and (d.mask[k] < 0.999).any():
-                tracks += _mask_tracks(nid, times, d.mask[k], masked, float(in_end[k]), float(out_start[k]), boxes[k],
-                                       interp)
+                tracks += _mask_tracks(nid, times, d.mask[k], masked, float(in_end[k]), float(out_start[k]),
+                                       [boxes[k] if cell(part) is None else cell(part) for part in (enter, exit_)], interp,
+                                       tag=float(k + 1))
             if enter.band_copies:
                 _band_copies(nodes, tracks, enter, nid, key, ch, gid, rest_loc, k, rest_rot[k], pl.em, color, boxes[k],
                              float(in_start[k]), ln.enter_dur, rate, interp)
+            if exit_.band_copies:                               # leaving as bands: copies from the exit's start
+                j = min(int(np.searchsorted(times, out_start[k])), len(times) - 1)
+                _band_copies(nodes, tracks, exit_, nid, key, ch, gid, rest_loc, k, rot[k][j], pl.em, color, boxes[k],
+                             float(out_start[k]), float(ln.end - out_start[k]), rate, interp, first=100, at=loc[k][j])
         if enter.line_fx and parts:
             _line_fx(nodes, meshes, tracks, gid, f"{name}_fx", rest_loc, pl.em, accent, enter.mask_shape(mctx),
                      times, d.mask[0], float(in_start.min()), float(in_end.max()), interp)
+        if exit_.line_fx and parts:
+            _line_fx(nodes, meshes, tracks, gid, f"{name}_fx_out", rest_loc, pl.em, accent, exit_.mask_shape(mctx),
+                     times, d.mask[0], float(out_start.min()), float(ln.end), interp, suffix="_fxo")
         t_on, t_off = float(in_end.max()), float(out_start.min())
         if (mobile and ln.hold == "still" and not narrow and len(parts) > 1 and t_off - t_on >= LINE_MIN_STILL
                 and (ln.is_3d or not tmp)):

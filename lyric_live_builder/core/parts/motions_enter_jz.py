@@ -113,9 +113,9 @@ def side(ctx, salt):
 
 
 def out(ctx, p, dx=0.0, dy=0.0, rot=0.0, sx=1.0, sy=1.0, s=1.0, a=1.0, yaw=0.0, pitch=0.0,
-        hide=False, live=True, mask=None):
-    """A Delta from JIZURA-style values (dx, dy in em, dy down; angles in degrees). hide: invisible;
-    live False: back at the rest pose (JIZURA returns null when a glyph's q reaches 1)."""
+        hide=False, live=True, mask=None, back=0.0):
+    """A Delta from JIZURA-style values (dx, dy in em, dy down; angles in degrees; back: away from the
+    viewer in em, never toward). hide: invisible; live False: the rest pose (JIZURA returns null)."""
     g, t = p.shape
     b = lambda v: np.broadcast_to(np.asarray(v, dtype=np.float64), (g, t))
     live = b(live).astype(bool)
@@ -123,6 +123,7 @@ def out(ctx, p, dx=0.0, dy=0.0, rot=0.0, sx=1.0, sy=1.0, s=1.0, a=1.0, yaw=0.0, 
     loc = np.zeros((g, t, 3))
     loc[..., 0] = keep(dx, 0.0) * ctx.em
     loc[..., 2] = -keep(dy, 0.0) * ctx.em
+    loc[..., 1] = np.maximum(keep(back, 0.0), 0.0) * ctx.em
     rot = xform.mul(xform.roll(keep(rot, 0.0) * DEG),
                     xform.mul(xform.yaw(keep(yaw, 0.0) * DEG), xform.pitch(keep(pitch, 0.0) * DEG)))
     ss = keep(s, 1.0)

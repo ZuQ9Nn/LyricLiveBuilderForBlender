@@ -17,7 +17,7 @@ KEEP_CHANCE = 0.22
 GLIDE_LEAD = 0.9                     # seconds before the next line starts
 GLIDE_DUR = 1.0
 # kept lines leave together at the section end; these exits stay in place (no falling into the slot below)
-KEEP_EXITS = ("fade", "dust", "fly_away", "shrink")
+KEEP_EXITS = ("fade", "dust", "fly_away", "shrink", "blur", "blur_stagger", "wipe", "crumble", "lamp_off")
 MIN_CUT = 0.22                       # seconds between the cuts of a line (JIZURA)
 
 
