@@ -132,13 +132,16 @@ def _mask_boxes(rest_loc, rest_rot, em):
     return out
 
 
-def _mask_tracks(nid, times, mask, masked, exit_start, box, interp):
-    """The mask's progress, its shape (the entrance's, then the exit's from exit_start) and the line box."""
+def _mask_tracks(nid, times, mask, masked, enter_end, exit_start, box, interp):
+    """The mask's progress, its shape (the entrance's, none once it has ended, then the exit's from exit_start)
+    and the box."""
     (enter_on, enter_shape), (exit_on, exit_shape) = masked
     out = [_track(nid, "mask", times, mask[:, None], (1.0,), interp)]
     keys = [(float(times[0]), enter_shape if enter_on else (0.0,) * 4)]
+    if enter_on:
+        keys.append((max(enter_end, keys[0][0] + 1e-3), (0.0,) * 4))           # a window never cuts a hold
     if exit_on:
-        keys.append((max(exit_start, keys[0][0] + 1e-3), exit_shape))
+        keys.append((max(exit_start, keys[-1][0] + 1e-3), exit_shape))
     out.append(Track(nid, "mask_shape", "constant", np.array([k[0] for k in keys], dtype=np.float32),
                      np.array([k[1] for k in keys], dtype=np.float32)))
     out.append(Track(nid, "mask_box", "constant", np.array([float(times[0])], dtype=np.float32),
@@ -157,10 +160,12 @@ def is_band_copy(nid):
 
 
 def _band_copies(nodes, tracks, part, nid, mesh, ch, gid, rest_loc, k, rot, em, color, box, on, dur, rate, interp):
-    """Copies of a glyph, one per horizontal band of the line, sliding in from alternate sides while the
-    entrance lasts (design §5.6). Each shows only its band (mask kind 4)."""
-    n = part.band_copies
+    """Copies of a glyph, one per band of the line (horizontal or vertical), moving in while the entrance lasts
+    (design §5.6). Each shows only its band (mask kind 4 or 10)."""
     width = (rest_loc[:, 0].max() - rest_loc[:, 0].min()) + 2 * MASK_MARGIN * em
+    height = (rest_loc[:, 2].max() - rest_loc[:, 2].min()) + 2 * MASK_MARGIN * em
+    n, g = part.band_count(width / em), len(rest_loc)
+    kind = 10.0 if part.band_axis == "x" else 4.0
     end = on + dur
     times = np.unique(np.round(np.concatenate([np.arange(on, end, 1.0 / rate), [end]]), 4))
     p = (times - on) / max(dur, 1e-6)
@@ -169,17 +174,20 @@ def _band_copies(nodes, tracks, part, nid, mesh, ch, gid, rest_loc, k, rot, em, 
         cid = f"{nid}{BAND_COPY}{b}"
         nodes.append(Node(cid, ch, gid, "text", "glyph", mesh=mesh, material="text", loc=tuple(rest), rot=tuple(rot),
                           scale=(em,) * 3, color=color, default_active=False))
-        keys = [(0.0, 0.0), (on, 1.0), (end, 0.0)] if on > 0 else [(on, 1.0), (end, 0.0)]
+        start = on + part.band_start(b, k, g) * dur
+        keys = [(0.0, 0.0), (start, 1.0), (end, 0.0)] if start > 0 else [(start, 1.0), (end, 0.0)]
         tracks.append(Track(cid, "active", "constant", np.array([x[0] for x in keys], dtype=np.float32),
                             np.array([[x[1]] for x in keys], dtype=np.float32)))
+        dx, dz = part.band_motion(p, b, n, k, g, width, height, em)
         loc = np.broadcast_to(rest, (len(times), 3)).copy()
-        loc[:, 0] += part.band_offset(p, b) * (1 if b % 2 else -1) * width * 1.2
+        loc[:, 0] += dx
+        loc[:, 2] += dz
         tr = _track(cid, "location", times, loc, rest, interp)
         if tr:
             tracks.append(tr)
         t0 = np.array([on], dtype=np.float32)
         tracks += [Track(cid, "mask", "constant", t0, np.array([[0.5]], dtype=np.float32)),
-                   Track(cid, "mask_shape", "constant", t0, np.array([[4.0, float(n), float(b), 0.0]], dtype=np.float32)),
+                   Track(cid, "mask_shape", "constant", t0, np.array([[kind, float(n), float(b), 0.0]], dtype=np.float32)),
                    Track(cid, "mask_box", "constant", t0, np.array([box], dtype=np.float32))]
 
 
@@ -310,6 +318,8 @@ def bake(plan, metrics, eye=model.EYE_HEIGHT, rate=RATE, mobile=False, tmp=False
         masked = [(part.uses_mask, part.mask_shape(mctx)) for part in (enter, exit_)]
         masked = masked if any(u for u, _ in masked) else None
         boxes = _mask_boxes(rest_loc, rest_rot, pl.em) if masked or enter.band_copies else None
+        if masked and enter.uses_mask and enter.mask_cell:              # each glyph's own frame (a window)
+            boxes = np.broadcast_to(np.asarray(enter.mask_cell, dtype=np.float64), (len(rest_loc), 4)).copy()
         fg, accent = (ln.colors["fg"], ln.colors["accent"]) if ln.colors else (WHITE, ACCENT)
         base = [tuple(accent) if ln.emph_mask[i] else tuple(fg) for i in ci]
         narrow = lp.shown(ctx, params, pl)
@@ -345,7 +355,8 @@ def bake(plan, metrics, eye=model.EYE_HEIGHT, rate=RATE, mobile=False, tmp=False
             if tr:
                 tracks.append(tr)
             if masked and (d.mask[k] < 0.999).any():
-                tracks += _mask_tracks(nid, times, d.mask[k], masked, float(out_start[k]), boxes[k], interp)
+                tracks += _mask_tracks(nid, times, d.mask[k], masked, float(in_end[k]), float(out_start[k]), boxes[k],
+                                       interp)
             if enter.band_copies:
                 _band_copies(nodes, tracks, enter, nid, key, ch, gid, rest_loc, k, rest_rot[k], pl.em, color, boxes[k],
                              float(in_start[k]), ln.enter_dur, rate, interp)

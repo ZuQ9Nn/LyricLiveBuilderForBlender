@@ -43,7 +43,7 @@ def parts(kind):
 
 def _load():
     # importing the part modules runs their @register decorators
-    from .parts import layouts_3d, layouts_basic, motions_enter, motions_exit, motions_hold, motions_hold_jz  # noqa: F401
+    from .parts import layouts_3d, layouts_basic, motions_enter, motions_enter_jz, motions_exit, motions_hold, motions_hold_jz  # noqa: F401
 
 
 # ---------------- layouts ----------------
@@ -159,12 +159,26 @@ class MotionPart:
     stagger = 0.04                    # seconds between glyphs
     uses_mask = False                 # returns Delta.mask; mask_shape() says how it cuts
     line_fx = False                   # draws on a plane in front of the line too (wipe bar, checker tiles)
-    band_copies = 0                   # slides the glyphs in as this many horizontal bands (copies, design §5.6)
+    band_copies = 0                   # slides the glyphs in as bands (copies, design §5.6); see band_count
+    band_axis = "y"                   # "y": horizontal bands (mask kind 4), "x": vertical bands (kind 10)
+    mask_cell = None                  # (x0, y0, x1, y1) em: the mask's frame is each glyph's own, not the line
+
+    def band_count(self, width_em):
+        return self.band_copies
+
+    def band_start(self, b, k, g):
+        """Progress at which band b of glyph k (of g) appears."""
+        return 0.0
+
+    def band_motion(self, p, b, n, k, g, width, height, em):
+        """(dx, dz) in metres of band b (of n) of glyph k (of g) at progress p."""
+        return 0.0 * p, 0.0 * p
 
     def mask_shape(self, ctx):
-        """(kind, value, seed, 0): 1 wipe (value 0 from the left, 1 from the right), 2 bands (value: count,
-        alternate sides), 3 checker (value: cell size in em), 4 one band only (value: count, seed: the band).
-        See LLBMask.cginc / preview materials.mask_reveal."""
+        """(kind, value, seed, w): 1 wipe (value 0 from the left, 1 from the right), 2 bands (value: count,
+        alternate sides), 3 checker (value: cell size in em), 4 one band only (value: count, seed: the band),
+        5 iris, 6 diagonal (value: direction), 7 blinds, 8 shutter, 9 window (value / seed: the glyph's x / up
+        offset in em at progress 0), 10 one vertical band only. See LLBMask.cginc / preview mask_reveal."""
         return (0.0, 0.0, 0.0, 0.0)
 
     def windows(self, ctx, dur):

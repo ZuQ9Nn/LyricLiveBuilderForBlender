@@ -121,94 +121,161 @@ def _clamp01(t, x):
     return t.math("MINIMUM", t.math("MAXIMUM", x, 0.0), 1.0)
 
 
-def mask_reveal(t):
-    """1 where the glyph's mask shows it, 0 where it is cut (design §5.6). The same formulas as the Unity
-    shaders' LLBMask.cginc. Reads the object properties llb_mask (progress), llb_mask_shape (kind, value,
-    seed) and llb_mask_box (the line in glyph coordinates, em); glyphs without them are never cut."""
-    tc = t.node("ShaderNodeTexCoord")
-    p = t.sep(tc.outputs["Object"])
-    px, py = p[0], p[2]                                    # the glyph's x and up (its mesh lies in x-z)
+def _mask_inputs(t):
+    """Object properties the mask reads (glyphs without them are never cut)."""
     attr = lambda name: t.node("ShaderNodeAttribute", attribute_type="OBJECT", attribute_name=name)
     m = attr("llb_mask").outputs["Fac"]
-    shape = t.sep(attr("llb_mask_shape").outputs["Vector"])
-    kind, value, seed = shape[0], shape[1], shape[2]
+    shape_node = attr("llb_mask_shape")
+    shape = t.sep(shape_node.outputs["Vector"])
     box_node = attr("llb_mask_box")
     box = t.sep(box_node.outputs["Vector"])
-    x0, y0, x1, y1 = box[0], box[1], box[2], box_node.outputs["Alpha"]
-    ux = _clamp01(t, t.math("DIVIDE", t.math("SUBTRACT", px, x0), t.math("MAXIMUM", t.math("SUBTRACT", x1, x0), 1e-4)))
-    uy = _clamp01(t, t.math("DIVIDE", t.math("SUBTRACT", py, y0), t.math("MAXIMUM", t.math("SUBTRACT", y1, y0), 1e-4)))
+    return m, (shape[0], shape[1], shape[2]), (box[0], box[1], box[2], box_node.outputs["Alpha"])
+
+
+def _ease(t, kind, x):
+    """JIZURA's easings on a node socket: out_quart, out_quint, in_out_cubic, in_out_quart."""
+    x = _clamp01(t, x)
+    if kind in ("out_quart", "out_quint"):
+        return t.math("SUBTRACT", 1.0, t.math("POWER", t.math("SUBTRACT", 1.0, x), 4.0 if kind == "out_quart" else 5.0))
+    k, a = (3.0, 4.0) if kind == "in_out_cubic" else (4.0, 8.0)
+    lo = t.math("MULTIPLY", t.math("POWER", x, k), a)
+    hi = t.math("SUBTRACT", 1.0, t.math("DIVIDE", t.math("POWER", t.math("SUBTRACT", 2.0, t.math("MULTIPLY", x, 2.0)), k), 2.0))
+    first = t.math("LESS_THAN", x, 0.5)
+    return t.math("ADD", t.math("MULTIPLY", first, lo), t.math("MULTIPLY", t.math("SUBTRACT", 1.0, first), hi))
+
+
+def mask_reveal(t):
+    """1 where the glyph's mask shows it, 0 where it is cut (design §5.6). The same formulas as the Unity
+    shaders' LLBMask.cginc llbMask."""
+    p = t.sep(t.node("ShaderNodeTexCoord").outputs["Object"])
+    px, py = p[0], p[2]                                    # the glyph's x and up (its mesh lies in x-z)
+    m, (kind, value, seed), (x0, y0, x1, y1) = _mask_inputs(t)
+    w = t.math("MAXIMUM", t.math("SUBTRACT", x1, x0), 1e-4)
+    h = t.math("MAXIMUM", t.math("SUBTRACT", y1, y0), 1e-4)
+    cx, cy = t.math("MULTIPLY", t.math("ADD", x0, x1), 0.5), t.math("MULTIPLY", t.math("ADD", y0, y1), 0.5)
+    ux = _clamp01(t, t.math("DIVIDE", t.math("SUBTRACT", px, x0), w))
+    uy = _clamp01(t, t.math("DIVIDE", t.math("SUBTRACT", py, y0), h))
     flip = lambda u, f: t.math("ADD", u, t.math("MULTIPLY", f, t.math("SUBTRACT", 1.0, t.math("MULTIPLY", u, 2.0))))
+    lt = lambda a, b: t.math("LESS_THAN", a, b)
+    shapes = {}
     # 1 wipe: from the left (value 0) or the right (value 1)
-    wipe = t.math("LESS_THAN", flip(ux, value), t.math("ADD", m, 1e-4))
+    shapes[1] = lt(flip(ux, value), t.math("ADD", m, 1e-4))
     # 2 bands: value bands, alternate sides, each a little later (out-expo)
     n = t.math("MAXIMUM", value, 1.0)
     b = t.math("MINIMUM", t.math("FLOOR", t.math("MULTIPLY", uy, n)), t.math("SUBTRACT", n, 1.0))
     eb = _clamp01(t, t.math("SUBTRACT", t.math("MULTIPLY", m, 1.3), t.math("MULTIPLY", b, 0.05)))
     eb = t.math("SUBTRACT", 1.0, t.math("POWER", 2.0, t.math("MULTIPLY", eb, -10.0)))
-    bands = t.math("LESS_THAN", flip(ux, t.math("FLOORED_MODULO", b, 2.0)), t.math("ADD", eb, 1e-4))
+    shapes[2] = lt(flip(ux, t.math("FLOORED_MODULO", b, 2.0)), t.math("ADD", eb, 1e-4))
     # 3 checker: squares of value em grow from their centres, odd ones later, sweeping along the line
     cell = t.math("MAXIMUM", value, 0.05)
     qx = t.math("DIVIDE", t.math("SUBTRACT", px, x0), cell)
     qy = t.math("DIVIDE", t.math("SUBTRACT", py, y0), cell)
-    cx, cy = t.math("FLOOR", qx), t.math("FLOOR", qy)
+    ccx, ccy = t.math("FLOOR", qx), t.math("FLOOR", qy)
     rnd = t.math("FRACT", t.math("MULTIPLY", t.math("SINE", t.math(
-        "ADD", t.math("ADD", t.math("MULTIPLY", cx, 12.9898), t.math("MULTIPLY", cy, 78.233)), seed)), 43758.5453))
-    d = t.math("ADD", t.math("ADD", t.math("MULTIPLY", t.math("FLOORED_MODULO", t.math("ADD", cx, cy), 2.0), 0.25),
+        "ADD", t.math("ADD", t.math("MULTIPLY", ccx, 12.9898), t.math("MULTIPLY", ccy, 78.233)), seed)), 43758.5453))
+    d = t.math("ADD", t.math("ADD", t.math("MULTIPLY", t.math("FLOORED_MODULO", t.math("ADD", ccx, ccy), 2.0), 0.25),
                                     t.math("MULTIPLY", ux, 0.3)), t.math("MULTIPLY", rnd, 0.08))
     tt = _clamp01(t, t.math("DIVIDE", t.math("SUBTRACT", m, d), 0.22))
     half = t.math("MULTIPLY", t.math("SUBTRACT", 1.0, t.math("POWER", t.math("SUBTRACT", 1.0, tt), 4.0)), 0.5)
-    fx = t.math("ABSOLUTE", t.math("SUBTRACT", t.math("SUBTRACT", qx, cx), 0.5))
-    fy = t.math("ABSOLUTE", t.math("SUBTRACT", t.math("SUBTRACT", qy, cy), 0.5))
-    checker = t.math("LESS_THAN", t.math("MAXIMUM", fx, fy), t.math("ADD", half, 1e-4))
-    # 4 one band only (a sliding copy of the glyph): seed is the band
-    one = t.math("LESS_THAN", t.math("ABSOLUTE", t.math("SUBTRACT", b, seed)), 0.5)
-    out = t.math("ADD", t.math("ADD", t.math("MULTIPLY", t.is_(kind, 1), wipe), t.math("MULTIPLY", t.is_(kind, 2), bands)),
-                 t.math("ADD", t.math("MULTIPLY", t.is_(kind, 3), checker), t.math("MULTIPLY", t.is_(kind, 4), one)))
-    out = t.math("ADD", out, t.math("LESS_THAN", kind, 0.5))                 # no mask
+    fx = t.math("ABSOLUTE", t.math("SUBTRACT", t.math("SUBTRACT", qx, ccx), 0.5))
+    fy = t.math("ABSOLUTE", t.math("SUBTRACT", t.math("SUBTRACT", qy, ccy), 0.5))
+    shapes[3] = lt(t.math("MAXIMUM", fx, fy), t.math("ADD", half, 1e-4))
+    # 4 one horizontal band only (a sliding copy of the glyph): seed is the band
+    shapes[4] = lt(t.math("ABSOLUTE", t.math("SUBTRACT", b, seed)), 0.5)
+    # 5 iris: a circle from the centre
+    dist = t.math("SQRT", t.math("ADD", t.math("POWER", t.math("SUBTRACT", px, cx), 2.0), t.math("POWER", t.math("SUBTRACT", py, cy), 2.0)))
+    diag = t.math("SQRT", t.math("ADD", t.math("MULTIPLY", w, w), t.math("MULTIPLY", h, h)))
+    shapes[5] = lt(dist, t.math("MULTIPLY", t.math("MULTIPLY", diag, 0.5), m))
+    # 6 diagonal: a slanted edge, value = direction
+    hv = t.math("MULTIPLY", h, 0.5)
+    halfd = t.math("ADD", t.math("MULTIPLY", w, 0.5), t.math("MULTIPLY", hv, 0.5))
+    T = t.math("SUBTRACT", t.math("MULTIPLY", t.math("MULTIPLY", halfd, 2.0), _ease(t, "in_out_cubic", t.math("DIVIDE", t.math("SUBTRACT", m, 0.18), 0.74))), halfd)
+    shapes[6] = lt(t.math("MULTIPLY", t.math("SUBTRACT", px, cx), value), t.math("ADD", T, t.math("MULTIPLY", t.math("SUBTRACT", py, cy), 0.5)))
+    # 7 blinds: slats widen from the top down
+    pitch = t.math("MAXIMUM", t.math("DIVIDE", h, 40.0), 0.2)
+    nb = t.math("MAXIMUM", t.math("CEIL", t.math("DIVIDE", h, pitch)), 1.0)
+    k = t.math("FLOOR", t.math("DIVIDE", t.math("SUBTRACT", y1, py), pitch))
+    cyk = t.math("SUBTRACT", y1, t.math("MULTIPLY", t.math("ADD", k, 0.5), pitch))
+    ordk = t.math("DIVIDE", k, t.math("MAXIMUM", t.math("SUBTRACT", nb, 1.0), 1.0))
+    ek = _ease(t, "out_quart", t.math("DIVIDE", t.math("SUBTRACT", m, t.math("MULTIPLY", ordk, 0.55)), 0.45))
+    shapes[7] = lt(t.math("ABSOLUTE", t.math("SUBTRACT", py, cyk)), t.math("MULTIPLY", t.math("MULTIPLY", pitch, 0.5), ek))
+    # 8 shutter: opens from the middle line
+    op = _ease(t, "in_out_quart", t.math("DIVIDE", t.math("SUBTRACT", m, 0.18), 0.82))
+    shapes[8] = lt(t.math("ABSOLUTE", t.math("SUBTRACT", py, cy)), t.math("MULTIPLY", hv, op))
+    # 9 window: the glyph's own frame while the glyph slides in from (value, seed) em
+    off = t.math("SUBTRACT", 1.0, m)
+    qx9, qy9 = t.math("ADD", px, t.math("MULTIPLY", off, value)), t.math("ADD", py, t.math("MULTIPLY", off, seed))
+    inside = lambda q, lo, hi: t.math("MULTIPLY", t.math("GREATER_THAN", q, t.math("SUBTRACT", lo, 1e-4)), lt(q, t.math("ADD", hi, 1e-4)))
+    shapes[9] = t.math("MULTIPLY", inside(qx9, x0, x1), inside(qy9, y0, y1))
+    # 10 one vertical band only
+    bx = t.math("MINIMUM", t.math("FLOOR", t.math("MULTIPLY", ux, n)), t.math("SUBTRACT", n, 1.0))
+    shapes[10] = lt(t.math("ABSOLUTE", t.math("SUBTRACT", bx, seed)), 0.5)
+    out = lt(kind, 0.5)                                                       # no mask
+    for kk, v in shapes.items():
+        out = t.math("ADD", out, t.math("MULTIPLY", t.is_(kind, kk), v))
     return t.math("MAXIMUM", out, t.math("GREATER_THAN", m, 0.9999))        # fully revealed
 
 
 def line_fx_material():
-    """The plane in front of a line: the wipe's bar and the checker's tiles (Unity: LLBMask.cginc llbLineFx)."""
-    mat, t = _new_material(LINE_FX)
+    """The plane in front of a line: wipe bar, checker tiles, iris ring, diagonal band, shutter lines
+    (Unity: LLBMask.cginc llbLineFx)."""
+    mat, t = _new_material(LINE_FX, version=2)
     if t is None:
         return mat
     info = t.node("ShaderNodeObjectInfo")
     p = t.sep(t.node("ShaderNodeTexCoord").outputs["Object"])
     ux, uy = t.math("ADD", p[0], 0.5), t.math("ADD", p[2], 0.5)            # the unit quad lies in x-z
-    attr = lambda name: t.node("ShaderNodeAttribute", attribute_type="OBJECT", attribute_name=name)
-    m = attr("llb_mask").outputs["Fac"]
-    shape = t.sep(attr("llb_mask_shape").outputs["Vector"])
-    kind, value, seed = shape[0], shape[1], shape[2]
-    box_node = attr("llb_mask_box")
-    box = t.sep(box_node.outputs["Vector"])
-    w, h = t.math("SUBTRACT", box[2], box[0]), t.math("SUBTRACT", box_node.outputs["Alpha"], box[1])
-    # the wipe's bar, 0.07 em wide, on the edge (from the right when value is 1)
+    m, (kind, value, seed), (x0, y0, x1, y1) = _mask_inputs(t)
+    w, h = t.math("SUBTRACT", x1, x0), t.math("SUBTRACT", y1, y0)
+    px, py = t.math("MULTIPLY", ux, w), t.math("MULTIPLY", uy, h)
+    cx, cy = t.math("MULTIPLY", w, 0.5), t.math("MULTIPLY", h, 0.5)
+    lt = lambda a, b: t.math("LESS_THAN", a, b)
+    fade = lambda lo, hi: t.math("SUBTRACT", 1.0, t.smooth(m, lo, hi))
+    a = {}
+    # 1 the wipe's bar, 0.07 em wide, on the edge (from the right when value is 1)
     edge = t.math("ADD", m, t.math("MULTIPLY", value, t.math("SUBTRACT", 1.0, t.math("MULTIPLY", m, 2.0))))
-    bar = t.math("LESS_THAN", t.math("MULTIPLY", t.math("ABSOLUTE", t.math("SUBTRACT", ux, edge)), w), 0.035)
-    # the checker's accent squares: pop up, then shrink away
+    a[1] = lt(t.math("MULTIPLY", t.math("ABSOLUTE", t.math("SUBTRACT", ux, edge)), w), 0.035)
+    # 3 the checker's accent squares: pop up, then shrink away
     cell = t.math("MAXIMUM", value, 0.05)
-    qx, qy = t.math("DIVIDE", t.math("MULTIPLY", ux, w), cell), t.math("DIVIDE", t.math("MULTIPLY", uy, h), cell)
-    cx, cy = t.math("FLOOR", qx), t.math("FLOOR", qy)
+    qx, qy = t.math("DIVIDE", px, cell), t.math("DIVIDE", py, cell)
+    ccx, ccy = t.math("FLOOR", qx), t.math("FLOOR", qy)
     rnd = t.math("FRACT", t.math("MULTIPLY", t.math("SINE", t.math(
-        "ADD", t.math("ADD", t.math("MULTIPLY", cx, 12.9898), t.math("MULTIPLY", cy, 78.233)), seed)), 43758.5453))
-    d = t.math("ADD", t.math("ADD", t.math("MULTIPLY", t.math("FLOORED_MODULO", t.math("ADD", cx, cy), 2.0), 0.25),
+        "ADD", t.math("ADD", t.math("MULTIPLY", ccx, 12.9898), t.math("MULTIPLY", ccy, 78.233)), seed)), 43758.5453))
+    d = t.math("ADD", t.math("ADD", t.math("MULTIPLY", t.math("FLOORED_MODULO", t.math("ADD", ccx, ccy), 2.0), 0.25),
                                     t.math("MULTIPLY", ux, 0.3)), t.math("MULTIPLY", rnd, 0.08))
     tt = _clamp01(t, t.math("DIVIDE", t.math("SUBTRACT", m, d), 0.22))
-    live = t.math("MULTIPLY", t.math("GREATER_THAN", tt, 0.0), t.math("LESS_THAN", tt, 0.75))
+    live = t.math("MULTIPLY", t.math("GREATER_THAN", tt, 0.0), lt(tt, 0.75))
     half = t.math("MULTIPLY", t.math("MULTIPLY", t.math("SUBTRACT", 1.0, t.math("POWER", t.math("DIVIDE", tt, 0.75), 3.0)), 0.5),
                   t.math("MINIMUM", t.math("MULTIPLY", tt, 6.0), 1.0))
-    fx = t.math("ABSOLUTE", t.math("SUBTRACT", t.math("SUBTRACT", qx, cx), 0.5))
-    fy = t.math("ABSOLUTE", t.math("SUBTRACT", t.math("SUBTRACT", qy, cy), 0.5))
-    tile = t.math("MULTIPLY", t.math("MULTIPLY", t.math("LESS_THAN", t.math("MAXIMUM", fx, fy), half), live), 0.9)
-    a = t.math("ADD", t.math("MULTIPLY", t.is_(kind, 1), bar), t.math("MULTIPLY", t.is_(kind, 3), tile))
-    a = t.math("MULTIPLY", t.math("MULTIPLY", a, t.math("LESS_THAN", m, 0.9999)), info.outputs["Alpha"])
-    _output(t, _emit_alpha(t, info.outputs["Color"], a, False))
+    fx = t.math("ABSOLUTE", t.math("SUBTRACT", t.math("SUBTRACT", qx, ccx), 0.5))
+    fy = t.math("ABSOLUTE", t.math("SUBTRACT", t.math("SUBTRACT", qy, ccy), 0.5))
+    a[3] = t.math("MULTIPLY", t.math("MULTIPLY", lt(t.math("MAXIMUM", fx, fy), half), live), 0.9)
+    # 5 the iris' ring
+    dist = t.math("SQRT", t.math("ADD", t.math("POWER", t.math("SUBTRACT", px, cx), 2.0), t.math("POWER", t.math("SUBTRACT", py, cy), 2.0)))
+    radius = t.math("MULTIPLY", t.math("MULTIPLY", t.math("SQRT", t.math("ADD", t.math("MULTIPLY", w, w), t.math("MULTIPLY", h, h))), 0.5), m)
+    a[5] = t.math("MULTIPLY", lt(t.math("ABSOLUTE", t.math("SUBTRACT", dist, radius)), 0.015), fade(0.55, 0.97))
+    # 6 the band running ahead of the diagonal edge
+    hv = t.math("MULTIPLY", h, 0.5)
+    halfd = t.math("ADD", t.math("MULTIPLY", w, 0.5), t.math("MULTIPLY", hv, 0.5))
+    T = t.math("SUBTRACT", t.math("MULTIPLY", t.math("MULTIPLY", halfd, 2.0), _ease(t, "in_out_cubic", t.math("DIVIDE", t.math("SUBTRACT", m, 0.18), 0.74))), halfd)
+    L = t.math("SUBTRACT", t.math("MULTIPLY", t.math("MULTIPLY", halfd, 2.0), _ease(t, "out_quart", t.math("DIVIDE", m, 0.5))), halfd)
+    xs = t.math("SUBTRACT", t.math("MULTIPLY", t.math("SUBTRACT", px, cx), value), t.math("MULTIPLY", t.math("SUBTRACT", py, cy), 0.5))
+    a[6] = t.math("MULTIPLY", t.math("GREATER_THAN", xs, t.math("SUBTRACT", T, 1e-4)), lt(xs, L))
+    # 8 the shutter's two lines
+    halfl = t.math("MULTIPLY", cx, _ease(t, "out_quint", t.math("DIVIDE", m, 0.32)))
+    hh = t.math("MULTIPLY", hv, _ease(t, "in_out_quart", t.math("DIVIDE", t.math("SUBTRACT", m, 0.18), 0.82)))
+    on_line = lt(t.math("ABSOLUTE", t.math("SUBTRACT", t.math("ABSOLUTE", t.math("SUBTRACT", py, cy)), hh)), 0.015)
+    a[8] = t.math("MULTIPLY", t.math("MULTIPLY", lt(t.math("ABSOLUTE", t.math("SUBTRACT", px, cx)), halfl), on_line), fade(0.6, 0.9))
+    alpha = 0.0
+    for kk, v in a.items():
+        alpha = t.math("ADD", alpha, t.math("MULTIPLY", t.is_(kind, kk), v))
+    alpha = t.math("MULTIPLY", t.math("MULTIPLY", alpha, lt(m, 0.9999)), info.outputs["Alpha"])
+    _output(t, _emit_alpha(t, info.outputs["Color"], alpha, False))
     return mat
 
 
 def text_material():
-    mat, t = _new_material(TEXT, version=3)
+    mat, t = _new_material(TEXT, version=4)
     if t is None:
         return mat
     info = t.node("ShaderNodeObjectInfo")

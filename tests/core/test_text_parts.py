@@ -61,7 +61,7 @@ class TestContracts(unittest.TestCase):
         np.testing.assert_allclose(d.mask, 1, atol=1e-9, err_msg=msg)
 
     def test_counts(self):
-        self.assertEqual(len(registry.keys("enter")), 14)
+        self.assertEqual(len(registry.keys("enter")), 74)
         self.assertEqual(len(registry.keys("hold")), 45)
         self.assertEqual(len(registry.keys("exit")), 7)
         self.assertEqual(len([p for p in registry.parts("layout") if not p.only_3d]), 7)

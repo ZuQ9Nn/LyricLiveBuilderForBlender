@@ -227,11 +227,11 @@ class Slice(MotionPart):
     def evaluate(self, ctx, p):
         return Delta(ctx.n, p.shape[1], alpha=(p >= 1).astype(float))
 
-    @staticmethod
-    def band_offset(p, band):
-        """Share of the slide still to go for a band (JIZURA: 1 - outExpo(p * 1.2 - 0.05 band), landed at p = 1)."""
-        x = np.clip(p * 1.3 - 0.05 * band, 0.0, 1.0)
-        return np.where(x >= 1, 0.0, 2.0 ** (-10 * x))
+    def band_motion(self, p, b, n, k, g, width, height, em):
+        """JIZURA: (1 - outExpo(p * 1.2 - 0.05 band)) of 0.9 screen widths, alternate sides; landed at p = 1."""
+        x = np.clip(p * 1.3 - 0.05 * b, 0.0, 1.0)
+        left = np.where(x >= 1, 0.0, 2.0 ** (-10 * x))
+        return left * (1 if b % 2 else -1) * width * 1.2, 0.0 * p
 
 
 @register("enter", "checker")
