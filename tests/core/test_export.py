@@ -63,6 +63,19 @@ class TestParticles(unittest.TestCase):
         for key, p in pts.PRESETS.items():
             spec = world.emitter(key, 1.0, 9.0, 5, pal, st, bursts=[{"t": 2.0, "origin": [0.0, 3.0, 2.0]}]
                                  if p["emitter"] == "burst" else None)
+            if p["emitter"] == "lines":
+                from lyric_live_builder.core.parts import lines
+                v, f, col, uv4 = particles_unity.line_mesh(lines.geometry(p, spec["seed"], spec["colors"]))
+                data = meshbin.encode(v, f, colors=col, uv4=uv4)
+                pos, _, idx, col2 = meshbin.decode(data)
+                self.assertEqual(len(pos), len(v))
+                self.assertEqual(idx.size, 6 * len(f))
+                self.assertEqual(int(idx.max()), len(v) - 1)
+                np.testing.assert_allclose(col2, np.round(np.clip(col, 0, 1) * 255) / 255, atol=1e-6)
+                quad = np.asarray(uv4[0]).reshape(-1, 4, 4)             # the other end of a's vertices is b
+                np.testing.assert_allclose(quad[:, 0, :3], pos.reshape(-1, 4, 3)[:, 2], atol=1e-5)
+                self.assertEqual(particles_unity.line_params(p)[0]["name"], "_Drift")
+                continue
             if p["emitter"] == "burst":
                 d, origin, span = particles_unity.burst(spec, spec["bursts"][0])
                 self.assertEqual(origin, [0.0, 2.0, 3.0])
@@ -78,6 +91,22 @@ class TestParticles(unittest.TestCase):
                 if p["shape"] in pts.SHAPES_3D:
                     self.assertEqual(len(d["renderer"]["meshes"]), len(pts.shapes_of(p)), key)
                 self.assertIn(d["shape"]["type"], ("Sphere", "Hemisphere", "Circle", "Box"))
+                if p.get("steps"):                           # one moving axis per segment, both curves alike
+                    n = d["steps"]["n"]
+                    lo, hi = np.reshape(d["steps"]["lo"], (3, n)), np.reshape(d["steps"]["hi"], (3, n))
+                    self.assertTrue(((hi != 0).sum(axis=0) == 1).all(), key)
+                    np.testing.assert_array_equal(lo, -hi)
+                if p.get("tail"):
+                    self.assertTrue(0 < d["trail"]["ratio"] <= 1 and d["trail"]["width"] > 0, key)
+            if p.get("steps"):
+                self.assertEqual(len(systems), 3, key)
+                self.assertEqual(len({json.dumps(d["steps"]) for d in systems}), 3, key)
+            if p["emitter"] == "point_orbit":                    # a point per height, orbiting
+                self.assertEqual(len(systems), 2, key)
+                for d in systems:
+                    self.assertGreater(d["velocity"]["orbitalY"][0], 0, key)
+                    self.assertAlmostEqual(np.hypot(d["shape"]["position"][0], d["shape"]["position"][2]),
+                                           p["radius"][0], 5)
 
 
 class TestManifest(unittest.TestCase):

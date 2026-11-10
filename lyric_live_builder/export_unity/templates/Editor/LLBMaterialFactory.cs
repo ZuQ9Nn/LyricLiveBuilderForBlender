@@ -17,6 +17,7 @@ namespace LyricLive.Editor
             { "line_fx", new[] { "LyricLiveBuilder/LineFx", "Unlit/Transparent" } },
             { "dome", new[] { "LyricLiveBuilder/Dome", "Unlit/Color" } },
             { "particle", new[] { "LyricLiveBuilder/Particle", "Particles/Standard Unlit", "Unlit/Color" } },
+            { "line", new[] { "LyricLiveBuilder/Line", "Particles/Standard Unlit", "Unlit/Color" } },
         };
 
         public static Shader Find(string kind)
@@ -44,6 +45,7 @@ namespace LyricLive.Editor
                 {
                     if (p.values.Length == 1) m.SetFloat(p.name, p.values[0]);
                     else if (p.name == "_CueDir") m.SetVector(p.name, new Vector4(p.values[0], p.values[1], p.values[2], 0));
+                    else if (p.values.Length == 4) m.SetVector(p.name, new Vector4(p.values[0], p.values[1], p.values[2], p.values[3]));
                     else m.SetColor(p.name, new Color(p.values[0], p.values[1], p.values[2], 1));
                 }
             if (d.shader == "dome" && panorama != null) m.SetTexture("_PanoTex", panorama);

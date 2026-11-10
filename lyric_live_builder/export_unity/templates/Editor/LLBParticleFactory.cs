@@ -50,7 +50,20 @@ namespace LyricLive.Editor
             }
         }
 
-        public static ParticleSystem Apply(GameObject go, LLBParticles d, Material mat, Mesh mesh, Mesh[] meshes = null)
+        static AnimationCurve StepCurve(float[] v, int offset, int n)
+        {
+            // one flat value per segment of the life: infinite tangents hold each key until the next
+            var keys = new Keyframe[n];
+            for (int k = 0; k < n; k++)
+                keys[k] = new Keyframe((float)k / n, v[offset + k], float.PositiveInfinity, float.PositiveInfinity);
+            return new AnimationCurve(keys);
+        }
+
+        static ParticleSystem.MinMaxCurve Steps(LLBPSSteps s, int axis) =>
+            new ParticleSystem.MinMaxCurve(1f, StepCurve(s.lo, axis * s.n, s.n), StepCurve(s.hi, axis * s.n, s.n));
+
+        public static ParticleSystem Apply(GameObject go, LLBParticles d, Material mat, Mesh mesh, Mesh[] meshes = null,
+                                           Material trailMat = null)
         {
             var ps = go.AddComponent<ParticleSystem>();
             var main = ps.main;
@@ -97,6 +110,14 @@ namespace LyricLive.Editor
                 vel.orbitalX = new ParticleSystem.MinMaxCurve(0f, 0f);
                 vel.orbitalY = Range(v.orbitalY);
                 vel.orbitalZ = new ParticleSystem.MinMaxCurve(0f, 0f);
+            }
+            if (d.steps != null && d.steps.n > 0)
+            {
+                // stepped motion: one axis moves per segment; x, y and z must share the TwoCurves mode
+                var vel = ps.velocityOverLifetime;
+                vel.enabled = true;
+                vel.space = ParticleSystemSimulationSpace.Local;
+                vel.x = Steps(d.steps, 0); vel.y = Steps(d.steps, 1); vel.z = Steps(d.steps, 2);
             }
             if (d.noise != null && d.noise.strength > 0)
             {
@@ -163,6 +184,20 @@ namespace LyricLive.Editor
                         : new ParticleSystem.MinMaxCurve((d.renderer.tile + 0.5f) / 16f);
                     tsa.cycleCount = 1;
                 }
+            }
+            if (d.trail != null && d.trail.width > 0)
+            {
+                var tr = ps.trails;
+                tr.enabled = true;
+                tr.mode = ParticleSystemTrailMode.PerParticle;
+                tr.lifetime = d.trail.ratio;                // a share of the particle's lifetime
+                tr.minVertexDistance = 0.04f;               // keeps the right-angle corners sharp
+                tr.dieWithParticles = true;
+                tr.inheritParticleColor = true;
+                tr.sizeAffectsWidth = false;
+                tr.widthOverTrail = new ParticleSystem.MinMaxCurve(d.trail.width, AnimationCurve.Linear(0f, 1f, 1f, 0f));
+                tr.colorOverTrail = new ParticleSystem.MinMaxGradient(Fade(0f, 1f));
+                r.trailMaterial = trailMat != null ? trailMat : mat;
             }
             if (d.sub != null && d.sub.count > 0) AddSub(ps, d, mat, mesh);
             return ps;

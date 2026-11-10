@@ -57,6 +57,13 @@ PARTICLE_WORDS = {
     "shape_confetti": ("紙吹雪", "かみふぶき", "confetti", "お祝い", "おいわい", "祝福", "しゅくふく", "パレード", "parade"),
     "shape_float": ("図形", "ずけい", "幾何学", "きかがく", "geometry", "shape", "shapes", "かたち"),
     "poly_float": ("結晶", "けっしょう", "宝石", "ほうせき", "クリスタル", "crystal", "ダイヤ", "jewel", "gem"),
+    "circuit": ("回路", "かいろ", "電子", "でんし", "デジタル", "digital", "サイバー", "cyber", "circuit", "配線",
+                "はいせん", "電脳", "でんのう"),
+    "horizon": ("水平線", "すいへいせん", "地平線", "ちへいせん", "horizon", "海と空", "境界線"),
+    "plexus": ("星座", "せいざ", "つながる", "繋がる", "つながり", "絆", "きずな", "ネットワーク", "network",
+               "constellation", "plexus"),
+    "dot_march": ("点線", "てんせん", "行進", "こうしん", "マーチ", "march", "ドット", "dot", "dots", "リズム",
+                  "rhythm", "水玉", "みずたま"),
     "sparkle_burst": ("輝き", "かがやき", "輝く", "かがやく", "煌めき", "きらめき", "sparkle", "shine"),
 }
 # longer words that merely contain a keyword; blanked out before matching

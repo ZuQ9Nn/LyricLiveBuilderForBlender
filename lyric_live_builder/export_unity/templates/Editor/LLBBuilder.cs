@@ -177,7 +177,8 @@ namespace LyricLive.Editor
                         var pmeshes = new List<Mesh>();
                         foreach (var key in d.renderer.meshes ?? new string[0])
                             if (meshes.TryGetValue(key, out var mm)) pmeshes.Add(mm);
-                        LLBParticleFactory.Apply(go, d, ParticleMat(d.renderer.blend, !isMesh), pmesh, pmeshes.ToArray());
+                        LLBParticleFactory.Apply(go, d, ParticleMat(d.renderer.blend, !isMesh), pmesh, pmeshes.ToArray(),
+                                                 ParticleMat(d.renderer.blend, false));     // trails: plain colour
                     }
                     go.SetActive(n.active);
                     objs[n.id] = go;

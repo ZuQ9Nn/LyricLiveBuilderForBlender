@@ -23,7 +23,7 @@ import lyric_live_builder as llb                                     # noqa: E40
 from common import check, failures, font_arg, setup, song, text_objects, translation_checks  # noqa: E402
 from lyric_live_builder.core import bake, color, world               # noqa: E402
 from lyric_live_builder.core.parts import backgrounds as bgs          # noqa: E402
-from lyric_live_builder.core.parts import particles as pts            # noqa: E402
+from lyric_live_builder.core.parts import lines, particles as pts     # noqa: E402
 from lyric_live_builder.preview import particles as preview_particles  # noqa: E402
 from lyric_live_builder.preview import scene as preview_scene        # noqa: E402
 from lyric_live_builder.ui import planning, project                  # noqa: E402
@@ -100,19 +100,26 @@ def check_particles(scene, baked, t):
     for ob in bpy.data.collections["LLB_Particles"].objects:
         spec = specs[ob["llb_node"]]
         st = pts.state(spec, (scene.frame_current - scene.frame_start + scene.frame_subframe) / scene.render.fps)
-        per = 4 if spec["preset"]["shape"] in pts.SHAPES_2D else len(ob.data.vertices) // max(1, spec["count"] + spec["pool"])
+        cap = spec["count"] + spec["pool"]
         co = np.empty(len(ob.data.vertices) * 3, dtype=np.float32)
         ob.data.vertices.foreach_get("co", co)
-        centres = co.reshape(-1, per, 3).mean(axis=1)
+        co = co.reshape(-1, 3)
+        if spec["preset"]["shape"] in pts.SHAPES_3D and not lines.is_lines(spec["preset"]):
+            centres, base = np.zeros((cap, 3)), 0                # grouped by shape (mixed shapes differ in size)
+            for slots, v, _ in preview_particles._layout3d(spec["preset"], spec["seed"], cap):
+                n = len(v) * len(slots)
+                centres[slots] = co[base:base + n].reshape(len(slots), len(v), 3).mean(axis=1)
+                base += n
+        else:
+            centres = co.reshape(-1, 4, 3).mean(axis=1)[:cap]     # heads (tails follow)
         live = st["alpha"] > 0
         if spec["preset"].get("trail") or not live.any():
             alive += int(live.sum())
             continue
         if spec["preset"]["shape"] in pts.SHAPES_3D:
             from lyric_live_builder.core import meshes
-            v, _ = meshes.particle_shape(spec["preset"]["shape"])
-            offset = v.mean(axis=0)                     # shapes are about centred; rotation moves the mean a little
-            tol = np.linalg.norm(offset) * st["size"][live].max() + 1e-3
+            offset = max(np.linalg.norm(meshes.particle_shape(k)[0].mean(axis=0)) for k in pts.shapes_of(spec["preset"]))
+            tol = offset * st["size"][live].max() + 1e-3      # shapes are about centred; rotation moves the mean a little
         else:
             tol = 1e-3
         err = np.linalg.norm(centres[live] - st["pos"][live], axis=1).max()

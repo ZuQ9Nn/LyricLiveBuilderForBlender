@@ -779,4 +779,8 @@ MESSAGES = {
     'Shape Confetti': '図形の紙吹雪',
     'Floating Shapes': '図形の浮遊',
     'Floating Polyhedra': '浮遊する多面体',
+    'Circuit': '回路',
+    'Dot March': '点の行進',
+    'Horizon Line': '水平線',
+    'Plexus': 'プレクサス',
 }

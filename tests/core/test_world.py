@@ -64,7 +64,7 @@ class TestParticles(unittest.TestCase):
     def test_counts(self):
         self.assertEqual(len(pts.SHAPES_2D), 15)
         self.assertEqual(len(pts.SHAPES_3D), 6)
-        self.assertEqual(len(pts.AMBIENT), 15)
+        self.assertEqual(len(pts.AMBIENT), 19)
 
     def test_mixed_shapes(self):
         for key, p in pts.PRESETS.items():
@@ -78,8 +78,86 @@ class TestParticles(unittest.TestCase):
         which = pts.particle_shapes(pts.PRESETS["shape_confetti"], 7, 400)
         self.assertEqual(set(which.tolist()), set(range(5)))         # every shape is used
 
+    def test_stepped_motion_turns_at_right_angles(self):
+        p = pts.PRESETS["circuit"]
+        n = len(p["steps"]["axes"])
+        life = np.full(400, 3.2)
+        age = np.linspace(0.0, 3.2, 400)
+        i = np.full(400, 4)                                   # one particle (system 4 % 3), one life
+        disp, v = pts._steps(p, age, life, 11, i, np.full(400, 2))
+        step = np.diff(disp, axis=0)
+        self.assertLessEqual(np.abs(step).max(), p["steps"]["speed"] * (age[1] - age[0]) + 1e-9)     # continuous
+        self.assertTrue(((np.abs(step) > 1e-12).sum(axis=1) <= 2).all())    # one axis (two at a boundary)
+        self.assertTrue(((np.abs(v) > 0).sum(axis=1) <= 1).all())
+        axes = pts.step_axes(p, np.arange(3))
+        self.assertEqual(axes.shape, (3, n))
+        self.assertEqual(len({tuple(a) for a in axes.tolist()}), 3)          # the 3 systems turn differently
+
+    def test_tail_follows_the_head(self):
+        spec = self.spec("circuit")
+        s = pts.state(spec, 8.0)
+        live = s["alpha"] > 0
+        self.assertTrue(live.any())
+        dt = spec["preset"]["tail"]["time"] / pts.TAIL_POINTS
+        chain = np.concatenate([s["pos"][:, None], s["tail"]], axis=1)[live]
+        gap = np.linalg.norm(np.diff(chain, axis=1), axis=2)
+        self.assertLessEqual(gap.max(), np.sqrt(3) * spec["preset"]["steps"]["speed"] * dt + 1e-6)
+
+    def test_dot_march_is_evenly_spaced(self):
+        spec = self.spec("dot_march", start=0.0, end=40.0)
+        s = pts.state(spec, 30.0)
+        live = s["alpha"] > 0.9
+        for h in spec["preset"]["height"]:
+            sel = live & np.isclose(s["pos"][:, 2], h)
+            a = np.sort(np.arctan2(s["pos"][sel, 0], s["pos"][sel, 1]))
+            gaps = np.diff(a)
+            gaps = gaps[gaps < 0.5]                           # leave out the gap between the train's ends
+            self.assertGreater(len(gaps), 20)
+            self.assertLess(gaps.std(), 1e-6 + gaps.mean() * 0.01, h)
+
+    def test_line_effects(self):
+        from lyric_live_builder.core.parts import lines
+        for key in ("horizon", "plexus"):
+            spec = self.spec(key, start=2.0, end=14.0)
+            p = spec["preset"]
+            geo = lines.geometry(p, spec["seed"], spec["colors"])
+            q = len(geo["width"])
+            for v in geo.values():
+                self.assertEqual(len(v), q, key)
+                self.assertTrue(np.isfinite(v).all(), key)
+            times, values = lines.state_keys(spec)              # the track gives progress() exactly
+            for t in np.linspace(spec["start"], times[-1], 23):
+                np.testing.assert_allclose([np.interp(t, times, [v[c] for v in values]) for c in range(3)],
+                                           lines.progress(spec, t), atol=1e-9)
+            def shown(t):
+                return lines.state(spec, geo, t)[1].reshape(q, 4, 4)[:, 0, 3] > 0
+            self.assertGreater(shown(spec["start"] + 1.0).sum(), 0, key)
+            self.assertLess(shown(spec["start"] + 0.5).sum(), shown(spec["start"] + 3.0).sum(), key)   # drawn in
+            self.assertLess(shown(spec["end"] + 0.8).sum(), shown(spec["end"]).sum(), key)             # erased
+            self.assertEqual(shown(times[-1] + 0.01).sum(), 0, key)
+            for t in np.arange(spec["start"], spec["end"], 0.7):
+                co, _ = lines.state(spec, geo, t)
+                self.assertGreater(np.linalg.norm(co - EYE, axis=1).min(), model.MIN_EYE_DISTANCE, key)
+        spec = self.spec("plexus")
+        geo = lines.geometry(spec["preset"], spec["seed"], spec["colors"])
+        self.assertLessEqual(int((geo["dot"] > 0.5).sum()), lines.MAX_POINTS)
+        self.assertLessEqual(int((geo["dot"] < 0.5).sum()), lines.MAX_SEGMENTS)
+        self.assertGreater(int((geo["dot"] < 0.5).sum()), 20)
+        link = spec["preset"]["lines"]["link"]
+        for t in (5.0, 9.0):                                 # long links are hidden, short ones shown
+            _, col = lines.state(spec, geo, t)
+            tau = lines.progress(spec, t)[2]
+            seg = geo["dot"] < 0.5
+            d = np.linalg.norm(lines.positions(spec["preset"], geo["a"], geo["pa"], tau)
+                               - lines.positions(spec["preset"], geo["b"], geo["pb"], tau), axis=1)
+            alpha = col.reshape(-1, 4, 4)[:, 0, 3]
+            self.assertTrue((alpha[seg & (d >= link)] == 0).all())
+            self.assertTrue((alpha[seg & (d < 0.5 * link)] > 0).all())
+
     def test_every_preset_is_sane(self):
         for key in pts.PRESETS:
+            if pts.PRESETS[key]["emitter"] == "lines":
+                continue                                     # test_line_effects
             spec = self.spec(key)
             if pts.PRESETS[key]["emitter"] == "burst" and not spec["bursts"]:
                 spec["bursts"] = [{"t": 3.0, "origin": [0.0, 3.0, 1.5]}]

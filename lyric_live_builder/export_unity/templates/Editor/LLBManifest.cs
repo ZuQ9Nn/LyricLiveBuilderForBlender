@@ -51,6 +51,8 @@ namespace LyricLive.Editor
     [Serializable] public class LLBPSNoise { public float strength, frequency, scroll; }
     [Serializable] public class LLBPSRenderer { public string mode, mesh, blend; public string[] meshes; public int tile, tileLast; public float stretch; }
     [Serializable] public class LLBPSSub { public int count; public float speed, life; }
+    [Serializable] public class LLBPSSteps { public int n; public float[] lo, hi; }
+    [Serializable] public class LLBPSTrail { public float ratio, width; }
 
     [Serializable] public class LLBParticles
     {
@@ -61,5 +63,6 @@ namespace LyricLive.Editor
         public string sizeLife;
         public LLBPSShape shape; public LLBPSVelocity velocity; public LLBPSNoise noise;
         public LLBPSRenderer renderer; public LLBPSSub sub;
+        public LLBPSSteps steps; public LLBPSTrail trail;
     }
 }

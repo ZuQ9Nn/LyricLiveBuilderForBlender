@@ -38,6 +38,9 @@ def check(baked, tris, mobile=True, particle_ratio=1.0, limits=None, step=0.5):
     alive = np.zeros(t.shape)
     for e in baked.emitters:
         spec = e["spec"]
+        if spec["preset"]["emitter"] == "lines":        # triangles, not particles
+            on_stage += shown(e["node"]) * tris.get(particles_unity.line_key(e["node"]), 0)
+            continue
         if spec["preset"]["emitter"] == "burst":
             b = spec["preset"]["burst"]
             span = b["life"][1] + (b["sub"]["life"] if b.get("sub") else 0.0)
@@ -50,8 +53,9 @@ def check(baked, tris, mobile=True, particle_ratio=1.0, limits=None, step=0.5):
             alive += shown(e["node"]) * cap
     b = manifest.Builder(baked, mobile, particle_ratio)
     b.build_nodes([])
-    combos = {(d["renderer"]["blend"], d["renderer"]["mode"] == "Mesh")
-              for d in (json.loads(n["particles"]) for n in b.nodes if n["particles"])}
+    descs = [json.loads(n["particles"]) for n in b.nodes if n["particles"]]
+    combos = {(d["renderer"]["blend"], d["renderer"]["mode"] == "Mesh") for d in descs}
+    combos |= {(d["renderer"]["blend"], True) for d in descs if d.get("trail")}        # trails: plain material
     letters = {"flat": 0, "solid": 0}
     for key, src in baked.meshes.items():
         if key in tris and src.kind in ("glyph2d", "glyph3d"):

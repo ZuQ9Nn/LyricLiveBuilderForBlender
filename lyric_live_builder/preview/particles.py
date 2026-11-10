@@ -7,7 +7,7 @@ import bpy
 import numpy as np
 
 from ..core import atlas, meshes, model, xform
-from ..core.parts import particles as pts
+from ..core.parts import lines, particles as pts
 from . import materials
 
 PROP = "llb_emitter"
@@ -23,7 +23,10 @@ def _spec(ob):
     spec = json.loads(raw)
     p = spec["preset"]
     cap = spec["count"] + spec["pool"]
-    shape = _layout3d(p, spec["seed"], cap) if p["shape"] in pts.SHAPES_3D else None
+    if lines.is_lines(p):                                 # line effects: the segments stand in for the 3D layout
+        shape = lines.geometry(p, spec["seed"], spec["colors"])
+    else:
+        shape = _layout3d(p, spec["seed"], cap) if p["shape"] in pts.SHAPES_3D else None
     rng = np.random.default_rng(spec["seed"] % (2 ** 32))
     axes = rng.normal(size=(cap, 3))
     axes /= np.linalg.norm(axes, axis=1, keepdims=True)
@@ -49,7 +52,9 @@ def create(name, spec, collection):
     p = spec["preset"]
     cap = max(1, spec["count"] + spec["pool"])
     me = bpy.data.meshes.new(name)
-    if p["shape"] in pts.SHAPES_3D:
+    if lines.is_lines(p):
+        _create_lines(me, lines.geometry(p, spec["seed"], spec["colors"]))
+    elif p["shape"] in pts.SHAPES_3D:
         faces, base = [], 0
         for slots, v, f in _layout3d(p, spec["seed"], cap):
             nv = len(v)
@@ -58,8 +63,9 @@ def create(name, spec, collection):
         me.from_pydata(np.zeros((base, 3)).tolist(), [], faces)
         me.materials.append(materials.particle3d_material())
     else:
-        verts = np.zeros((cap * 4, 3))
-        faces = [(4 * k, 4 * k + 1, 4 * k + 2, 4 * k + 3) for k in range(cap)]
+        quads = cap * (1 + _tail_len(p))                  # heads, then the tail segments (design §8.1)
+        verts = np.zeros((quads * 4, 3))
+        faces = [(4 * k, 4 * k + 1, 4 * k + 2, 4 * k + 3) for k in range(quads)]
         me.from_pydata(verts.tolist(), [], faces)
         uv = me.uv_layers.new(name="UVMap")
         first, _ = pts.tile_range(p)
@@ -68,6 +74,8 @@ def create(name, spec, collection):
         for t in tiles:
             u0, v0, u1, v1 = atlas.tile_uv(int(t))
             quad.append([[u0, v0], [u1, v0], [u1, v1], [u0, v1]])
+        u0, v0, u1, v1 = atlas.tile_uv(pts.SHAPES_2D.index("circle_dot"))
+        quad += [[[(u0 + u1) / 2, (v0 + v1) / 2]] * 4] * (quads - cap)         # tail: the solid middle of a dot
         uv.data.foreach_set("uv", np.asarray(quad, dtype=np.float32).ravel())
         me.materials.append(materials.particle_material(p.get("blend") == "add"))
     me.attributes.new(materials.COLOR_ATTR, "FLOAT_COLOR", "POINT")
@@ -76,6 +84,39 @@ def create(name, spec, collection):
     ob[PROP] = json.dumps(spec)
     collection.objects.link(ob)
     return ob
+
+
+def _create_lines(me, geo):
+    """Quads of a line effect; UVs pick the look: dots = a round dot, soft = the soft dot's cross-section,
+    else the solid middle of the dot."""
+    q = len(geo["width"])
+    me.from_pydata(np.zeros((q * 4, 3)).tolist(), [], [(4 * k, 4 * k + 1, 4 * k + 2, 4 * k + 3) for k in range(q)])
+    u0, v0, u1, v1 = atlas.tile_uv(pts.SHAPES_2D.index("circle_dot"))
+    s0, t0, s1, t1 = atlas.tile_uv(pts.SHAPES_2D.index("soft_dot"))
+    mid, smid = [(u0 + u1) / 2, (v0 + v1) / 2], (t0 + t1) / 2
+    dot = [[u0, v0], [u1, v0], [u1, v1], [u0, v1]]
+    soft = [[s0, smid], [s1, smid], [s1, smid], [s0, smid]]                    # across the width
+    uv = [dot if d > 0.5 else soft if f > 0.5 else [mid] * 4 for d, f in zip(geo["dot"], geo["soft"])]
+    me.uv_layers.new(name="UVMap").data.foreach_set("uv", np.asarray(uv, dtype=np.float32).ravel())
+    me.materials.append(materials.particle_material(True))
+
+
+def _tail_len(p):
+    return pts.TAIL_POINTS if p.get("tail") else 0
+
+
+def _tail(st, p):
+    """Tail segments head -> older points, facing the eye, narrowing and fading (vertex order: slot-major)."""
+    pts_ = np.concatenate([st["pos"][:, None], st["tail"]], axis=1)          # (cap, K + 1, 3)
+    a, b = pts_[:, :-1], pts_[:, 1:]
+    k = pts.TAIL_POINTS
+    w = p["tail"]["width"] * (1 - np.arange(k + 1) / k)                       # tapers to 0
+    view = (a + b) / 2 - EYE
+    side = np.cross(view, b - a)
+    side /= np.maximum(np.linalg.norm(side, axis=-1, keepdims=True), 1e-9)
+    wa, wb = (w[:-1] / 2)[None, :, None], (w[1:] / 2)[None, :, None]
+    corners = [a - side * wa, a + side * wa, b + side * wb, b - side * wb]
+    return np.stack(corners, axis=2).reshape(-1, 3)
 
 
 def _billboards(st, p):
@@ -116,13 +157,24 @@ def _shapes(st, layout, axes):
 
 def update(ob, t):
     raw, spec, shape, axes = _spec(ob)
+    if lines.is_lines(spec["preset"]):
+        co, col = lines.state(spec, shape, t)
+        me = ob.data
+        if len(me.vertices) == len(co):
+            me.vertices.foreach_set("co", co.astype(np.float32).ravel())
+            me.attributes[materials.COLOR_ATTR].data.foreach_set("color", col.astype(np.float32).ravel())
+            me.update()
+        return
     st = pts.state(spec, t)
     dead = st["alpha"] <= 0
     st["size"] = np.where(dead, 0.0, st["size"])
+    tail = _tail_len(spec["preset"])
     if shape is not None:
         co, per = _shapes(st, shape, axes)
     else:
         co, per = _billboards(st, spec["preset"])
+        if tail:
+            co = np.concatenate([co, _tail(st, spec["preset"])])
     me = ob.data
     if len(me.vertices) != len(co):
         return
@@ -132,6 +184,11 @@ def update(ob, t):
         col = np.concatenate([np.repeat(rgba[slots], nv, axis=0) for slots, nv in per])
     else:
         col = np.repeat(rgba, per, axis=0)
+        if tail:
+            fade = 0.8 * (1 - np.arange(tail) / tail)                               # older = fainter
+            seg = np.repeat(rgba[:, None], tail, axis=1)
+            seg[..., 3] *= fade
+            col = np.concatenate([col, np.repeat(seg.reshape(-1, 4), 4, axis=0)])
     me.attributes[materials.COLOR_ATTR].data.foreach_set("color", col.astype(np.float32).ravel())
     me.update()
 

@@ -10,8 +10,8 @@ import numpy as np
 
 from ..rng import h_np
 
-SHAPES_2D = ("circle_dot", "soft_dot", "triangle", "square", "cross", "hexagon", "octagon", "bubble", "star",
-             "sparkle", "petal", "heart", "note", "snowflake", "ring")          # atlas tile = index
+SHAPES_2D = ("circle_dot", "ring", "soft_dot", "triangle", "square", "cross", "hexagon", "octagon", "bubble",
+             "star", "sparkle", "petal", "heart", "note", "snowflake")          # atlas tile = index
 SHAPES_3D = ("cube", "hexprism", "octahedron", "icosahedron", "shard", "tetra")
 EYE = np.array([0.0, 0.0, 1.5])
 MIN_EYE_DISTANCE = 0.6
@@ -81,13 +81,35 @@ PRESETS = {
                        rate=6, life=(8, 12), speed=(0.05, 0.15), direction="random", size=(0.1, 0.26),
                        spin=(-50, 50), fade=(0.15, 0.2), colors=("ghostA", "ghostB", "accent"), blend="alpha", max=80,
                        prewarm=True),
+    # stepped motion: straight runs along one axis at a time, turning at right angles, with a light tail
+    "circuit": dict(name="Circuit", tags=("glitch", "graphic"), shape="square", emitter="sphere", radius=(2.5, 8.0),
+                    rate=42, life=(2.5, 4.0), direction="steps", steps=dict(axes="xyxzyxzy", speed=1.6),
+                    size=(0.09, 0.15), tail=dict(time=0.6, width=0.04), fade=(0.1, 0.2),
+                    colors=("accent", "ghostA", "ghostB"), blend="add", max=150),
+    # evenly spaced dots (filled and hollow) flowing round the audience, above and below
+    "dot_march": dict(name="Dot March", tags=("graphic", "pop", "editorial"), shape="circle_dot",
+                      shapes=("circle_dot", "ring"), emitter="point_orbit", radius=(5.0, 5.0), angle=-45.0,
+                      height=(0.4, 3.2), height_pick=True, rate=10, life=(15.0, 15.0), even=True,
+                      speed=(2.0, 2.0), direction="orbit", size=(0.14, 0.14), fade=(0.03, 0.06),
+                      colors=("fg", "white"), blend="add", max=150),
+    # line effects (core/parts/lines.py): drawn as lines, picked like particles
+    "horizon": dict(name="Horizon Line", tags=("calm", "emotional", "editorial"), shape="circle_dot", emitter="lines",
+                    lines=dict(kind="ring", radius=14.0, height=1.5, segments=128, draw=2.0, erase=1.2,
+                               layers=((0.05, 1.0, 0, 0), (0.9, 0.18, 1, 1))),     # (width, alpha, soft, colour)
+                    rate=0, life=(1, 1), size=(0.05, 0.05), colors=("white", "accent"), blend="add", max=1),
+    "plexus": dict(name="Plexus", tags=("graphic", "calm", "glitch"), shape="circle_dot", emitter="lines",
+                   lines=dict(kind="plexus", box=((-8.0, 8.0), (-1.0, 12.0), (3.0, 8.5)), link=2.8, amp=0.7,
+                              speed=0.38, width=0.02, dot=0.09, alpha=0.6, draw=2.5, erase=1.5),
+                   rate=0, life=(1, 1), size=(0.09, 0.09), colors=("ghostA", "white"), blend="add", max=44),
     # for lines: a short burst around the text (impact lines, line overrides)
     "sparkle_burst": dict(name="Sparkle Burst", tags=_ALL, shape="sparkle", emitter="burst",
                           burst=dict(interval=None, count=36, speed=(1.0, 2.2), life=(0.8, 1.4), sub=None),
                           gravity=0.3, size=(0.04, 0.09), fade=(0.0, 0.6), colors=("accent", "white"), blend="add",
                           max=120),
 }
-AMBIENT = [k for k in PRESETS if k != "sparkle_burst"]          # the 12 section presets
+AMBIENT = [k for k in PRESETS if k != "sparkle_burst"]          # the section presets
+STEP_AXES = ("xyz", "yzx", "zxy")          # stepped motion: the axis order of the 3 systems (particle i: i % 3)
+TAIL_POINTS = 8                            # preview tail: earlier positions per particle
 
 
 def shapes_of(p):
@@ -140,9 +162,12 @@ def scale(preset, strength):
 
 
 def continuous_count(p):
-    if p["emitter"] == "burst":
+    if p["emitter"] in ("burst", "lines"):
         return 0
-    return int(min(p["max"], math.ceil(p["rate"] * (p["life"][0] + p["life"][1]) / 2)))
+    n = int(min(p["max"], math.ceil(p["rate"] * (p["life"][0] + p["life"][1]) / 2)))
+    if p.get("even") and p.get("height_pick"):          # two evenly spaced streams: the same count in each
+        n -= n % 2
+    return n
 
 
 def burst_capacity(p, bursts):
@@ -161,6 +186,11 @@ def _spawn(p, seed, i, gen):
     u = [_u(seed, i, gen, k) for k in range(6)]
     kind = p["emitter"]
     r_in, r_out = p.get("radius", (1.0, 2.0))
+    if kind == "point_orbit":                         # one point (one per height): the stream stays evenly spaced
+        a = math.radians(p.get("angle", 0.0))
+        lo, hi = p.get("height", (0.0, 0.0))
+        z = np.where(i % 2 == 0, lo, hi) if p.get("height_pick") else np.full(np.shape(i), (lo + hi) / 2)
+        return np.stack([np.full(z.shape, math.sin(a) * r_in), np.full(z.shape, math.cos(a) * r_in), z], axis=-1)
     if kind in ("sphere", "sky_shell"):
         r = _rng((r_in, r_out), u[0])
         d = _unit(u[1], u[2])
@@ -199,12 +229,39 @@ def _velocity(p, seed, i, gen, spawn):
         a = 2 * math.pi * u[1]
         v = np.stack([np.cos(a), np.sin(a), np.full(a.shape, -0.35)], axis=-1)
         v /= np.linalg.norm(v, axis=-1, keepdims=True)
-    else:                                               # orbit: handled as an angle in _position
+    else:                                               # orbit / steps: handled in _position
         v = np.zeros(spawn.shape)
     return v * speed
 
 
-def _position(p, spawn, vel, age, seed, i, gen):
+def step_axes(p, i):
+    """(n, segments) axis index 0..2 of each stepped segment of particles i (Blender axes)."""
+    axes = p["steps"]["axes"]
+    table = np.array([["xyz".index(order["xyz".index(a)]) for a in axes] for order in STEP_AXES])
+    return table[np.asarray(i) % 3]
+
+
+def _steps(p, age, life, seed, i, gen):
+    """Stepped motion: segment k of the life moves along one axis only; each axis has one speed per particle."""
+    ax = step_axes(p, i)
+    n = ax.shape[1]
+    hi = p["steps"]["speed"]
+    sp = np.stack([(2 * _u(seed, i, gen, 15 + k) - 1) * hi for k in range(3)], axis=-1)        # (m, 3)
+    d = (life / n)[:, None]
+    spent = np.clip(age[:, None] - np.arange(n) * d, 0, d)                                      # (m, n)
+    comp = np.take_along_axis(sp, ax, axis=1)
+    disp = np.stack([np.sum(np.where(ax == a, comp * spent, 0.0), axis=1) for a in range(3)], axis=-1)
+    k = np.clip((age / (life / n)).astype(np.int64), 0, n - 1)
+    v = np.zeros_like(sp)
+    cur = ax[np.arange(len(k)), k]
+    v[np.arange(len(k)), cur] = sp[np.arange(len(k)), cur]
+    return disp, v
+
+
+def _position(p, spawn, vel, age, seed, i, gen, life=None):
+    if p.get("steps"):
+        disp, v = _steps(p, age, life, seed, i, gen)
+        return spawn + disp, v
     if p.get("direction") == "orbit":
         r = np.linalg.norm(spawn[..., :2], axis=-1)
         omega = _rng(p["speed"], _u(seed, i, gen, 10)) / np.maximum(r, 0.1)
@@ -246,7 +303,8 @@ def _look(p, age, life, seed, i, gen, colors):
     cols = np.asarray(colors, dtype=np.float64)
     col = cols[(h_np(seed, i, gen, 32) % len(cols)).astype(np.int64)]
     lo, hi = p.get("spin", (0.0, 0.0))
-    spin = _u(seed, i, gen, 33) * 6.283 + np.radians(_rng((lo, hi), _u(seed, i, gen, 34))) * age
+    start = _u(seed, i, gen, 33) * 6.283 if (lo or hi) else 0.0         # like Unity: a start angle only when spinning
+    spin = start + np.radians(_rng((lo, hi), _u(seed, i, gen, 34))) * age
     return size, np.clip(alpha, 0, 1), col, spin
 
 
@@ -271,13 +329,15 @@ def state(spec, t):
     cap = n + spec["pool"]
     out = {"pos": np.zeros((cap, 3)), "vel": np.zeros((cap, 3)), "size": np.zeros(cap), "alpha": np.zeros(cap),
            "color": np.ones((cap, 3)), "spin": np.zeros(cap)}
+    if p.get("tail"):
+        out["tail"] = np.zeros((cap, TAIL_POINTS, 3))
     env = envelope(spec, t)
     if env <= 0 or cap == 0:
         return out
     if n:
         i = np.arange(n)
         life = _rng(p["life"], _u(seed, i, 0, 40))
-        phase = _u(seed, i, 0, 41)
+        phase = i / n if p.get("even") else _u(seed, i, 0, 41)        # even: one birth every life / n
         u = (t - spec["start"]) / life + phase
         gen = np.floor(u).astype(np.int64)
         age = (u - gen) * life
@@ -290,17 +350,28 @@ def state(spec, t):
         gen_u = gen & 0x7FFFFFFF
         spawn = _spawn(p, seed, i, gen_u)
         vel = _velocity(p, seed, i, gen_u, spawn)
-        pos, v_now = _position(p, spawn, vel, age, seed, i, gen_u)
+        pos, v_now = _position(p, spawn, vel, age, seed, i, gen_u, life)
         size, alpha, col, spin = _look(p, age, life, seed, i, gen_u, spec["colors"])
         out["pos"][:n], out["vel"][:n], out["size"][:n] = pos, v_now, size
         out["alpha"][:n] = alpha * alive * env
         out["color"][:n], out["spin"][:n] = col, spin
+        if p.get("tail"):                               # earlier positions in the same life (preview tail)
+            dt = p["tail"]["time"] / TAIL_POINTS
+            for k in range(TAIL_POINTS):
+                out["tail"][:n, k] = _position(p, spawn, vel, np.maximum(age - (k + 1) * dt, 0.0), seed, i, gen_u,
+                                               life)[0]
     if spec["pool"]:
         _bursts(spec, t, env, out, n)
-    v = out["pos"] - EYE                                   # nothing comes closer than 0.6 m (design §7.2)
-    d = np.linalg.norm(v, axis=1, keepdims=True)
-    out["pos"] = EYE + v / np.maximum(d, 1e-9) * np.maximum(d, MIN_EYE_DISTANCE)
+    out["pos"] = _keep_away(out["pos"])                   # nothing comes closer than 0.6 m (design §7.2)
+    if "tail" in out:
+        out["tail"] = _keep_away(out["tail"])
     return out
+
+
+def _keep_away(pos):
+    v = pos - EYE
+    d = np.linalg.norm(v, axis=-1, keepdims=True)
+    return EYE + v / np.maximum(d, 1e-9) * np.maximum(d, MIN_EYE_DISTANCE)
 
 
 def _bursts(spec, t, env, out, offset):

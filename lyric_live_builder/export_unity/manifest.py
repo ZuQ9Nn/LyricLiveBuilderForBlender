@@ -46,6 +46,8 @@ def binding(node_kind, prop, values):
         return renderer, "material._Color", RGBA, convert.rgba(v)
     if prop == "emit_rate":
         return "ParticleSystem", "EmissionModule.rateOverTime.scalar", [""], v[:, :1]
+    if prop == "line_state":
+        return "MeshRenderer", "material._LineState", XYZW, v[:, :4]
     if prop == "mask":                             # glyph coordinates already match Unity's (x, up): no conversion
         return "MeshRenderer", "material._Mask", [""], v[:, :1]
     if prop in ("mask_shape", "mask_box"):
@@ -79,9 +81,9 @@ class Builder:
         self.kind_of = {}
         self.names = {}                                   # parent id -> names taken
 
-    def material(self, shader, color=None, params=None):
+    def material(self, shader, color=None, params=None, key=None):
         rgba = [float(x) for x in convert.rgba(color)] if color is not None else [1.0, 1.0, 1.0, 1.0]
-        key = f"{shader}_{_hex(rgba)}" if color is not None else shader
+        key = key or (f"{shader}_{_hex(rgba)}" if color is not None else shader)
         if key not in self.materials:
             self.materials[key] = {"key": key, "shader": shader, "color": rgba, "params": params or []}
         return key
@@ -143,6 +145,11 @@ class Builder:
                 self.add(n.id, n.name, n.parent, n.category, n.kind, n.mesh, mat, n.loc, n.rot, n.scale, n.default_active)
                 continue
             spec = specs[n.id]
+            if spec["preset"]["emitter"] == "lines":         # a mesh and its own material (design §8.1)
+                mat = self.material("line", params=particles_unity.line_params(spec["preset"]), key=f"line_{spec['key']}")
+                self.add(n.id, n.name, n.parent, n.category, "lines", particles_unity.line_key(n.id), mat,
+                         active=n.default_active)
+                continue
             if spec["preset"]["emitter"] == "burst":
                 self.add(n.id, n.name, n.parent, n.category, "emitter_group", active=n.default_active)
                 for k, ev in enumerate(spec["bursts"]):

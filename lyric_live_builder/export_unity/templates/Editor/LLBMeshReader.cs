@@ -15,7 +15,7 @@ namespace LyricLive.Editor
             br.ReadUInt16();                                 // version
             int flags = br.ReadUInt16();
             int nVerts = (int)br.ReadUInt32(), nIdx = (int)br.ReadUInt32();
-            int nShapes = br.ReadUInt16(); br.ReadUInt16();
+            int nShapes = br.ReadUInt16(), nUv4 = br.ReadUInt16();
             var v = new Vector3[nVerts];
             for (int i = 0; i < nVerts; i++) v[i] = new Vector3(br.ReadSingle(), br.ReadSingle(), br.ReadSingle());
             Vector3[] n = null;
@@ -36,6 +36,12 @@ namespace LyricLive.Editor
                 col = new Color32[nVerts];
                 for (int i = 0; i < nVerts; i++) col[i] = new Color32(br.ReadByte(), br.ReadByte(), br.ReadByte(), br.ReadByte());
             }
+            var uv4 = new System.Collections.Generic.List<Vector4>[(flags & 16) != 0 ? nUv4 : 0];
+            for (int c = 0; c < uv4.Length; c++)
+            {
+                uv4[c] = new System.Collections.Generic.List<Vector4>(nVerts);
+                for (int i = 0; i < nVerts; i++) uv4[c].Add(new Vector4(br.ReadSingle(), br.ReadSingle(), br.ReadSingle(), br.ReadSingle()));
+            }
             bool i32 = (flags & 8) != 0;
             var idx = new int[nIdx];
             for (int i = 0; i < nIdx; i++) idx[i] = i32 ? (int)br.ReadUInt32() : br.ReadUInt16();
@@ -44,6 +50,7 @@ namespace LyricLive.Editor
             if (n != null) m.normals = n;
             if (uv != null) m.uv = uv;
             if (col != null) m.colors32 = col;
+            for (int c = 0; c < uv4.Length; c++) m.SetUVs(c, uv4[c]);
             m.triangles = idx;
             for (int s = 0; s < nShapes; s++)
             {
@@ -53,6 +60,12 @@ namespace LyricLive.Editor
                 m.AddBlendShapeFrame(shapeName, 100f, d, null, null);
             }
             m.RecalculateBounds();
+            if (uv4.Length > 0)                              // line effects drift and widen in the shader
+            {
+                var b = m.bounds;
+                b.Expand(4f);
+                m.bounds = b;
+            }
             return m;
         }
     }

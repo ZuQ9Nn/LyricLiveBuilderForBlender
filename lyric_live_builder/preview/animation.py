@@ -7,7 +7,7 @@ import numpy as np
 PATHS = {"location": "location", "rotation": "rotation_quaternion", "scale": "scale", "color": "color",
          "mask": '["llb_mask"]', "mask_shape": '["llb_mask_shape"]', "mask_box": '["llb_mask_box"]'}
 MASK_PROPS = {"mask": "llb_mask", "mask_shape": "llb_mask_shape", "mask_box": "llb_mask_box"}
-EXPORT_ONLY = ("emit_rate",)                # the particle preview evaluates the emitter spec itself
+EXPORT_ONLY = ("emit_rate", "line_state")  # the particle preview evaluates the emitter spec itself
 LINEAR, CONSTANT = 1, 0                     # keyframe interpolation enum values
 
 

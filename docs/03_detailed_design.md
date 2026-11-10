@@ -414,17 +414,32 @@ class FrontLayout(LayoutPart):
 |---|---|
 | `shape`（circle_dot/soft_dot/triangle/square/cross/hexagon/octagon/bubble/star/sparkle/petal/heart/note/snowflake/ring、または cube/hexprism/octahedron/icosahedron/shard/tetra） | 2D：Renderer=Billboard、アトラスの UV（TextureSheetAnimation の Sprite モード、タイル固定）／3D：Renderer=Mesh |
 | `shapes`（粒ごとに選ぶ形。2D はアトラスで隣り合う形、3D は形の組。最初の形は `shape` と同じ） | 2D：TextureSheetAnimation の開始の枠を範囲の乱数／3D：Renderer の複数メッシュ（`SetMeshes`、粒ごとに一様に選ぶ） |
-| `emitter`（sphere/sky_shell/sky_disc/floor_disc/ring/tunnel/burst）、`radius`、`height` | ShapeModule |
+| `emitter`（sphere/sky_shell/sky_disc/floor_disc/ring/point_orbit/tunnel/burst）、`radius`、`height` | ShapeModule（point_orbit は半径 0 の点。`height_pick` の高さごとに 1 系） |
 | `rate`、`burst`（間隔・数・速さ・寿命・`sub`） | EmissionModule（バーストは、発生源の位置のトラックとバーストの時刻） |
 | `life`、`speed`、`size`、`gravity`（範囲） | MainModule（MinMaxCurve の TwoConstants） |
 | `colors`（スタイルの配色の役割名）、`fade`（寿命の初めと終わりの透明度） | MainModule.startColor、ColorOverLifetime |
 | `direction`、`noise`・`noise_freq`、`spin`、`size_life`、`trail`、`sub` | VelocityOverLifetime・Noise・RotationOverLifetime・SizeOverLifetime・Trails・SubEmitters |
+| `steps`（寿命を `axes` の数の区間に分け、区間ごとに 1 軸だけ動く。速さは軸ごとに −`speed`〜`speed` の粒ごとの乱数） | VelocityOverLifetime の x・y・z を、区間ごとに一定の値の曲線 2 本（TwoCurves）にする。軸の順を入れ替えた 3 系に分ける（直角に曲がる向きを散らす） |
+| `tail`（尾：`time` 秒・太さ `width` m、先細り） | TrailModule（寿命は粒の寿命の割合。幅は粒の大きさに依らない）。尾のマテリアルはテクスチャの無い粒のマテリアル |
+| `even`（寿命を 1 つの値にして、粒を等間隔に出す） | 一定の発生数（Unity は元から等間隔） |
 | `blend`（add/alpha） | マテリアル |
 | `max` | MainModule.maxParticles（モバイル時は比率で減らす） |
 | `prewarm` | MainModule.prewarm |
 
 - 2D のテクスチャは、`core/atlas.py` が numpy で符号付き距離から描きます（1024×1024、4×4 のタイル。15 種）。Blender のプレビューでも同じ画像を使い、Unity 出力（段階 4）では PNG にします。
 - 強さ（演出の「パーティクルの量」）で、`rate` と `max` を 0.35〜1.65 倍にします。
+- 区間の動き（`steps`）：位置＝発生位置＋Σ（区間の速度×その区間で過ごした時間）。区間 k の軸は `axes[k]` を系ごとに入れ替えたもの（粒 i の系は i mod 3：そのまま／x→y→z→x／x→z→y→x）。速さは軸ごとに粒の乱数で決め、同じ軸の区間では同じ値です（Unity の TwoCurves と同じ考え方）。
+- 尾（`tail`）：プレビューは、同じ寿命の中の少し前の時刻の位置（8 点）を閉じた式で求め、点と点の間を、先に行くほど細く薄い帯でつなぎます（`state()` の `tail`）。Unity はトレイルのモジュールが描きます。
+- 等間隔（`even`）：粒 i の位相を i/n にします（乱数でなく）。寿命が 1 つの値なので、生まれる間隔が一定になり、周回の速さで等間隔に並びます。
+- **線の演出**（`emitter="lines"`、`core/parts/lines.py`）：粒の代わりに線分（と点）を 1 回だけ作り、時刻の式で動かします。項目 `lines` の `kind` は `ring`（水平線：半径・高さ・分割数と、太さ・透明度・柔らかさ・色の層）と `plexus`（点の範囲の箱・点の数・結ぶ距離 `link`・揺れ `amp`・速さ `speed`）。
+  - 線分ごとに、両端の休みの位置・揺れの位相・描かれる順 `s`（0〜1）・太さ・色を持ちます。点は長さ 0 の線分（印 `dot`）で、目の方を向く丸です。
+  - 揺れ：位置＝休みの位置＋`amp`×sin(`speed`×(1, 1.3, 0.7)×τ＋位相)（軸ごと。τ は演出の開始からの秒）。
+  - 結ぶ距離：両端の今の距離 d が `link` に近づくと薄くし、超えると消します（透明度×clip((link−d)/(0.45×link))）。線分は、休みの位置どうしが `link`＋2×`amp` より近い組だけを、近い順に最大 200 本作ります。
+  - 描かれる・消える：`draw`（0→1、開始から `draw` 秒）と `erase`（0→1、終了から `erase` 秒）。`erase ≤ s ≤ draw` の部分だけ見せます。水平線の `s` は正面からの角度（0＝正面、1＝真後ろ）なので、正面から左右に描かれます。プレクサスの `s` は線分ごとの乱数です。
+  - 細すぎる線：目からの距離×0.0015 rad より細い線は、その太さにして、比で薄くします（ちらつき対策）。
+  - 焼き込み：線の演出の発生源には、`line_state`（draw, erase, τ, 0。直線のトラック）と、透明度 1 のままの `color` を付けます（`emit_rate` は付けない）。
+  - プレビュー：粒と同じハンドラで、`lines.state(spec, t)` の四角形（目の方を向く帯）と頂点の色を書き込みます。テクスチャは粒のアトラス（芯は丸の中心、柔らかい光は柔らかい点の横の断面、点は丸）。
+  - Unity：線分ごとの四角形のメッシュ（§9.3 の bit4 の UV）と、シェーダー `LyricLiveBuilder/Line`（加算）。`_LineState` をタイムラインで動かし、`_Drift`（amp, speed, link, 0.0015）はマテリアルの値（プリセットごとのマテリアル）。帯の向き・揺れ・距離・描かれる／消えるは、プレビューと同じ式を頂点シェーダーと画素シェーダーで計算します。
 - 粒ごとの形：プレビューは、粒の番号（`h(seed, i, 0, 60)`）で形を決め、生まれ直しても同じ形です（メッシュの頂点の並びを固定するため）。3D は形ごとに粒をまとめてメッシュに並べます。Unity は粒ごとに乱数で選ぶので、どの粒がどの形かは一致しません（割合は同じ）。
 - **閉じた式**（`state(spec, t)`）：連続の発生源の粒 i は、寿命 L_i ごとに生まれ直し、世代ごとに新しい乱数で発生位置・速度を決めます。位置＝発生位置＋速度×経過＋重力＋ノイズ（正弦の和）。発生の多さ（`intensity`）は、生まれた時刻の値で粒を間引きます。破裂は、時刻と発生位置のリストから、粒ごとに減速つきの放射で求め、寿命の終わりに `sub` の粒が弾けます。粒は目から 0.6 m より内側に入れません（§7.2）。発生源全体は、開始から 0.8 秒で現れ、終了から 1.0 秒で消えます（`envelope`）。
 - プレビュー（`preview/particles.py`）：`frame_change_pre` のハンドラで、毎フレーム `state()` を計算し、発生源のメッシュに書き込みます。2D は観客の目（0, 0, 1.5）の方を向く四角形（軌跡のある粒は速度の向きに伸ばす）、3D は形状のメッシュです。頂点数は「連続の粒の数＋破裂の最大同時数」で固定し、消えた粒は大きさ 0 にします。色は頂点の色属性 `llb_col` に書きます。Unity は ParticleSystem が自分で計算するので、見た目は似ていても同じにはなりません。
@@ -559,15 +574,16 @@ Unity の `JsonUtility` で読めるように、辞書と入れ子の配列は�
 Mesh :=
   magic    : char[4] = "LLBM"
   version  : u16 = 1
-  flags    : u16            # bit0 normals, bit1 uv0, bit2 colors, bit3 index32
+  flags    : u16            # bit0 normals, bit1 uv0, bit2 colors, bit3 index32, bit4 uv4
   nVerts   : u32
   nIndices : u32
   nShapes  : u16
-  reserved : u16
+  nUv4     : u16            # if bit4: the number of 4-float UV channels (TEXCOORD0..), else 0
   positions: f32[nVerts*3]  # Unity space
   normals  : f32[nVerts*3]  # if bit0
   uv0      : f32[nVerts*2]  # if bit1
   colors   : u8[nVerts*4]   # if bit2
+  uv4      : f32[nUv4*nVerts*4]   # if bit4 (line effects; uv0 is then not written)
   indices  : u16|u32[nIndices]   # triangles, Unity winding (clockwise)
   shapes   : Shape[nShapes]
 Shape :=
@@ -638,6 +654,7 @@ Unity.exe -batchmode -nographics -quit -projectPath "<Project>"
 | `Runtime/Shaders/LLB_TextVC.shader` | 行メッシュ（§11.3）。`LLB_Text` に頂点の色を掛ける |
 | `Runtime/Shaders/LLB_Far.shader` | 遠景。キュー 2900（ドームの後、文字の前に描く） |
 | `Runtime/Shaders/LLB_Glow.shader` | 視線の誘導の光の玉（加算、縁で消える） |
+| `Runtime/Shaders/LLB_Line.shader` | 線の演出（§8.1）。揺れ・目に向いた帯・結ぶ距離・描かれる／消える。加算 |
 | `Runtime/Shaders/LLB_Particle.shader` | パーティクル。アトラス × 頂点の色 × `_Color`（発生源の現れ・消え）。加算と半透明は `_SrcBlend/_DstBlend` |
 | `Runtime/Shaders/LLB_Dome.shader` | §8.2 のドーム（Blender のプレビューのノードと同じ式） |
 | `Runtime/Udon/LLBSync.cs.txt` | 同期スクリプトの元（拡張子を変えて、コンパイルされないように置く。UdonSharp がある場合だけ `LLBSync.cs` にコピーする） |
@@ -667,6 +684,7 @@ Unity.exe -batchmode -nographics -quit -projectPath "<Project>"
 | glow | `LyricLiveBuilder/Glow` | `Particles/Standard Unlit` | 同左 |
 | particle（加算・半透明・3D） | `LyricLiveBuilder/Particle` | `Particles/Standard Unlit` | 同左 |
 | dome | `LyricLiveBuilder/Dome` | `Unlit/Color` | 同左 |
+| line（線の演出） | `LyricLiveBuilder/Line` | `Particles/Standard Unlit`（揺れ・描かれるは無し） | 同左 |
 | gimmick | `LyricLiveBuilder/Gimmick` | `Unlit/Color` | 同左 |
 
 - 段階 4 では、どちらのモードも同梱シェーダーを使います（試作 S0-07 で、PC・Quest・iOS での表示を確認済み）。同梱シェーダーが見つからない場合は、表の代わりのシェーダーにして `[LLB][WARN]` を出します。lit・MatCap（仕様書 §7.2）は改善メモ #12。

@@ -9,7 +9,7 @@ import numpy as np
 from . import color, model, xform
 from .model import MeshSource, Node, Track
 from .parts import backgrounds as bgs
-from .parts import particles as pts
+from .parts import lines, particles as pts
 
 DOME = "dome"
 FAR_DISTANCE = 50.0
@@ -130,8 +130,16 @@ def emitters(plan):
         on = spec["start"]
         nodes.append(Node(nid, f"Particles_{spec['key']}", "", "particles", "emitter",
                           material="particle3d" if p["shape"] in pts.SHAPES_3D else "particle", default_active=False))
+        if lines.is_lines(p):                   # drawn and erased by its own track (design §8.1)
+            times, values = lines.state_keys(spec)
+            tail = times[-1]
         act = [(0.0, (0.0,)), (on, (1.0,)), (tail, (0.0,))] if on > 0 else [(0.0, (1.0,)), (tail, (0.0,))]
         tracks.append(_const(nid, "active", act))
+        if lines.is_lines(p):
+            tracks.append(_linear(nid, "line_state", list(zip(times, values))))
+            tracks.append(_const(nid, "color", [(0.0, (1.0, 1.0, 1.0, 1.0))]))
+            specs.append({"node": nid, "spec": spec})
+            continue
         env = [(spec["start"], 0.0), (spec["start"] + spec["fade_in"], 1.0), (spec["end"], 1.0), (tail, 0.0)]
         tracks.append(_linear(nid, "color", [(t, (1.0, 1.0, 1.0, a)) for t, a in env]))
         rate = [(t, p.get("rate", 0.0) * v) for t, v in (spec["intensity"] or [(spec["start"], 1.0)])]

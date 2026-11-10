@@ -9,11 +9,11 @@ import bpy
 import numpy as np
 
 from ..core import atlas, meshes
-from ..core.parts import particles as pts
+from ..core.parts import lines, particles as pts
 from ..text import glyphs
 from ..mesh_optimizer import api as mo
 from ..preview import gimmick_assets
-from . import convert, manifest, meshbin
+from . import convert, manifest, meshbin, particles_unity
 
 MARKER = "_llb_build.pending"          # not "_pending.llb": the phase 0 prototype in the test project watches that
 TEMPLATES = os.path.join(os.path.dirname(__file__), "templates")
@@ -138,6 +138,11 @@ def pack_meshes(baked, font_paths, mobile=False, skip=()):
     def add(key, data):
         pack.add(key, data)
         tris[key] = meshbin.decode(data)[2].size // 3
+    for e in baked.emitters:                             # line effects: one mesh per emitter (design §8.1)
+        p = e["spec"]["preset"]
+        if lines.is_lines(p):
+            v, f, col, uv4 = particles_unity.line_mesh(lines.geometry(p, e["spec"]["seed"], e["spec"]["colors"]))
+            add(particles_unity.line_key(e["node"]), meshbin.encode(v, f, colors=col, uv4=uv4))
     for key in order:
         src = keys[key]
         if key in skip:
