@@ -6,7 +6,7 @@ import time
 import bpy
 
 from .. import prefs
-from ..core import audio, bake, color, gimmick_shapes, model, omakase, planner, registry, synonyms, themes
+from ..core import audio, bake, color, gimmick_shapes, model, omakase, planner, registry, synonyms, themes, world
 from ..core.parts import backgrounds as bgs
 from ..core.parts import gimmicks
 from ..core.parts import particles as pts
@@ -124,6 +124,25 @@ def make_plan(proj, snap=None):
     st = snap["state"] if snap else None
     return planner.plan(project.line_inputs(proj, snap), project.section_inputs(proj, snap), proj.duration,
                         st["seed"] if st else proj.seed, bpm=proj.bpm, settings=settings(proj, st))
+
+
+_summary = {"key": None, "value": None}
+
+
+def section_summary(proj):
+    """world.section_summary for the panel, reused while its inputs stay the same (a draw must stay cheap)."""
+    from ..core.model import LineInput
+    auto = lambda v: "" if v == AUTO else v
+    lines = [(ln.start, ln.end, ln.section_index, auto(ln.background), auto(ln.transition)) for ln in proj.lines]
+    secs = project.section_inputs(proj)
+    key = json.dumps([state(proj), [list(map(str, (s.start, s.end, s.kind, s.theme, s.background, s.transition)))
+                                    for s in secs], lines, proj.duration, proj.panorama_path], sort_keys=True)
+    if key != _summary["key"]:
+        ins = [LineInput(index=i, text="", start=a, end=b, section_index=k, background=bg, transition=tr)
+               for i, (a, b, k, bg, tr) in enumerate(lines)]
+        _summary["value"] = world.section_summary(secs, ins, proj.seed, settings(proj)) if secs else []
+        _summary["key"] = key
+    return _summary["value"]
 
 
 def build_preview(context):

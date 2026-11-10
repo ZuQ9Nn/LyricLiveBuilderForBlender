@@ -6,7 +6,7 @@ import unittest
 import numpy as np
 
 from lyric_live_builder.core import (atlas, audio, bake, bake_world, color, guide, meshes, model, moods, omakase,
-                                     planner, styles, world)
+                                     planner, styles, themes, world)
 from lyric_live_builder.core.parts import backgrounds as bgs
 from lyric_live_builder.core.parts import particles as pts
 from lyric_live_builder.core.rng import Rng
@@ -302,6 +302,32 @@ class TestWorld(unittest.TestCase):
         w = next(x for x in p.world if x["spec"]["key"] == "underwater")
         self.assertAlmostEqual(w["t"], lines[5].start, places=6)
         self.assertEqual(w["transition"], "ring")
+
+    def test_section_summary_matches_the_plan(self):
+        lines = inputs(24, sec_len=16.0)
+        duration = lines[-1].end + 2.0
+        secs = [model.SectionInput(a, c, "verse") for a, c in sections_for(duration, 16.0)]
+        self.assertGreaterEqual(len(secs), 4)
+        secs[1].theme, secs[1].background = "morning_garden", "evening"        # the case from the review
+        secs[2].theme = secs[3].theme = "under_sea"             # one background: 3 does not switch at its start
+        last = max(ln.index for ln in lines if ln.section_index == 2)          # so this line's runs on into 3
+        lines[last].background = "starry"
+        st = model.Settings()
+        p = planner.plan(lines, secs, duration, 5, settings=st)
+        summary = world.section_summary(secs, lines, 5, st)
+        for s, sp in zip(summary, p.section_plans):
+            self.assertEqual(s["theme"], sp.theme)
+            self.assertEqual(s["background"], sp.background["key"])
+            self.assertEqual(s["particles"], sp.particles)
+            self.assertTrue(set(s["particles"]) <= set(themes.THEMES[s["theme"]]["particles"]))
+        self.assertEqual(summary[1]["background"], "evening")
+        self.assertEqual(summary[1]["background_from"], "section")
+        self.assertEqual(summary[1]["theme"], "morning_garden")
+        self.assertTrue(summary[1]["theme_set"])
+        self.assertEqual((summary[3]["background"], summary[3]["background_from"], summary[3]["line"]),
+                         ("starry", "line", last))
+        self.assertEqual(summary[0]["background_from"], "theme")
+        self.assertFalse(summary[0]["theme_set"])
 
     def test_strong_flashes_are_spaced(self):
         for seed in range(6):

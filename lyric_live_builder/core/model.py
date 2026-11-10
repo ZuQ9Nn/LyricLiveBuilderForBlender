@@ -125,6 +125,8 @@ class SectionPlan:
     background: dict                  # resolved background spec at the section start
     particles: list                   # preset keys
     palette: dict                     # role -> '#RRGGBB' for the section's backdrop
+    background_from: str = "theme"    # theme | section (set on the section) | line (a line's override, see line)
+    background_line: int = -1
 
 
 @dataclass

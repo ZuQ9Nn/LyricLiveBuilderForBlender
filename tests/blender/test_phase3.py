@@ -222,6 +222,19 @@ def main():
     check((sec_before.theme, sec_before.background["key"]) == (sec_after.theme, sec_after.background["key"]),
           "the locked section keeps its theme and background")
 
+    # the section panel shows what is really used (theme and background, spec §5)
+    plan = planning.make_plan(proj)
+    summary = planning.section_summary(proj)
+    check([(s["theme"], s["background"], s["particles"]) for s in summary]
+          == [(sp.theme, sp.background["key"], sp.particles) for sp in plan.section_plans],
+          "the section panel shows the planned theme, background and particles")
+    check(planning.section_summary(proj) is summary, "the panel summary is reused while nothing changes")
+    proj.sections[1].background = "evening"
+    summary = planning.section_summary(proj)
+    check(summary[1]["background"] == "evening" and summary[1]["background_from"] == "section",
+          "a section's own background is shown as set there")
+    proj.sections[1].background = "AUTO"
+
     # change only the particles
     a = planning.make_plan(proj)
     proj.reroll_target = "particles"

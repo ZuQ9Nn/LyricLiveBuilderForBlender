@@ -4,9 +4,11 @@ import os
 import bpy
 from bpy.app.translations import pgettext_iface as iface_
 
-from ..core import registry
+from ..core import registry, themes
+from ..core.parts import backgrounds as bgs
+from ..core.parts import particles as pts
 from ..props import FONT_ROLES, SECTION_KIND_ITEMS
-from . import operators_input, project, tap_sync, trial
+from . import operators_input, planning, project, tap_sync, trial
 from .lists import fmt_time
 
 ROLE_LABELS = {"display": "Heading Font", "serif": "Serif Font", "body": "Body Font", "mono": "Mono Font"}
@@ -251,6 +253,37 @@ PICK_MENUS = tuple(type(f"LLB_MT_pick_{f}", (_PickMenu, bpy.types.Menu), {"bl_id
                    for f in ("layout", "enter", "hold", "exit"))
 
 
+def draw_in_use(layout, proj, index):
+    """What the section really uses and where it comes from (spec §5: theme and background)."""
+    try:
+        summary = planning.section_summary(proj)
+    except Exception as e:                                # the panel must always draw
+        print("[LLB] section summary:", e)
+        return
+    if not 0 <= index < len(summary):
+        return
+    s = summary[index]
+    theme = iface_(themes.THEMES[s["theme"]]["name"])
+    bg = iface_(bgs.PRESETS[s["background"]]["name"]) if s["background"] in bgs.PRESETS else s["background"]
+    box = layout.box()
+    box.label(text="In Use", icon="VIEWZOOM")
+    if s["background_from"] == "section":
+        where = iface_("(set here)")
+    elif s["background_from"] == "line":
+        where = iface_("(from line {})").format(s["line"] + 1)
+    else:
+        where = iface_("(from theme “{}”)").format(theme)
+    col = box.column(align=True)
+    col.label(text=iface_("Background: {}").format(bg), translate=False)
+    col.label(text=where, icon="BLANK1", translate=False)
+    col = box.column(align=True)
+    col.label(text=iface_("Particles from theme “{}”:").format(theme), translate=False)
+    for key in s["particles"] or ():
+        col.label(text=iface_(pts.PRESETS[key]["name"]), icon="BLANK1", translate=False)
+    if not s["particles"]:
+        col.label(text=iface_("No Particles"), icon="BLANK1", translate=False)
+
+
 def draw_sections(col, proj):
     """Sections, lines and their details (the main panel and the trial window)."""
     labels(col, "Sections from headings" if proj.sections_from_headings else "Sections estimated\n(no headings)", "INFO")
@@ -262,8 +295,11 @@ def draw_sections(col, proj):
         box = col.box()
         box.enabled = not sec.locked
         box.prop(sec, "theme")
+        if sec.background != "AUTO":
+            labels(box, "The theme only picks\nthe particles here", "INFO")
         box.prop(sec, "background")
         prop_above(box, sec, "transition")
+        draw_in_use(col, proj, proj.section_active)
         col.operator("llb.section_lock", text="Unlock Section" if sec.locked else "Lock Section",
                      icon="UNLOCKED" if sec.locked else "LOCKED", depress=sec.locked)
     col.separator()

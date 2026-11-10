@@ -782,5 +782,13 @@ MESSAGES = {
     'Circuit': '回路',
     'Dot March': '点の行進',
     'Horizon Line': '水平線',
+    'The theme only picks\nthe particles here': 'テーマは、パーティクルの組\nとしてだけ使われます',
+    'In Use': '実際に使われるもの',
+    'No Particles': 'パーティクルなし',
+    '(set here)': '（このセクションで指定）',
+    '(from line {})': '（{} 行目の「この行からの背景」から）',
+    '(from theme “{}”)': '（テーマ「{}」から）',
+    'Background: {}': '背景：{}',
+    'Particles from theme “{}”:': 'パーティクル（テーマ「{}」から）：',
     'Plexus': 'プレクサス',
 }

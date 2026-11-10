@@ -75,8 +75,9 @@ def plan_world(sections, lines, seed, settings, style):
     for i, (sec, tk) in enumerate(zip(sections, theme_keys)):
         rng = Rng(h(bseed, STAGE_BACKGROUND, i + 1))
         theme = themes.THEMES[tk]
+        origin = "theme"
         if sec.background and (settings.panorama or not bgs.needs_image(sec.background)):
-            key = sec.background
+            key, origin = sec.background, "section"
         elif current and current["key"] in theme["backgrounds"] and not rng.chance(switch):
             key = current["key"]                 # same family and a quiet switch setting: stay
         else:
@@ -92,17 +93,20 @@ def plan_world(sections, lines, seed, settings, style):
             dur = bgs.TRANSITIONS[trans]["dur"]
             world.append({"t": max(0.0, sec.start - dur / 2), "dur": dur, "spec": current, "transition": trans})
         plans.append(model.SectionPlan(index=i, kind=sec.kind, start=sec.start, end=sec.end, theme=tk,
-                                       background=current, particles=[], palette={}))
+                                       background=current, particles=[], palette={}, background_from=origin))
     # per-line background overrides start with the line
     for ln in lines:
         if ln.background in bgs.PRESETS and (settings.panorama or not bgs.needs_image(ln.background)):
             rng = Rng(h(bseed, STAGE_BACKGROUND, 1000 + ln.index))
             trans = _transition(rng, settings, ln.transition)
             world.append({"t": ln.start, "dur": bgs.TRANSITIONS[trans]["dur"],
-                          "spec": bgs.resolve(ln.background, style), "transition": trans})
+                          "spec": bgs.resolve(ln.background, style), "transition": trans, "line": ln.index})
     world.sort(key=lambda w: w["t"])
     _space_out(world)
     for sp in plans:
+        w = active_entry(world, sp.start + 0.01)
+        if "line" in w:                           # a line's background is still on at the section start
+            sp.background_from, sp.background_line = "line", w["line"]
         sp.background = active_background(world, sp.start + 0.01)
         sp.palette = styles.palette(style, bgs.backdrop(sp.background), settings.accent or None)
     return plans, world
@@ -113,6 +117,27 @@ def _space_out(world):
     for a, b in zip(world, world[1:]):
         if b["t"] < a["t"] + a["dur"]:
             b["t"] = a["t"] + a["dur"]
+
+
+def active_entry(world, t):
+    cur = world[0]
+    for w in world:
+        if w["t"] <= t:
+            cur = w
+    return cur
+
+
+def section_summary(sections, lines, seed, settings):
+    """What each section really uses, for the panel: [{theme, theme_set, background, background_from, line,
+    particles}]. Plans only the theme, background and particle stages (no text), so it is cheap."""
+    secs = [s if isinstance(s, model.SectionInput) else model.SectionInput(*s) for s in sections]
+    plans, world_ = plan_world(secs, lines, seed, settings, settings.style or styles.DEFAULT)
+    plan_particles(plans, [], seed, settings)
+    out = []
+    for sec, sp in zip(secs, plans):
+        out.append({"theme": sp.theme, "theme_set": sec.theme == sp.theme, "background": sp.background["key"],
+                    "background_from": sp.background_from, "line": sp.background_line, "particles": list(sp.particles)})
+    return out
 
 
 def active_background(world, t):
