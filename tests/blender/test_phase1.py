@@ -3,6 +3,7 @@
   blender --background --factory-startup --python tests/blender/test_phase1.py
 """
 import os
+import shutil
 import sys
 import tempfile
 import traceback
@@ -167,5 +168,7 @@ try:
 except Exception:
     traceback.print_exc()
     failures.append("exception")
+finally:
+    shutil.rmtree(TMP, ignore_errors=True)
 print("RESULT", "PASS" if not failures else f"FAIL {failures}")
 sys.exit(1 if failures else 0)

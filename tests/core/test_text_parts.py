@@ -64,7 +64,7 @@ class TestContracts(unittest.TestCase):
         self.assertEqual(len(registry.keys("enter")), 74)
         self.assertEqual(len(registry.keys("hold")), 45)
         self.assertEqual(len(registry.keys("exit")), 63)
-        self.assertEqual(len([p for p in registry.parts("layout") if not p.only_3d]), 7)
+        self.assertEqual(len([p for p in registry.parts("layout") if not p.only_3d]), 62)
         self.assertEqual(len([p for p in registry.parts("layout") if p.only_3d]), 6)
 
     def test_enter_identity_at_1_and_hidden_or_moved_at_0(self):
@@ -115,6 +115,7 @@ class TestContracts(unittest.TestCase):
         lines = inputs(4)
         lines[0].enter, lines[1].enter, lines[2].enter = "wipe", "checker", "fade"
         lines[2].exit = lines[1].exit = "fade"
+        lines[0].layout = "front"                       # upright glyphs: their boxes are one region, shifted
         duration = lines[-1].end + 2.0
         p = planner.plan(lines, sections_for(duration), duration, 7, bpm=120)
         b = bake.bake(p, metrics)
@@ -201,6 +202,30 @@ class TestLayouts(unittest.TestCase):
             pl = part.place(c, params)
             self.assertEqual(sorted(g.char_index for g in pl.glyphs), list(range(len(c.text))), part.key)
             self.assertGreater(pl.em, 0.01, part.key)
+
+    def test_layouts_place_every_glyph_without_overlap(self):
+        texts = ["光", "夜明け", "光の粒を集めて", "夜明けの色を覚えてる", "君の名前を呼んだら世界が少しだけ変わった",
+                 "Hello my friend", "ありがとう、またね。"]
+        for part in registry.parts("layout"):
+            for text in texts:
+                if not part.fits(len(text.replace(" ", ""))):
+                    continue
+                for seed in range(3):
+                    c = self.ctx(text=text)
+                    params = part.plan(Rng(seed + 1), c)
+                    pl = part.place(c, params)
+                    msg = f"{part.key} {text} {seed}"
+                    self.assertEqual(sorted(g.char_index for g in pl.glyphs),
+                                     [i for i, ch in enumerate(text) if not ch.isspace()], msg)
+                    loc = np.array([g.loc for g in pl.glyphs])
+                    size = np.array([g.size for g in pl.glyphs]) * pl.em
+                    self.assertTrue(np.isfinite(loc).all(), msg)
+                    shown = part.shown(c, params, pl)
+                    for a in range(len(loc)):
+                        for b in range(a + 1, len(loc)):
+                            if shown and (shown[a][1] <= shown[b][0] or shown[b][1] <= shown[a][0]):
+                                continue                                          # never on stage together
+                            self.assertGreater(np.linalg.norm(loc[a] - loc[b]), 0.45 * min(size[a], size[b]), msg)
 
     def test_front_size_is_the_visual_angle(self):
         c = self.ctx(text="あい", distance=3.5)

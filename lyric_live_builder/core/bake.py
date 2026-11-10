@@ -120,15 +120,19 @@ def _line_meshes(candidates, nodes, meshes, tracks):
 MASK_MARGIN = 0.6                                # em around the glyph centres: the mask covers the whole line
 
 
-def _mask_boxes(rest_loc, rest_rot, em):
-    """(G, 4) the line's extent (x0, y0, x1, y1) in each glyph's own coordinates (em; glyph x, glyph up)."""
-    lo, hi = rest_loc.min(axis=0) - MASK_MARGIN * em, rest_loc.max(axis=0) + MASK_MARGIN * em
+def _mask_boxes(rest_loc, rest_rot, em, gem=None):
+    """(G, 4) the line's extent (x0, y0, x1, y1) in each glyph's own coordinates (the glyph's em gem; glyph x,
+    glyph up)."""
+    gem = np.full(len(rest_loc), em) if gem is None else gem
+    pad = MASK_MARGIN * np.maximum(gem, em)[:, None]                 # big glyphs reach further
+    lo, hi = (rest_loc - pad).min(axis=0), (rest_loc + pad).max(axis=0)
     out = np.zeros((len(rest_loc), 4))
     for k in range(len(rest_loc)):
         corners = np.array([[x, rest_loc[k, 1], z] for x in (lo[0], hi[0]) for z in (lo[2], hi[2])]) - rest_loc[k]
         inv = rest_rot[k] * np.array([1.0, -1.0, -1.0, -1.0])
-        local = xform.rotate(np.broadcast_to(inv, (4, 4)), corners) / em
-        out[k] = (local[:, 0].min(), local[:, 2].min(), local[:, 0].max(), local[:, 2].max())
+        local = xform.rotate(np.broadcast_to(inv, (4, 4)), corners) / gem[k]
+        out[k] = (min(local[:, 0].min(), -MASK_MARGIN), min(local[:, 2].min(), -MASK_MARGIN),   # a turned glyph
+                  max(local[:, 0].max(), MASK_MARGIN), max(local[:, 2].max(), MASK_MARGIN))       # stays inside
     return out
 
 
@@ -163,7 +167,7 @@ def is_band_copy(nid):
 
 
 def _band_copies(nodes, tracks, part, nid, mesh, ch, gid, rest_loc, k, rot, em, color, box, on, dur, rate, interp,
-                 first=0, at=None):
+                 first=0, at=None, size=None):
     """Copies of a glyph, one per band of the line (horizontal or vertical), moving in while the entrance lasts
     (design §5.6). Each shows only its band (mask kind 4 or 10)."""
     width = (rest_loc[:, 0].max() - rest_loc[:, 0].min()) + 2 * MASK_MARGIN * em
@@ -177,7 +181,7 @@ def _band_copies(nodes, tracks, part, nid, mesh, ch, gid, rest_loc, k, rot, em, 
     for b in range(n):
         cid = f"{nid}{BAND_COPY}{first + b}"
         nodes.append(Node(cid, ch, gid, "text", "glyph", mesh=mesh, material="text", loc=tuple(rest), rot=tuple(rot),
-                          scale=(em,) * 3, color=color, default_active=False))
+                          scale=(size or em,) * 3, color=color, default_active=False))
         start = on + part.band_start(b, k, g) * dur
         keys = [(0.0, 0.0), (start, 1.0), (end, 0.0)] if start > 0 else [(start, 1.0), (end, 0.0)]
         tracks.append(Track(cid, "active", "constant", np.array([x[0] for x in keys], dtype=np.float32),
@@ -273,6 +277,7 @@ def bake(plan, metrics, eye=model.EYE_HEIGHT, rate=RATE, mobile=False, tmp=False
         rest_loc = np.array([gp.loc for gp in pl.glyphs], dtype=np.float64)
         rest_rot = np.array([xform.IDENTITY if gp.rot is None else gp.rot for gp in pl.glyphs], dtype=np.float64)
         ci = [gp.char_index for gp in pl.glyphs]
+        gem = pl.em * np.array([gp.size for gp in pl.glyphs], dtype=np.float64)    # each glyph's own em
 
         # motion windows
         word = _word_of(ln.text, ctx.chunks)
@@ -301,7 +306,7 @@ def bake(plan, metrics, eye=model.EYE_HEIGHT, rate=RATE, mobile=False, tmp=False
 
         loc = rest_loc[:, None, :] + xform.rotate(rest_rot[:, None, :], d.loc) * 1.0
         rot = xform.continuous(xform.mul(d.rot, rest_rot[:, None, :]))
-        scale = d.scale * pl.em
+        scale = d.scale * gem[:, None, None]
 
         # group motion (approach, cube), the glide of kept lines and the eye-distance rule work in world space
         gm = lp.group_motion(ctx, params, pl, times)
@@ -327,7 +332,7 @@ def bake(plan, metrics, eye=model.EYE_HEIGHT, rate=RATE, mobile=False, tmp=False
         # parts that cut the glyphs with a mask: their shapes in order (entrance, exit), design §5.6
         masked = [(part.uses_mask, part.mask_shape(mctx)) for part in (enter, exit_)]
         masked = masked if any(u for u, _ in masked) else None
-        boxes = _mask_boxes(rest_loc, rest_rot, pl.em) if masked or enter.band_copies or exit_.band_copies else None
+        boxes = _mask_boxes(rest_loc, rest_rot, pl.em, gem) if masked or enter.band_copies or exit_.band_copies else None
         cell = lambda part: None if not part.mask_cell else np.asarray(part.mask_cell, dtype=np.float64)
         fg, accent = (ln.colors["fg"], ln.colors["accent"]) if ln.colors else (WHITE, ACCENT)
         base = [tuple(accent) if ln.emph_mask[i] else tuple(fg) for i in ci]
@@ -343,19 +348,19 @@ def bake(plan, metrics, eye=model.EYE_HEIGHT, rate=RATE, mobile=False, tmp=False
             nid = f"{gid}_g{i:02d}"
             color = base[k] + (1.0,)
             nodes.append(Node(nid, f"{ch}", gid, "text", "glyph", mesh=key, material="text",
-                              loc=tuple(rest_loc[k]), rot=tuple(rest_rot[k]), scale=(pl.em,) * 3,
+                              loc=tuple(rest_loc[k]), rot=tuple(rest_rot[k]), scale=(float(gem[k]),) * 3,
                               color=color, default_active=False))
             on, off = float(in_start[k]), ln.end
             if narrow:
                 on, off = max(on, narrow[k][0]), min(off, narrow[k][1])
             if off <= on:
                 continue                         # never on stage
-            parts.append((nid, key, tuple(rest_loc[k]), tuple(rest_rot[k]), float(pl.em), tuple(base[k])))
+            parts.append((nid, key, tuple(rest_loc[k]), tuple(rest_rot[k]), float(gem[k]), tuple(base[k])))
             keys = [(0.0, 0.0), (on, 1.0), (off, 0.0)] if on > 0 else [(on, 1.0), (off, 0.0)]
             tracks.append(Track(nid, "active", "constant", np.array([k_[0] for k_ in keys], dtype=np.float32),
                                 np.array([[k_[1]] for k_ in keys], dtype=np.float32)))
             for prop, vals, rest in (("location", loc[k], rest_loc[k]), ("rotation", rot[k], rest_rot[k]),
-                                     ("scale", scale[k], (pl.em,) * 3)):
+                                     ("scale", scale[k], (float(gem[k]),) * 3)):
                 tr = _track(nid, prop, times, vals, rest, interp)
                 if tr:
                     tracks.append(tr)
@@ -369,11 +374,12 @@ def bake(plan, metrics, eye=model.EYE_HEIGHT, rate=RATE, mobile=False, tmp=False
                                        tag=float(k + 1))
             if enter.band_copies:
                 _band_copies(nodes, tracks, enter, nid, key, ch, gid, rest_loc, k, rest_rot[k], pl.em, color, boxes[k],
-                             float(in_start[k]), ln.enter_dur, rate, interp)
+                             float(in_start[k]), ln.enter_dur, rate, interp, size=float(gem[k]))
             if exit_.band_copies:                               # leaving as bands: copies from the exit's start
                 j = min(int(np.searchsorted(times, out_start[k])), len(times) - 1)
                 _band_copies(nodes, tracks, exit_, nid, key, ch, gid, rest_loc, k, rot[k][j], pl.em, color, boxes[k],
-                             float(out_start[k]), float(ln.end - out_start[k]), rate, interp, first=100, at=loc[k][j])
+                             float(out_start[k]), float(ln.end - out_start[k]), rate, interp, first=100, at=loc[k][j],
+                             size=float(gem[k]))
         if enter.line_fx and parts:
             _line_fx(nodes, meshes, tracks, gid, f"{name}_fx", rest_loc, pl.em, accent, enter.mask_shape(mctx),
                      times, d.mask[0], float(in_start.min()), float(in_end.max()), interp)

@@ -28,6 +28,7 @@ def register(kind, key):
 
 
 def get(kind, key):
+    _load()                                   # a hand-picked part must be found before anything listed the parts
     return _parts[kind].get(key)
 
 
@@ -43,7 +44,7 @@ def parts(kind):
 
 def _load():
     # importing the part modules runs their @register decorators
-    from .parts import layouts_3d, layouts_basic, motions_enter, motions_enter_jz, motions_exit, motions_exit_jz, motions_hold, motions_hold_jz  # noqa: F401
+    from .parts import layouts_3d, layouts_basic, motions_enter, motions_enter_jz, motions_exit, motions_exit_jz, motions_hold, motions_hold_jz, layouts_jz  # noqa: F401
 
 
 # ---------------- layouts ----------------
@@ -54,6 +55,7 @@ class GlyphPlacement:
     loc: np.ndarray                   # (3,) in the line frame
     rot: np.ndarray = None            # (4,) ; None = identity
     vertical: bool = False            # rotated 90° for vertical writing
+    size: float = 1.0                 # times the line's em (mixed sizes)
 
 
 @dataclass
