@@ -1,7 +1,7 @@
 // LyricLive Builder: lyric letters. Unlit colour with alpha; faces turned away from the view (the sides
 // of 3D letters) get darker, like the Blender preview's LLB_Text. Built-in RP, VR single-pass safe.
 // The mask (LLBMask.cginc) cuts the glyph for wipes, bands and checkers.
-Shader "LyricLive/Text"
+Shader "LyricLiveBuilder/Text"
 {
     Properties
     {

@@ -64,7 +64,19 @@ class TestParticles(unittest.TestCase):
     def test_counts(self):
         self.assertEqual(len(pts.SHAPES_2D), 15)
         self.assertEqual(len(pts.SHAPES_3D), 6)
-        self.assertEqual(len(pts.AMBIENT), 12)
+        self.assertEqual(len(pts.AMBIENT), 15)
+
+    def test_mixed_shapes(self):
+        for key, p in pts.PRESETS.items():
+            names = pts.shapes_of(p)
+            self.assertEqual(names[0], p["shape"], key)
+            if p["shape"] in pts.SHAPES_2D:
+                first, last = pts.tile_range(p)                  # neighbours in the atlas
+                self.assertEqual(last - first + 1, len(names), key)
+            else:
+                self.assertTrue(all(n in pts.SHAPES_3D for n in names), key)
+        which = pts.particle_shapes(pts.PRESETS["shape_confetti"], 7, 400)
+        self.assertEqual(set(which.tolist()), set(range(5)))         # every shape is used
 
     def test_every_preset_is_sane(self):
         for key in pts.PRESETS:

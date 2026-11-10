@@ -50,7 +50,7 @@ namespace LyricLive.Editor
             }
         }
 
-        public static ParticleSystem Apply(GameObject go, LLBParticles d, Material mat, Mesh mesh)
+        public static ParticleSystem Apply(GameObject go, LLBParticles d, Material mat, Mesh mesh, Mesh[] meshes = null)
         {
             var ps = go.AddComponent<ParticleSystem>();
             var main = ps.main;
@@ -136,6 +136,11 @@ namespace LyricLive.Editor
             {
                 r.renderMode = ParticleSystemRenderMode.Mesh;
                 r.mesh = mesh;
+                if (meshes != null && meshes.Length > 1)
+                {
+                    r.SetMeshes(meshes);                    // one shape per particle, chosen at random
+                    r.meshDistribution = ParticleSystemMeshDistribution.UniformRandom;
+                }
             }
             else
             {
@@ -152,7 +157,10 @@ namespace LyricLive.Editor
                     tsa.animation = ParticleSystemAnimationType.WholeSheet;
                     tsa.frameOverTime = new ParticleSystem.MinMaxCurve(0f);
                     // startFrame is a fraction of the sheet (frame = startFrame × 16), not a frame number
-                    tsa.startFrame = new ParticleSystem.MinMaxCurve((d.renderer.tile + 0.5f) / 16f);
+                    int last = Mathf.Max(d.renderer.tile, d.renderer.tileLast);   // a range: one shape per particle
+                    tsa.startFrame = last > d.renderer.tile
+                        ? new ParticleSystem.MinMaxCurve((d.renderer.tile + 0.02f) / 16f, (last + 0.98f) / 16f)
+                        : new ParticleSystem.MinMaxCurve((d.renderer.tile + 0.5f) / 16f);
                     tsa.cycleCount = 1;
                 }
             }

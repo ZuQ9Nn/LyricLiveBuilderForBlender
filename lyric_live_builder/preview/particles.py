@@ -12,7 +12,7 @@ from . import materials
 
 PROP = "llb_emitter"
 EYE = np.array([0.0, 0.0, model.EYE_HEIGHT])
-_cache = {}                          # object name -> (json string, spec, local shape, axes)
+_cache = {}                          # object name -> (json string, spec, 3D shapes, axes)
 
 
 def _spec(ob):
@@ -23,7 +23,7 @@ def _spec(ob):
     spec = json.loads(raw)
     p = spec["preset"]
     cap = spec["count"] + spec["pool"]
-    shape = meshes.particle_shape(p["shape"]) if p["shape"] in pts.SHAPES_3D else None
+    shape = _layout3d(p, spec["seed"], cap) if p["shape"] in pts.SHAPES_3D else None
     rng = np.random.default_rng(spec["seed"] % (2 ** 32))
     axes = rng.normal(size=(cap, 3))
     axes /= np.linalg.norm(axes, axis=1, keepdims=True)
@@ -32,26 +32,43 @@ def _spec(ob):
     return hit
 
 
+def _layout3d(p, seed, cap):
+    """3D particles grouped by shape: [(slots, verts, faces)] in vertex order (each slot keeps its shape)."""
+    which = pts.particle_shapes(p, seed, cap)
+    out = []
+    for k, name in enumerate(pts.shapes_of(p)):
+        slots = np.flatnonzero(which == k)
+        if len(slots):
+            v, f = meshes.particle_shape(name)
+            out.append((slots, np.asarray(v, dtype=np.float64), f))
+    return out
+
+
 def create(name, spec, collection):
     """Mesh object with capacity-many quads / shapes; the handler moves them."""
     p = spec["preset"]
     cap = max(1, spec["count"] + spec["pool"])
     me = bpy.data.meshes.new(name)
     if p["shape"] in pts.SHAPES_3D:
-        v, f = meshes.particle_shape(p["shape"])
-        nv = len(v)
-        verts = np.zeros((cap * nv, 3))
-        faces = [tuple(i + k * nv for i in face) for k in range(cap) for face in f]
-        me.from_pydata(verts.tolist(), [], faces)
+        faces, base = [], 0
+        for slots, v, f in _layout3d(p, spec["seed"], cap):
+            nv = len(v)
+            faces += [tuple(base + i + k * nv for i in face) for k in range(len(slots)) for face in f]
+            base += nv * len(slots)
+        me.from_pydata(np.zeros((base, 3)).tolist(), [], faces)
         me.materials.append(materials.particle3d_material())
     else:
         verts = np.zeros((cap * 4, 3))
         faces = [(4 * k, 4 * k + 1, 4 * k + 2, 4 * k + 3) for k in range(cap)]
         me.from_pydata(verts.tolist(), [], faces)
         uv = me.uv_layers.new(name="UVMap")
-        u0, v0, u1, v1 = atlas.tile_uv(pts.SHAPES_2D.index(p["shape"]))
-        uvs = np.tile(np.array([[u0, v0], [u1, v0], [u1, v1], [u0, v1]], dtype=np.float32), (cap, 1))
-        uv.data.foreach_set("uv", uvs.ravel())
+        first, _ = pts.tile_range(p)
+        tiles = first + pts.particle_shapes(p, spec["seed"], cap)              # one shape per particle slot
+        quad = []
+        for t in tiles:
+            u0, v0, u1, v1 = atlas.tile_uv(int(t))
+            quad.append([[u0, v0], [u1, v0], [u1, v1], [u0, v1]])
+        uv.data.foreach_set("uv", np.asarray(quad, dtype=np.float32).ravel())
         me.materials.append(materials.particle_material(p.get("blend") == "add"))
     me.attributes.new(materials.COLOR_ATTR, "FLOAT_COLOR", "POINT")
     me[PROP] = True                                       # removed with the preview (not shared)
@@ -85,12 +102,16 @@ def _billboards(st, p):
     return np.stack(corners, axis=1).reshape(-1, 3), 4
 
 
-def _shapes(st, shape, axes):
-    v, _ = shape
+def _shapes(st, layout, axes):
+    """Vertex positions of the 3D particles (grouped by shape) and each slot's vertex count, in vertex order."""
     half = st["spin"][:, None] * 0.5
     q = np.concatenate([np.cos(half), axes * np.sin(half)], axis=1)
-    local = v[None] * st["size"][:, None, None]
-    return (xform.rotate(q[:, None], local) + st["pos"][:, None]).reshape(-1, 3), len(v)
+    co, per = [], []
+    for slots, v, _ in layout:
+        local = v[None] * st["size"][slots][:, None, None]
+        co.append((xform.rotate(q[slots][:, None], local) + st["pos"][slots][:, None]).reshape(-1, 3))
+        per.append((slots, len(v)))
+    return np.concatenate(co), per
 
 
 def update(ob, t):
@@ -107,7 +128,11 @@ def update(ob, t):
         return
     me.vertices.foreach_set("co", co.astype(np.float32).ravel())
     rgba = np.concatenate([st["color"], st["alpha"][:, None]], axis=1)
-    me.attributes[materials.COLOR_ATTR].data.foreach_set("color", np.repeat(rgba, per, axis=0).astype(np.float32).ravel())
+    if isinstance(per, list):                                    # 3D: grouped by shape
+        col = np.concatenate([np.repeat(rgba[slots], nv, axis=0) for slots, nv in per])
+    else:
+        col = np.repeat(rgba, per, axis=0)
+    me.attributes[materials.COLOR_ATTR].data.foreach_set("color", col.astype(np.float32).ravel())
     me.update()
 
 

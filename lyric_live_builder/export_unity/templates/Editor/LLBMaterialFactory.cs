@@ -9,14 +9,14 @@ namespace LyricLive.Editor
     {
         static readonly Dictionary<string, string[]> Shaders = new Dictionary<string, string[]>
         {
-            { "text", new[] { "LyricLive/Text", "Unlit/Transparent", "Unlit/Color" } },
-            { "text_vc", new[] { "LyricLive/TextVC", "Particles/Standard Unlit", "Unlit/Color" } },
-            { "gimmick", new[] { "LyricLive/Gimmick", "Unlit/Color" } },
-            { "far", new[] { "LyricLive/Far", "Unlit/Transparent", "Unlit/Color" } },
-            { "glow", new[] { "LyricLive/Glow", "Particles/Standard Unlit", "Unlit/Color" } },
-            { "line_fx", new[] { "LyricLive/LineFx", "Unlit/Transparent" } },
-            { "dome", new[] { "LyricLive/Dome", "Unlit/Color" } },
-            { "particle", new[] { "LyricLive/Particle", "Particles/Standard Unlit", "Unlit/Color" } },
+            { "text", new[] { "LyricLiveBuilder/Text", "Unlit/Transparent", "Unlit/Color" } },
+            { "text_vc", new[] { "LyricLiveBuilder/TextVC", "Particles/Standard Unlit", "Unlit/Color" } },
+            { "gimmick", new[] { "LyricLiveBuilder/Gimmick", "Unlit/Color" } },
+            { "far", new[] { "LyricLiveBuilder/Far", "Unlit/Transparent", "Unlit/Color" } },
+            { "glow", new[] { "LyricLiveBuilder/Glow", "Particles/Standard Unlit", "Unlit/Color" } },
+            { "line_fx", new[] { "LyricLiveBuilder/LineFx", "Unlit/Transparent" } },
+            { "dome", new[] { "LyricLiveBuilder/Dome", "Unlit/Color" } },
+            { "particle", new[] { "LyricLiveBuilder/Particle", "Particles/Standard Unlit", "Unlit/Color" } },
         };
 
         public static Shader Find(string kind)

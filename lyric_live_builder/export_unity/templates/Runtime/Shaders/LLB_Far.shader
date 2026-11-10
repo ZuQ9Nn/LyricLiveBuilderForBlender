@@ -1,6 +1,6 @@
 // LyricLive Builder: far objects (moon, sun, mountains, city, water). Unlit colour with alpha, drawn
 // after the dome and before the text (queue 2900), so the text is never covered by them.
-Shader "LyricLive/Far"
+Shader "LyricLiveBuilder/Far"
 {
     Properties { _Color ("Color", Color) = (1,1,1,1) }
     SubShader

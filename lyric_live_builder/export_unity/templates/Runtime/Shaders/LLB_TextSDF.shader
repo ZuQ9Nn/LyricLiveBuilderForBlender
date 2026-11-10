@@ -1,7 +1,7 @@
 // LyricLive Builder: TextMesh Pro letters (signed distance field atlas) with the glyph mask (LLBMask.cginc).
 // Written for LyricLive, not derived from TextMesh Pro's shaders: it reads the atlas (_MainTex, distance in
 // alpha), the vertex colour TextMesh Pro writes, and the letter's own coordinates. Built-in RP, VR single-pass safe.
-Shader "LyricLive/TextSDF"
+Shader "LyricLiveBuilder/TextSDF"
 {
     Properties
     {

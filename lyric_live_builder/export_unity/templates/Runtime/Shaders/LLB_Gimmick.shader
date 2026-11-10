@@ -1,7 +1,7 @@
 // LyricLive Builder: stage objects. Opaque, a soft fixed light so forms read without scene lights, and
 // a dissolve: alpha 1 is whole, alpha 0 is gone (the Blender preview's LLB_Gimmick). _Color is animated
 // per object; user objects carry their colours per vertex (white otherwise). Built-in RP, VR single-pass safe.
-Shader "LyricLive/Gimmick"
+Shader "LyricLiveBuilder/Gimmick"
 {
     Properties { _Color ("Color", Color) = (1,1,1,1) }
     SubShader

@@ -1,6 +1,6 @@
 // LyricLive Builder: the plane in front of a line for the wipe's bar and the checker's tiles (LLBMask.cginc
 // llbLineFx). The mesh is a unit quad; colour and the mask values come from the animation. Built-in RP, VR safe.
-Shader "LyricLive/LineFx"
+Shader "LyricLiveBuilder/LineFx"
 {
     Properties
     {

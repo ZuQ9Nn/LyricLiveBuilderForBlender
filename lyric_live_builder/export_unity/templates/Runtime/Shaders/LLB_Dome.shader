@@ -1,7 +1,7 @@
 // LyricLive Builder: the background dome (design §8.2). Two background slots (A, B) mixed by a
 // transition; the same logic as the Blender preview's LLB_Dome nodes. Opaque and ZWrite On so the
 // skybox does not draw over it (prototype S0-07). Built-in RP, VR single-pass safe.
-Shader "LyricLive/Dome"
+Shader "LyricLiveBuilder/Dome"
 {
     Properties
     {

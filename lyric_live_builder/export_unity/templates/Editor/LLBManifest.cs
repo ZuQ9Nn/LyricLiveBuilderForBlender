@@ -49,7 +49,7 @@ namespace LyricLive.Editor
     [Serializable] public class LLBPSShape { public string type; public float radius, thickness, randomDirection; public float[] position, rotation; }
     [Serializable] public class LLBPSVelocity { public float[] x, y, z, orbitalY; }
     [Serializable] public class LLBPSNoise { public float strength, frequency, scroll; }
-    [Serializable] public class LLBPSRenderer { public string mode, mesh, blend; public int tile; public float stretch; }
+    [Serializable] public class LLBPSRenderer { public string mode, mesh, blend; public string[] meshes; public int tile, tileLast; public float stretch; }
     [Serializable] public class LLBPSSub { public int count; public float speed, life; }
 
     [Serializable] public class LLBParticles

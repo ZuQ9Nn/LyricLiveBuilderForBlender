@@ -775,4 +775,8 @@ MESSAGES = {
     'Gear Words': '歯車',
     'Pad Grid': 'パッド',
     'Word by Word Cuts': '語のカット割り',
+    # particles: mixed shapes
+    'Shape Confetti': '図形の紙吹雪',
+    'Floating Shapes': '図形の浮遊',
+    'Floating Polyhedra': '浮遊する多面体',
 }

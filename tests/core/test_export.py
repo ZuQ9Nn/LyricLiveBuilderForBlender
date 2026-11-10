@@ -73,8 +73,10 @@ class TestParticles(unittest.TestCase):
             for d in systems:
                 json.dumps(d)
                 self.assertEqual(len(d["colors"]) % 4, 0)
-                tile = d["renderer"]["tile"]
-                self.assertTrue(tile == -1 or 0 <= tile < 15, key)
+                tile, last = d["renderer"]["tile"], d["renderer"]["tileLast"]
+                self.assertTrue(tile == -1 or 0 <= tile <= last < 15, key)
+                if p["shape"] in pts.SHAPES_3D:
+                    self.assertEqual(len(d["renderer"]["meshes"]), len(pts.shapes_of(p)), key)
                 self.assertIn(d["shape"]["type"], ("Sphere", "Hemisphere", "Circle", "Box"))
 
 

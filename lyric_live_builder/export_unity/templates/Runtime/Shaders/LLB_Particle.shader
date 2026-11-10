@@ -1,6 +1,6 @@
 // LyricLive Builder: particles. Atlas (or white) × vertex colour (ParticleSystem colour) × _Color
 // (the emitter's fade, animated). Additive or alpha blended through _SrcBlend / _DstBlend.
-Shader "LyricLive/Particle"
+Shader "LyricLiveBuilder/Particle"
 {
     Properties
     {

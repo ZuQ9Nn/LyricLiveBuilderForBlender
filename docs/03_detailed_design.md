@@ -294,10 +294,10 @@ JIZURA の行の「カット数の指定」を移植します（`splitToCount`�
 
 - 切り抜き（マスク）：動きの部品は `Delta.mask`（文字ごと・時刻ごとの進み具合。1 で全部見える）と、部品の定数 `mask_shape`（形、向き・本数などの値、0、0）を返せます。形は 1 ワイプ（値：0 左から、1 右から）、2 帯（値：本数。左右交互に開く）、3 市松（値：升目の大きさ em）です。
   - ベイクは、切り抜きを使う文字にだけ、`mask`（進み具合）・`mask_shape`（登場の始まりと退場の始まりで切り替わる constant）・`mask_box`（行全体の文字の範囲を、その文字の座標・em 単位で表した x0, y0, x1, y1。constant）のトラックを作ります。文字の座標は、文字の中心が原点・1 em が 1 単位・Blender の (x, z) が Unity の (x, y) で、メッシュの文字と TextMesh Pro の文字で共通です。
-  - 計算は 3 か所に同じものを置きます：Blender のプレビュー（`materials.text_material` のノード。オブジェクトのカスタムプロパティ `llb_mask`・`llb_mask_shape`・`llb_mask_box` を Attribute ノードで読む）、Unity の `LyricLive/Text`、TextMesh Pro 用の `LyricLive/TextSDF`（自作。TMP のシェーダーのソースは使わない）。共通の計算は `LLBMask.cginc` です。
-  - TextMesh Pro の文字は、フォントのマテリアルを `LyricLive/TextSDF` にします（切り抜く文字だけ別にすると、マテリアルが分かれるため）。切り抜きのアニメーションが付いた文字は、動的バッチングから外れることがあります（描画の回数が増える）。
+  - 計算は 3 か所に同じものを置きます：Blender のプレビュー（`materials.text_material` のノード。オブジェクトのカスタムプロパティ `llb_mask`・`llb_mask_shape`・`llb_mask_box` を Attribute ノードで読む）、Unity の `LyricLiveBuilder/Text`、TextMesh Pro 用の `LyricLiveBuilder/TextSDF`（自作。TMP のシェーダーのソースは使わない）。共通の計算は `LLBMask.cginc` です。
+  - TextMesh Pro の文字は、フォントのマテリアルを `LyricLiveBuilder/TextSDF` にします（切り抜く文字だけ別にすると、マテリアルが分かれるため）。切り抜きのアニメーションが付いた文字は、動的バッチングから外れることがあります（描画の回数が増える）。
   - 行メッシュ（モバイルの静止中）は、登場と退場の間だけ使うので、切り抜きは要りません。
-  - 行の前の板（`line_fx`）：ワイプの縦棒と市松の色の四角は、文字の形と関係なく描くので、行ごとに 1 枚の板（行の範囲の大きさ、文字より 0.5 cm 手前）に描きます。板は登場の間だけ表示し、`mask`・`mask_shape`・`mask_box`（行の範囲、em）と色（行のアクセント色）のトラックを持ちます。シェーダーは Blender の `LLB_LineFx`、Unity の `LyricLive/LineFx`（同じ式。`LLBMask.cginc` の `llbLineFx`）です。部品の `line_fx = True` で作ります。
+  - 行の前の板（`line_fx`）：ワイプの縦棒と市松の色の四角は、文字の形と関係なく描くので、行ごとに 1 枚の板（行の範囲の大きさ、文字より 0.5 cm 手前）に描きます。板は登場の間だけ表示し、`mask`・`mask_shape`・`mask_box`（行の範囲、em）と色（行のアクセント色）のトラックを持ちます。シェーダーは Blender の `LLB_LineFx`、Unity の `LyricLiveBuilder/LineFx`（同じ式。`LLBMask.cginc` の `llbLineFx`）です。部品の `line_fx = True` で作ります。
   - 切り抜きの形の追加：5 アイリス（行の中心からの円）、6 斜め（傾き 0.5 の境目。値：向き）、7 ブラインド（細い横縞が上から順に太る）、8 シャッター（中央から上下に開く）、9 窓（文字の元の位置の枠の中だけを見せる。値・z：進み具合 0 のときの文字のずれ（em）。枠は行ではなくその文字の枠で、部品の `mask_cell` で決める）、10 縦の帯 b だけ。窓の形は文字の動きと同じ式でずれを打ち消す。登場の切り抜きの形は、登場の終わりで 0（切り抜かない）に戻します（保持の間に窓が文字を切らないように）。
   - 行の前の板の追加：アイリスの色の輪、斜めワイプの色の帯、シャッターの色の線。
   - JIZURA の登場は「全体の進み具合 p から、文字ごとにずらした進み具合を計算する」作りなので、移した登場は文字の開始をそろえ（`stagger = 0`）、同じ式（`stg`・`ordLR`・`ordC`）でずらします。登場の長さは JIZURA の `inDur` の上限です。文字の幅・高さは 1 em とみなします。
@@ -413,6 +413,7 @@ class FrontLayout(LayoutPart):
 | プリセットの項目 | Unity |
 |---|---|
 | `shape`（circle_dot/soft_dot/triangle/square/cross/hexagon/octagon/bubble/star/sparkle/petal/heart/note/snowflake/ring、または cube/hexprism/octahedron/icosahedron/shard/tetra） | 2D：Renderer=Billboard、アトラスの UV（TextureSheetAnimation の Sprite モード、タイル固定）／3D：Renderer=Mesh |
+| `shapes`（粒ごとに選ぶ形。2D はアトラスで隣り合う形、3D は形の組。最初の形は `shape` と同じ） | 2D：TextureSheetAnimation の開始の枠を範囲の乱数／3D：Renderer の複数メッシュ（`SetMeshes`、粒ごとに一様に選ぶ） |
 | `emitter`（sphere/sky_shell/sky_disc/floor_disc/ring/tunnel/burst）、`radius`、`height` | ShapeModule |
 | `rate`、`burst`（間隔・数・速さ・寿命・`sub`） | EmissionModule（バーストは、発生源の位置のトラックとバーストの時刻） |
 | `life`、`speed`、`size`、`gravity`（範囲） | MainModule（MinMaxCurve の TwoConstants） |
@@ -424,6 +425,7 @@ class FrontLayout(LayoutPart):
 
 - 2D のテクスチャは、`core/atlas.py` が numpy で符号付き距離から描きます（1024×1024、4×4 のタイル。15 種）。Blender のプレビューでも同じ画像を使い、Unity 出力（段階 4）では PNG にします。
 - 強さ（演出の「パーティクルの量」）で、`rate` と `max` を 0.35〜1.65 倍にします。
+- 粒ごとの形：プレビューは、粒の番号（`h(seed, i, 0, 60)`）で形を決め、生まれ直しても同じ形です（メッシュの頂点の並びを固定するため）。3D は形ごとに粒をまとめてメッシュに並べます。Unity は粒ごとに乱数で選ぶので、どの粒がどの形かは一致しません（割合は同じ）。
 - **閉じた式**（`state(spec, t)`）：連続の発生源の粒 i は、寿命 L_i ごとに生まれ直し、世代ごとに新しい乱数で発生位置・速度を決めます。位置＝発生位置＋速度×経過＋重力＋ノイズ（正弦の和）。発生の多さ（`intensity`）は、生まれた時刻の値で粒を間引きます。破裂は、時刻と発生位置のリストから、粒ごとに減速つきの放射で求め、寿命の終わりに `sub` の粒が弾けます。粒は目から 0.6 m より内側に入れません（§7.2）。発生源全体は、開始から 0.8 秒で現れ、終了から 1.0 秒で消えます（`envelope`）。
 - プレビュー（`preview/particles.py`）：`frame_change_pre` のハンドラで、毎フレーム `state()` を計算し、発生源のメッシュに書き込みます。2D は観客の目（0, 0, 1.5）の方を向く四角形（軌跡のある粒は速度の向きに伸ばす）、3D は形状のメッシュです。頂点数は「連続の粒の数＋破裂の最大同時数」で固定し、消えた粒は大きさ 0 にします。色は頂点の色属性 `llb_col` に書きます。Unity は ParticleSystem が自分で計算するので、見た目は似ていても同じにはなりません。
 
@@ -656,14 +658,16 @@ Unity.exe -batchmode -nographics -quit -projectPath "<Project>"
 
 ### 10.3 マテリアルの対応
 
+- シェーダー名は `LyricLiveBuilder/…` です。ほかのアセットのシェーダー（`LyricLive/…` など）と名前が重なると、`Shader.Find` が別のシェーダーを返し、粒・背景・文字が描かれないため（リリース前の確認で判明）。シェーダーのファイル名は変えないので、前の出力のマテリアルもそのまま使えます。
+
 | 仕様上の種類 | VRCHAT モード | 代替（シェーダーが見つからない場合） | STANDARD モード |
 |---|---|---|---|
-| text | `LyricLive/Text` | `Unlit/Transparent` → `Unlit/Color` | 同左 |
-| far | `LyricLive/Far` | `Unlit/Transparent` → `Unlit/Color` | 同左 |
-| glow | `LyricLive/Glow` | `Particles/Standard Unlit` | 同左 |
-| particle（加算・半透明・3D） | `LyricLive/Particle` | `Particles/Standard Unlit` | 同左 |
-| dome | `LyricLive/Dome` | `Unlit/Color` | 同左 |
-| gimmick | `LyricLive/Gimmick` | `Unlit/Color` | 同左 |
+| text | `LyricLiveBuilder/Text` | `Unlit/Transparent` → `Unlit/Color` | 同左 |
+| far | `LyricLiveBuilder/Far` | `Unlit/Transparent` → `Unlit/Color` | 同左 |
+| glow | `LyricLiveBuilder/Glow` | `Particles/Standard Unlit` | 同左 |
+| particle（加算・半透明・3D） | `LyricLiveBuilder/Particle` | `Particles/Standard Unlit` | 同左 |
+| dome | `LyricLiveBuilder/Dome` | `Unlit/Color` | 同左 |
+| gimmick | `LyricLiveBuilder/Gimmick` | `Unlit/Color` | 同左 |
 
 - 段階 4 では、どちらのモードも同梱シェーダーを使います（試作 S0-07 で、PC・Quest・iOS での表示を確認済み）。同梱シェーダーが見つからない場合は、表の代わりのシェーダーにして `[LLB][WARN]` を出します。lit・MatCap（仕様書 §7.2）は改善メモ #12。
 - 色は `SetColor` に sRGB の値で渡します（Linear のプロジェクトでも、Unity が線形に直す）。
@@ -788,7 +792,7 @@ def bake_palette_material(objects, *, max_colors=64) -> PaletteResult
 
 - 対象：モバイル最適化が ON で、保持の動きが「静止」、2 文字以上、表示が 1 秒以上続く行（TMP 変換が ON なら 3D の行だけ）。仕様の「行単位の動き（行全体の脈動など）」は、文字のトラックが行で共通にならないため、段階 5 では対象にしません。
 - ベイク時（`core/bake.py`、視線の誘導の後）に、行の全文字を静止姿勢で並べた `line_mesh` ノード（`<行>_line`、メッシュ `line:<行>`）を作ります。全文字の登場が終わった時刻に、文字ノードを非表示・`line_mesh` を表示に切り替え、最初の文字の退場の開始時刻に逆に切り替えます。
-- 文字ごとに色が違うので、行メッシュは頂点の色を持ちます（`meshes.bin` の頂点の色。§9.3 の flags の 4）。マテリアルは `text_line`（`LyricLive/TextVC`）。
+- 文字ごとに色が違うので、行メッシュは頂点の色を持ちます（`meshes.bin` の頂点の色。§9.3 の flags の 4）。マテリアルは `text_line`（`LyricLiveBuilder/TextVC`）。
 - モバイル最適化では、文字のマテリアルを 1 つにまとめ（`text`）、色は全文字の `color` のトラックで与えます。
 
 ### 11.4 目安の検査

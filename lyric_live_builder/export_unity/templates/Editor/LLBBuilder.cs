@@ -174,7 +174,10 @@ namespace LyricLive.Editor
                         var d = JsonUtility.FromJson<LLBParticles>(n.particles);
                         bool isMesh = d.renderer.mode == "Mesh";
                         meshes.TryGetValue(d.renderer.mesh ?? "", out var pmesh);
-                        LLBParticleFactory.Apply(go, d, ParticleMat(d.renderer.blend, !isMesh), pmesh);
+                        var pmeshes = new List<Mesh>();
+                        foreach (var key in d.renderer.meshes ?? new string[0])
+                            if (meshes.TryGetValue(key, out var mm)) pmeshes.Add(mm);
+                        LLBParticleFactory.Apply(go, d, ParticleMat(d.renderer.blend, !isMesh), pmesh, pmeshes.ToArray());
                     }
                     go.SetActive(n.active);
                     objs[n.id] = go;

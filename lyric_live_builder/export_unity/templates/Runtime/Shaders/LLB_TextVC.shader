@@ -1,7 +1,7 @@
-// LyricLive Builder: merged line meshes (mobile, design §11.3): like LyricLive/Text, times the vertex
+// LyricLive Builder: merged line meshes (mobile, design §11.3): like LyricLiveBuilder/Text, times the vertex
 // colour that carries each letter's colour. Faces turned away from the view (the sides
 // of 3D letters) get darker, like the Blender preview's LLB_Text. Built-in RP, VR single-pass safe.
-Shader "LyricLive/TextVC"
+Shader "LyricLiveBuilder/TextVC"
 {
     Properties
     {

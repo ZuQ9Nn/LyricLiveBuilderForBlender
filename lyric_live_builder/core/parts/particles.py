@@ -64,6 +64,23 @@ PRESETS = {
     "warp": dict(name="Warp Streaks", tags=("glitch", "pop"), shape="soft_dot", emitter="tunnel", radius=(3.0, 9.0),
                  rate=30, life=(3.5, 4.0), speed=(12.0, 15.0), direction="toward", size=(0.04, 0.08), trail=0.3,
                  fade=(0.1, 0.2), colors=("white", "ghostB"), blend="add", max=130),
+    # mixed shapes (one per particle): the 2D ones are neighbours in the atlas
+    "shape_confetti": dict(name="Shape Confetti", tags=("pop", "graphic", "emotional"), shape="triangle",
+                           shapes=("triangle", "square", "cross", "hexagon", "octagon"), emitter="sky_disc",
+                           radius=(1.2, 10.0), height=(6.0, 8.0), rate=20, life=(8, 11), speed=(0.5, 0.9),
+                           direction="down", size=(0.08, 0.16), noise=0.7, noise_freq=0.3, spin=(-150, 150),
+                           fade=(0.1, 0.2), colors=("accent", "ghostA", "ghostB", "white"), blend="alpha", max=220,
+                           prewarm=True),
+    "shape_float": dict(name="Floating Shapes", tags=("graphic", "calm", "editorial", "glitch"), shape="square",
+                        shapes=("square", "cross", "hexagon", "octagon"), emitter="sphere", radius=(2.5, 9.0),
+                        rate=12, life=(6, 9), speed=(0.05, 0.15), direction="random", size=(0.14, 0.32), noise=0.35,
+                        noise_freq=0.25, spin=(-40, 40), fade=(0.2, 0.3), colors=("accent", "ghostA", "white"),
+                        blend="add", max=120, prewarm=True),
+    "poly_float": dict(name="Floating Polyhedra", tags=("graphic", "editorial", "calm"), shape="octahedron",
+                       shapes=("octahedron", "icosahedron", "tetra", "hexprism"), emitter="sphere", radius=(3.0, 10.0),
+                       rate=6, life=(8, 12), speed=(0.05, 0.15), direction="random", size=(0.1, 0.26),
+                       spin=(-50, 50), fade=(0.15, 0.2), colors=("ghostA", "ghostB", "accent"), blend="alpha", max=80,
+                       prewarm=True),
     # for lines: a short burst around the text (impact lines, line overrides)
     "sparkle_burst": dict(name="Sparkle Burst", tags=_ALL, shape="sparkle", emitter="burst",
                           burst=dict(interval=None, count=36, speed=(1.0, 2.2), life=(0.8, 1.4), sub=None),
@@ -71,6 +88,25 @@ PRESETS = {
                           max=120),
 }
 AMBIENT = [k for k in PRESETS if k != "sparkle_burst"]          # the 12 section presets
+
+
+def shapes_of(p):
+    """The shapes a preset's particles take (one each)."""
+    return tuple(p.get("shapes") or (p["shape"],))
+
+
+def particle_shapes(p, seed, n):
+    """(n,) index into shapes_of(p) of particle slot 0..n-1: fixed for the slot, over all its lives."""
+    k = len(shapes_of(p))
+    return (h_np(seed, np.arange(n), 0, 60) % k).astype(np.int64) if k > 1 else np.zeros(n, dtype=np.int64)
+
+
+def tile_range(p):
+    """(first, last) atlas tiles of a 2D preset's shapes (they must be neighbours)."""
+    idx = [SHAPES_2D.index(s) for s in shapes_of(p)]
+    if idx != list(range(idx[0], idx[0] + len(idx))):
+        raise ValueError(f"2D shapes must be neighbours in the atlas: {shapes_of(p)}")
+    return idx[0], idx[-1]
 
 
 def _u(seed, i, gen, k):

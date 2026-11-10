@@ -54,6 +54,9 @@ PARTICLE_WORDS = {
     "motes": ("光", "ひかり", "light", "lights", "粒", "つぶ"),
     "shard_ring": ("欠片", "かけら", "破片", "はへん", "shards"),
     "warp": ("ワープ", "warp", "加速", "かそく", "スピード", "speed"),
+    "shape_confetti": ("紙吹雪", "かみふぶき", "confetti", "お祝い", "おいわい", "祝福", "しゅくふく", "パレード", "parade"),
+    "shape_float": ("図形", "ずけい", "幾何学", "きかがく", "geometry", "shape", "shapes", "かたち"),
+    "poly_float": ("結晶", "けっしょう", "宝石", "ほうせき", "クリスタル", "crystal", "ダイヤ", "jewel", "gem"),
     "sparkle_burst": ("輝き", "かがやき", "輝く", "かがやく", "煌めき", "きらめき", "sparkle", "shine"),
 }
 # longer words that merely contain a keyword; blanked out before matching

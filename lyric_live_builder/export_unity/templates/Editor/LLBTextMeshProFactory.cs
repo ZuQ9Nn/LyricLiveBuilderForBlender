@@ -82,11 +82,11 @@ namespace LyricLive.Editor
             return result;
         }
 
-        /// <summary>LyricLive/TextSDF: the same look, plus the glyph mask (design §5.6). It keeps the atlas in _MainTex.</summary>
+        /// <summary>LyricLiveBuilder/TextSDF: the same look, plus the glyph mask (design §5.6). It keeps the atlas in _MainTex.</summary>
         static void UseOurShader(Material mat)
         {
-            var sh = Shader.Find("LyricLive/TextSDF");
-            if (sh == null) { Debug.LogError("[LLB][ERROR] LyricLive/TextSDF is missing: the letters keep TextMesh Pro's shader"); return; }
+            var sh = Shader.Find("LyricLiveBuilder/TextSDF");
+            if (sh == null) { Debug.LogError("[LLB][ERROR] LyricLiveBuilder/TextSDF is missing: the letters keep TextMesh Pro's shader"); return; }
             var atlas = mat.GetTexture("_MainTex");
             mat.shader = sh;
             mat.SetTexture("_MainTex", atlas);

@@ -130,9 +130,9 @@ def pack_meshes(baked, font_paths, mobile=False, skip=()):
     pack, tris, letters = meshbin.Pack(), {}, {}
     keys = dict(baked.meshes)
     for e in baked.emitters:
-        shape = e["spec"]["preset"]["shape"]
-        if shape in pts.SHAPES_3D:
-            keys.setdefault(f"shape:{shape}", None)
+        for shape in pts.shapes_of(e["spec"]["preset"]):
+            if shape in pts.SHAPES_3D:
+                keys.setdefault(f"shape:{shape}", None)
     order = sorted(keys, key=lambda k: k.startswith("line:"))          # letters before the lines made of them
 
     def add(key, data):

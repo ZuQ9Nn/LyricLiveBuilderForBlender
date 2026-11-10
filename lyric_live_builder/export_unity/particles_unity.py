@@ -19,9 +19,11 @@ def _colors(spec):
 def _renderer(p):
     shape = p["shape"]
     if shape in pts.SHAPES_3D:
-        return {"mode": "Mesh", "mesh": f"shape:{shape}", "tile": -1, "blend": "alpha", "stretch": 0.0}
-    return {"mode": "Stretch" if p.get("trail") else "Billboard", "mesh": "", "tile": pts.SHAPES_2D.index(shape),
-            "blend": p.get("blend", "add"), "stretch": float(p.get("trail", 0.0))}
+        return {"mode": "Mesh", "mesh": f"shape:{shape}", "meshes": [f"shape:{s}" for s in pts.shapes_of(p)],
+                "tile": -1, "tileLast": -1, "blend": "alpha", "stretch": 0.0}
+    first, last = pts.tile_range(p)
+    return {"mode": "Stretch" if p.get("trail") else "Billboard", "mesh": "", "meshes": [], "tile": first,
+            "tileLast": last, "blend": p.get("blend", "add"), "stretch": float(p.get("trail", 0.0))}
 
 
 def _common(spec, p):

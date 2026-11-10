@@ -1,6 +1,6 @@
 // LyricLive Builder: gaze-guide light orbs. Additive; bright where the sphere faces the viewer,
 // fading to its rim (the Blender preview's LLB_Glow).
-Shader "LyricLive/Glow"
+Shader "LyricLiveBuilder/Glow"
 {
     Properties { _Color ("Color", Color) = (1,1,1,1) }
     SubShader
