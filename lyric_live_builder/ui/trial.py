@@ -361,7 +361,7 @@ def _set_view(dst, src):
 
 
 def draw_buttons(layout, proj):
-    """Confirm, Back to Before, Mute and Close (the After header and the Sections and Lines panel)."""
+    """Confirm, Back to Before, Mute and Close (the After header and the Try Out panel)."""
     row = layout.row(align=True)
     row.operator("llb.trial_commit", icon="CHECKMARK")
     row.operator("llb.trial_revert", icon="LOOP_BACK")

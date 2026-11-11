@@ -142,8 +142,8 @@ def main():
 
     bpy.context.preferences.view.language = "ja_JP"
     bpy.context.preferences.view.use_translate_interface = True
-    tr = bpy.app.translations.pgettext_iface("Sections and Lines")
-    check(tr == "セクションと行", f"Japanese translation ({tr})")
+    tr = bpy.app.translations.pgettext_iface("Lyric Lines")
+    check(tr == "歌詞の行", f"Japanese translation ({tr})")
     bpy.context.preferences.view.language = "en_US"
 
     # the pages at the top of the LyricLive tab: each panel shows on its own page only
@@ -156,7 +156,7 @@ def main():
                        if issubclass(c, bpy.types.Panel) and (not hasattr(c, "poll") or c.poll(ctx))
                        and not getattr(c, "bl_parent_id", "")}
     check(shown["setup"] == {"LLB_PT_pages", "LLB_PT_lyrics", "LLB_PT_fonts", "LLB_PT_song", "LLB_PT_sync"}
-          and shown["compose"] == {"LLB_PT_pages", "LLB_PT_omakase", "LLB_PT_sections"}
+          and shown["compose"] == {"LLB_PT_pages", "LLB_PT_omakase", "LLB_PT_trial", "LLB_PT_sections", "LLB_PT_lines"}
           and shown["output"] == {"LLB_PT_pages", "LLB_PT_effects", "LLB_PT_preview", "LLB_PT_export"}, f"pages {shown}")
 
     llb.unregister()

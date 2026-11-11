@@ -3,6 +3,7 @@
   blender --factory-startup --python tests/blender/test_trial.py -- <result file> [--font <file>]
 """
 import os
+import re
 import sys
 import traceback
 
@@ -60,8 +61,8 @@ def sig(root):
 
 def text_nodes(root):
     coll = bpy.data.collections.get(root)
-    return sorted({ob["llb_node"].split("_g")[0] for ob in (coll.all_objects if coll else ())
-                   if ob.get("llb_node", "").startswith("line")})
+    ids = (re.match(r"line\d+", ob.get("llb_node", "")) for ob in (coll.all_objects if coll else ()))
+    return sorted({m.group(0) for m in ids if m})          # line003_g…, line003_fxo (an exit's plane): line003
 
 
 def visible(win, area, name):
@@ -69,6 +70,15 @@ def visible(win, area, name):
     with bpy.context.temp_override(window=win, area=area, region=region):
         lc = bpy.context.view_layer.layer_collection.children.get(name)
         return lc.visible_get() if lc else None
+
+
+def settle(extra=0.3, limit=40.0):
+    """Wait until the scheduled trial rebuild has run (it takes a few seconds on a busy machine)."""
+    waited = 0.0
+    while bpy.app.timers.is_registered(trial._rebuild) and waited < limit:
+        yield 0.2
+        waited += 0.2
+    yield extra
 
 
 def view3d(win):
@@ -101,7 +111,7 @@ def steps():
 
     proj.line_active = 3
     check(open_trial() == {"FINISHED"}, "Try Out opens")
-    yield 3.0
+    yield from settle()
     win, sides = trial.views()
     others = [a for a in view3d(win0) if a not in sides]
     check(win == win0 and len(sides) == 2 and len(others) == 1 and len(wm.windows) == 1,
@@ -115,7 +125,8 @@ def steps():
               and visible(win, others[0], "LyricLive"), "the user's view shows neither, but the main preview")
     check(bpy.data.collections[trial.AFTER].hide_render and bpy.data.collections[trial.BEFORE].hide_render,
           "the trial objects stay out of renders")
-    check(text_nodes(trial.BEFORE) == text_nodes(trial.AFTER) == ["line003"], "both show line 4 only")
+    check(text_nodes(trial.BEFORE) == text_nodes(trial.AFTER) == ["line003"],
+          f"both show line 4 only ({text_nodes(trial.BEFORE)} / {text_nodes(trial.AFTER)})")
     check(sig(trial.BEFORE) == sig(trial.AFTER), "with nothing changed, Before and After are the same")
     check(win0.screen.is_animation_playing and main.use_preview_range
           and main.frame_preview_end > main.frame_preview_start, "it loops over the line")
@@ -125,23 +136,23 @@ def steps():
     chosen = planning.make_plan(proj).lines[3]
     proj.lines[3].layout = next(k for k in ("front", "pillar") if k != chosen.layout)
     proj.lines[3].enter = next(k for k in ("fade", "zoom") if k != chosen.enter)
-    yield 1.0
+    yield from settle()
     check(sig(trial.AFTER) != before, "changing the layout rebuilds After")
     check(sig(trial.BEFORE) == before, "Before stays")
     check(sig("LyricLive") == main_before, "the main preview stays until Confirm")
 
     with bpy.context.temp_override(window=win0):
         bpy.ops.llb.trial_revert()
-    yield 1.0
+    yield from settle()
     check(proj.lines[3].layout == "AUTO" and proj.lines[3].enter == "AUTO", "Back to Before sets the line back")
     check(sig(trial.AFTER) == sig(trial.BEFORE), "...and After is Before again")
 
     proj.lines[3].layout = next(k for k in ("front", "pillar") if k != chosen.layout)
-    yield 1.0
+    yield from settle()
     after = sig(trial.AFTER)
     with bpy.context.temp_override(window=win0):
         bpy.ops.llb.trial_commit()
-    yield 1.5
+    yield from settle()
     check(sig("LyricLive") != main_before, "Confirm rebuilds the main preview")
     check(sig(trial.BEFORE) == after == sig(trial.AFTER), "...and Before becomes After")
 
@@ -157,7 +168,7 @@ def steps():
     check(main.use_audio, "...and unmuting brings it back")
 
     proj.section_active = 1
-    yield 1.5
+    yield from settle()
     sec = proj.sections[1]
     t = (main.frame_preview_start - main.frame_start) / (main.render.fps / main.render.fps_base)
     check(text_nodes(trial.AFTER) == [] and abs(t - max(0.0, sec.start - 1.5)) < 0.1, "a picked section shows its start")
@@ -175,7 +186,7 @@ def steps():
 
     # the user closes one of the views
     open_trial()
-    yield 2.0
+    yield from settle()
     win, sides = trial.views()
     with bpy.context.temp_override(window=win0, area=sides[1]):
         bpy.ops.screen.area_close()
@@ -187,9 +198,59 @@ def steps():
         with bpy.context.temp_override(window=win0, area=area):
             bpy.ops.screen.area_close()
 
+    # line details beside the 3D view (spec §6.2)
+    from mathutils import Vector
+    from lyric_live_builder.ui import details, panels
+    if win0.screen.is_animation_playing:
+        with bpy.context.temp_override(window=win0):
+            bpy.ops.screen.animation_cancel(restore_frame=False)
+    proj.ui_page = "compose"
+    n0 = len(win0.screen.areas)
+    user = view3d(win0)[0]
+    with bpy.context.temp_override(window=win0, area=user):
+        check(bpy.ops.llb.line_details(index=5) == {"FINISHED"}, "Details opens")
+    yield 2.0                                   # the new area is laid out, then aimed
+    _, area = details.area()
+    rest = [a for a in view3d(win0) if a != area]
+    check(area is not None and len(win0.screen.areas) == n0 + 1 and proj.line_active == 5,
+          "a details area is added and the line is picked")
+    if area is not None and rest:
+        check(area.x < rest[0].x and area.width < rest[0].width, f"narrow, on the left ({area.width} / {rest[0].width})")
+        ctx = lambda a: type("Ctx", (), {"scene": main, "area": a})()
+        check(details.LLB_PT_line_details.poll(ctx(area)) and not panels.LLB_PT_lines.poll(ctx(area))
+              and not panels.LLB_PT_pages.poll(ctx(area)), "the details area shows the line details only")
+        ui = next(r for r in area.regions if r.type == "UI")
+        check(area.spaces.active.show_region_ui and ui.active_panel_category == "LyricLive",
+              f"its sidebar opens on the LyricLive tab ({ui.active_panel_category})")
+        check(not details.LLB_PT_line_details.poll(ctx(rest[0])) and panels.LLB_PT_lines.poll(ctx(rest[0]))
+              and panels.LLB_PT_sections.poll(ctx(rest[0])), "the main sidebar keeps sections and lines, no details")
+
+        def looks_at_line():
+            from bpy_extras.view3d_utils import location_3d_to_region_2d
+            d, dist, t = details.target(proj)
+            r3d = area.spaces.active.region_3d
+            fwd = r3d.view_rotation @ Vector((0.0, 0.0, -1.0))
+            eye = r3d.view_location - fwd * r3d.view_distance
+            region = next(r for r in area.regions if r.type == "WINDOW")
+            seen = region.width - (ui.width if region.width >= area.width - 2 else 0)        # left of the sidebar
+            p = location_3d_to_region_2d(region, r3d, eye + d * dist)
+            now = (main.frame_current - main.frame_start) / (main.render.fps / main.render.fps_base)
+            return ((eye - Vector((0.0, 0.0, 1.5))).length < 1e-3 and p is not None and abs(p.x - seen / 2) < 0.1 * seen
+                    and 0 <= p.y <= region.height and abs(now - t) < 0.05), p, seen
+        ok, p, seen = looks_at_line()
+        check(ok, f"its view looks at the line from the eye, beside the sidebar, at the line's time ({p} / {seen})")
+        proj.line_active = 9
+        yield 1.0
+        ok, p, seen = looks_at_line()
+        check(ok, f"picking another line turns the view to it ({p} / {seen})")
+    with bpy.context.temp_override(window=win0):
+        bpy.ops.llb.line_details_close()
+    yield 0.4
+    check(len(win0.screen.areas) == n0 and not details.is_open(), "Close removes the details area")
+
     # a file saved with the trial open
     open_trial()
-    yield 2.0
+    yield from settle()
     trial._after_load()
     check(bpy.data.collections.get(trial.AFTER) is None and trial.RESTORE not in main and not main.use_preview_range,
           "a file loaded with the trial left open is put back")

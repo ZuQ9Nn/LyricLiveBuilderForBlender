@@ -8,7 +8,7 @@ from ..core import registry, themes
 from ..core.parts import backgrounds as bgs
 from ..core.parts import particles as pts
 from ..props import FONT_ROLES, SECTION_KIND_ITEMS
-from . import operators_input, planning, project, tap_sync, trial
+from . import details, operators_input, planning, project, tap_sync, trial
 from .lists import fmt_time
 
 ROLE_LABELS = {"display": "Heading Font", "serif": "Serif Font", "body": "Body Font", "mono": "Mono Font"}
@@ -48,7 +48,7 @@ class _Panel:
 
     @classmethod
     def poll(cls, context):
-        return context.scene.llb.ui_page == cls.page
+        return context.scene.llb.ui_page == cls.page and not details.is_details_area(getattr(context, "area", None))
 
 
 class LLB_PT_pages(bpy.types.Panel):
@@ -58,6 +58,10 @@ class LLB_PT_pages(bpy.types.Panel):
     bl_category = "LyricLive"
     bl_label = "LyricLive Pages"
     bl_options = {"HIDE_HEADER"}
+
+    @classmethod
+    def poll(cls, context):
+        return not details.is_details_area(getattr(context, "area", None))
     bl_order = 0
 
     def draw(self, context):
@@ -202,9 +206,11 @@ class LLB_PT_omakase(_Panel, bpy.types.Panel):
         row.operator("llb.reroll", icon="FILE_REFRESH")
 
 
-class LLB_PT_sections(_Panel, bpy.types.Panel):
+class LLB_PT_trial(_Panel, bpy.types.Panel):
+    """The trial buttons, above the sections and lines (no header: always there)."""
     page = "compose"
-    bl_label = "Sections and Lines"
+    bl_label = "Try Out"
+    bl_options = {"HIDE_HEADER"}
     bl_order = 6
 
     def draw(self, context):
@@ -218,8 +224,24 @@ class LLB_PT_sections(_Panel, bpy.types.Panel):
         else:
             col.operator("llb.trial_open", icon="SPLIT_VERTICAL")
         labels(col, "Changes show in the preview\nafter Generate", "INFO")
-        col.separator()
-        draw_sections(col, proj)
+
+
+class LLB_PT_sections(_Panel, bpy.types.Panel):
+    page = "compose"
+    bl_label = "Song Sections"
+    bl_order = 7
+
+    def draw(self, context):
+        draw_sections(self.layout.column(), context.scene.llb)
+
+
+class LLB_PT_lines(_Panel, bpy.types.Panel):
+    page = "compose"
+    bl_label = "Lyric Lines"
+    bl_order = 8
+
+    def draw(self, context):
+        draw_lines(self.layout.column(), context.scene.llb)
 
 
 def part_field(layout, proj, ln, field, above=False):
@@ -285,7 +307,7 @@ def draw_in_use(layout, proj, index):
 
 
 def draw_sections(col, proj):
-    """Sections, lines and their details (the main panel and the trial window)."""
+    """The section list and the picked section's settings."""
     labels(col, "Sections from headings" if proj.sections_from_headings else "Sections estimated\n(no headings)", "INFO")
     col.template_list("LLB_UL_sections", "", proj, "sections", proj, "section_active", rows=4)
     if 0 <= proj.section_active < len(proj.sections):
@@ -302,10 +324,23 @@ def draw_sections(col, proj):
         draw_in_use(col, proj, proj.section_active)
         col.operator("llb.section_lock", text="Unlock Section" if sec.locked else "Lock Section",
                      icon="UNLOCKED" if sec.locked else "LOCKED", depress=sec.locked)
-    col.separator()
+
+
+def draw_lines(col, proj):
+    """The line buttons (on the picked line), the list with a details button per line, the picked line's timing."""
+    ln = proj.lines[proj.line_active] if 0 <= proj.line_active < len(proj.lines) else None
+    row = col.row(align=True)
+    row.enabled = ln is not None
+    row.operator("llb.tap_sync", text="Tap from This Line", icon="REC").first_line = max(proj.line_active, 0)
+    row = col.row(align=True)
+    row.enabled = ln is not None
+    row.operator("llb.line_lock", text="Unlock Line" if ln and ln.locked else "Lock Line",
+                 icon="UNLOCKED" if ln and ln.locked else "LOCKED", depress=bool(ln and ln.locked))
+    sub = row.row(align=True)
+    sub.enabled = ln is not None and not ln.locked
+    sub.operator("llb.line_reroll", icon="FILE_REFRESH")
     col.template_list("LLB_UL_lines", "", proj, "lines", proj, "line_active", rows=6)
-    if 0 <= proj.line_active < len(proj.lines):
-        ln = proj.lines[proj.line_active]
+    if ln is not None:
         box = col.box()
         box.label(text=ln.text, translate=False)
         box.label(text=iface_("Start {}  End {}  ({})").format(
@@ -322,44 +357,41 @@ def draw_sections(col, proj):
         sub = row.row()
         sub.active = ln.use_manual
         sub.prop(ln, "manual_start", text="")
-        box.operator("llb.tap_sync", text="Tap from This Line", icon="REC").first_line = proj.line_active
+
+
+def draw_line_details(col, proj, ln):
+    """Layout and below (spec §6.2): drawn in the line details area beside the 3D view."""
+    box = col
+    box.prop(ln, "is_3d")
+    if ln.is_3d:
         row = box.row(align=True)
-        row.operator("llb.line_lock", text="Unlock Line" if ln.locked else "Lock Line",
-                     icon="UNLOCKED" if ln.locked else "LOCKED", depress=ln.locked)
-        sub = row.row(align=True)
-        sub.enabled = not ln.locked
-        sub.operator("llb.line_reroll", icon="FILE_REFRESH")
-        box.separator()
-        box.prop(ln, "is_3d")
-        if ln.is_3d:
-            row = box.row(align=True)
-            row.prop(ln, "depth")
-            row.prop(ln, "bevel", text="")
-        box.prop(proj, "part_group", text="")
-        part_field(box, proj, ln, "layout", above=True)
-        if not ln.is_3d and ln.layout != "AUTO" and getattr(registry.get("layout", ln.layout), "only_3d", False):
-            labels(box, "This layout is for 3D lines.\nIt is chosen automatically", "ERROR")
-        for field in ("enter", "hold", "exit"):
-            part_field(box, proj, ln, field)
-        box.prop(ln, "distance_layer")
-        box.prop(ln, "cuts")
-        sub = box.row()
-        sub.active = ln.cuts in ("AUTO", "1")           # a split line never stays on stage
-        sub.prop(ln, "persist")
-        prop_above(box, ln, "guide")
-        box.separator()
-        prop_above(box, ln, "gimmick")
-        sub = box.column()
-        sub.active = ln.gimmick != "none"
-        sub.prop(ln, "gimmick_show")
-        if ln.gimmick == "emblem":
-            sub.prop(ln, "gimmick_word")
-        box.separator()
-        prop_above(box, ln, "particle")
-        prop_above(box, ln, "background")
-        prop_above(box, ln, "transition").active = ln.background != "AUTO"
-        if ln.background == "panorama" and not proj.panorama_path:
-            labels(box, "Set the panorama image\nin the Effects panel", "ERROR")
+        row.prop(ln, "depth")
+        row.prop(ln, "bevel", text="")
+    box.prop(proj, "part_group", text="")
+    part_field(box, proj, ln, "layout", above=True)
+    if not ln.is_3d and ln.layout != "AUTO" and getattr(registry.get("layout", ln.layout), "only_3d", False):
+        labels(box, "This layout is for 3D lines.\nIt is chosen automatically", "ERROR")
+    for field in ("enter", "hold", "exit"):
+        part_field(box, proj, ln, field)
+    box.prop(ln, "distance_layer")
+    box.prop(ln, "cuts")
+    sub = box.row()
+    sub.active = ln.cuts in ("AUTO", "1")           # a split line never stays on stage
+    sub.prop(ln, "persist")
+    prop_above(box, ln, "guide")
+    box.separator()
+    prop_above(box, ln, "gimmick")
+    sub = box.column()
+    sub.active = ln.gimmick != "none"
+    sub.prop(ln, "gimmick_show")
+    if ln.gimmick == "emblem":
+        sub.prop(ln, "gimmick_word")
+    box.separator()
+    prop_above(box, ln, "particle")
+    prop_above(box, ln, "background")
+    prop_above(box, ln, "transition").active = ln.background != "AUTO"
+    if ln.background == "panorama" and not proj.panorama_path:
+        labels(box, "Set the panorama image\nin the Effects panel", "ERROR")
 
 
 class LLB_PT_effects(_Panel, bpy.types.Panel):
@@ -472,4 +504,4 @@ class LLB_PT_export(_Panel, bpy.types.Panel):
 
 
 CLASSES = PICK_MENUS + (LLB_PT_pages, LLB_PT_lyrics, LLB_PT_lyrics_notation, LLB_PT_fonts, LLB_PT_song, LLB_PT_sync, LLB_PT_omakase,
-           LLB_PT_sections, LLB_PT_effects, LLB_PT_preview, LLB_PT_export)
+           LLB_PT_trial, LLB_PT_sections, LLB_PT_lines, LLB_PT_effects, LLB_PT_preview, LLB_PT_export)

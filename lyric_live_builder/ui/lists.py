@@ -23,10 +23,12 @@ class LLB_UL_sections(bpy.types.UIList):
 
 class LLB_UL_lines(bpy.types.UIList):
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
-        split = layout.split(factor=0.38)
+        row = layout.row(align=True)
+        split = row.split(factor=0.38)
         split.label(text=fmt_time(item.start), translate=False,
                     icon={"tap": "REC", "lrc": "TIME", "manual": "GREASEPENCIL"}.get(item.source, "BLANK1"))
         split.label(text=item.text, translate=False, icon="LOCKED" if item.locked else "NONE")
+        row.operator("llb.line_details", text="", icon="PREFERENCES", emboss=False).index = index     # spec §6.2
 
 
 class LLB_UL_parts(bpy.types.UIList):

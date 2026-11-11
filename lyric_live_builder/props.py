@@ -127,9 +127,10 @@ def _trial_mute(self, context):
 
 
 def _pick_line(self, context):
-    from .ui import trial
+    from .ui import details, trial
     self.trial_focus = "line"
     trial.changed(both=True)
+    details.picked()
 
 
 def _pick_section(self, context):
