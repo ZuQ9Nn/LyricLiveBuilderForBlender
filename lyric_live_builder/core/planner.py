@@ -19,6 +19,7 @@ GLIDE_DUR = 1.0
 # kept lines leave together at the section end; these exits stay in place (no falling into the slot below)
 KEEP_EXITS = ("fade", "dust", "fly_away", "shrink", "blur", "blur_stagger", "wipe", "crumble", "lamp_off")
 MIN_CUT = 0.22                       # seconds between the cuts of a line (JIZURA)
+MAX_CUTS = 6                         # as the line's "Cuts" menu
 
 
 def novelty(history, key, value):
@@ -122,6 +123,13 @@ def _line_plan(ln, c, style, end, mask, seed, colors, anchor=(0.0, 0.0), glide=N
         particle=ln.particle, impact=ln.impact, cut=cut)
 
 
+def _cut_count(ln):
+    """Cuts of a line: as set; on Planner's Choice (0) one per '/' chunk of the lyrics (JIZURA), else whole."""
+    if ln.cuts == 0 and ln.chunks and len(ln.chunks) > 1:
+        return min(MAX_CUTS, len(ln.chunks))
+    return ln.cuts
+
+
 def _cut_lines(ln, end):
     """The parts of a line set to several cuts: [(offset in the line, LineInput)], [] = shown whole (design §5.5.1)."""
     pieces = lyrics.split_line(ln.text, ln.chunks or lyrics.chunk_text(ln.text),
@@ -166,6 +174,7 @@ def plan(lines, sections, duration, seed, bpm=0.0, settings=None):
     history, out = [], []
     kept = {}                                  # section index -> slots used
     for k, ln in enumerate(lines):
+        ln = replace(ln, cuts=_cut_count(ln))
         rng = Rng(h(text_seed, STAGE_TEXT, ln.index + 1))
         text = ln.text
         n = len(text.replace(" ", ""))

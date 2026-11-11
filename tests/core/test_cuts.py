@@ -57,6 +57,25 @@ class Plan(unittest.TestCase):
         self.assertTrue(all(x.cuts is None for x in base.lines))
         self.assertEqual(whole(plan_of(with_cuts(1))), whole(base))
 
+    def test_slashes_cut_a_planners_choice_line(self):
+        def slashed(n_parts, cuts=0, **over):
+            lines = with_cuts(cuts, **over)
+            text = lines[4].text
+            step = max(1, len(text) // n_parts)
+            lines[4].chunks = [text[i * step:(i + 1) * step if i < n_parts - 1 else len(text)] for i in range(n_parts)]
+            return lines, plan_of(lines)
+        lines, p = slashed(3)
+        cuts = p.lines[4].cuts
+        self.assertEqual([c.text for c in cuts], lines[4].chunks)          # one cut per '/' chunk, as written
+        times = lines[4].char_times or [lines[4].start + 0.05 * i for i in range(len(lines[4].text))]
+        offsets = [lines[4].text.index(c) for c in lines[4].chunks]
+        self.assertEqual([round(c.start, 6) for c in cuts[1:]], [round(times[o], 6) for o in offsets[1:]])
+        self.assertIsNone(slashed(3, cuts=1)[1].lines[4].cuts)              # "1": whole, slashes or not
+        self.assertEqual(len(slashed(8)[1].lines[4].cuts), planner.MAX_CUTS)
+        self.assertFalse(slashed(3, persist="section")[1].lines[4].persist)  # a split line never stays
+        self.assertEqual(whole(plan_of(inputs(12))), whole(plan_of(inputs(12))))
+        self.assertTrue(all(x.cuts is None for i, x in enumerate(p.lines) if i != 4))
+
     def test_cuts_follow_each_other_as_sung(self):
         lines = with_cuts(3)
         p = plan_of(lines)

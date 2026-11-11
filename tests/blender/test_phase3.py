@@ -212,6 +212,11 @@ def main():
     check(not proj.lines[3].lock_cuts and proj.lines[3].cuts == "3", "unlocking forgets the cuts' parts, not their number")
     proj.lines[3].cuts = "AUTO"
     check(planning.make_plan(proj).lines[3].cuts is None, "Planner's Choice shows the line whole")
+    first = planning.make_plan(proj).lines[0]                    # "夜明けの色を/覚えてる" on Planner's Choice
+    check([c.text for c in first.cuts or ()] == ["夜明けの色を", "覚えてる"], "a '/' in the lyrics makes a cut there")
+    proj.lines[0].cuts = "1"
+    check(planning.make_plan(proj).lines[0].cuts is None, "...unless the line is set to 1 cut")
+    proj.lines[0].cuts = "AUTO"
 
     # a locked section keeps its theme and background
     proj.section_active = 2
