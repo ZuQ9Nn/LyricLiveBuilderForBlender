@@ -146,9 +146,9 @@ class Scatter(LayoutPart):
 
     def place(self, ctx, params):
         d = ctx.distance
-        em = ctx.em
-        positions = row(ctx, em)
-        span = max(20 * DEG, min(50 * DEG, len(positions) * 2 * em / d))   # still reads left to right
+        positions = row(ctx, ctx.em)
+        span = max(20 * DEG, min(50 * DEG, len(positions) * 2 * ctx.em / d))   # still reads left to right
+        em = min(ctx.em, 0.9 * d * span / max(1, len(positions) - 1))         # neighbours stay apart
         loc = np.array([0.0, 0.0, ctx.eye])
         glyphs = []
         for k, (i, _) in enumerate(positions):

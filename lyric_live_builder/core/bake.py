@@ -258,8 +258,10 @@ def bake(plan, metrics, eye=model.EYE_HEIGHT, rate=RATE, mobile=False, tmp=False
         lp = registry.get("layout", ln.layout)
         m = metrics(ln.font_role)
         dist = model.DISTANCE[ln.distance]
-        angle = model.ANGLE_EMPH if ln.emphasis else model.ANGLE_BODY
-        em = 2 * dist * math.tan(math.radians(angle) / 2)
+        em = model.text_em(ln.distance, ln.emphasis)
+        if ln.glide:                                      # kept in a side slot: no wider than KEPT_LINE_ANGLE
+            width = sum(m.advance_em(c) for c in ln.text)
+            em = min(em, 2 * dist * math.tan(math.radians(model.KEPT_LINE_ANGLE) / 2) / max(width, 1e-6))
         ctx = registry.LayoutCtx(
             text=ln.text, adv=[m.advance_em(c) for c in ln.text], vadv=[m.vadvance_em(c) for c in ln.text],
             em=em, distance=dist, eye=eye, is_3d=ln.is_3d, depth=ln.depth,

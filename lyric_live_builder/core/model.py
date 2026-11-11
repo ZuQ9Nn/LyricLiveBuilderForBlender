@@ -1,4 +1,5 @@
 """Data passed between planner, parts, bake, preview and export (no bpy)."""
+import math
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -7,9 +8,25 @@ import numpy as np
 DISTANCE = {"near": 1.2, "mid": 3.5, "far": 8.0}
 EYE_HEIGHT = 1.5
 MIN_EYE_DISTANCE = 0.6            # nothing comes closer to the eye (design §7.2)
-ANGLE_BODY = 3.5                  # visual angle of a character, degrees (2.5 looked like subtitles)
-ANGLE_EMPH = 5.5
-MAX_LINE_ANGLE = 70.0             # widest horizontal extent of a flat line, degrees
+
+# ---------------- text size: a developer setting, not on the panels (internal-docs/text_size.md) ----------------
+# Visual angle of one character (1 em), degrees, per distance layer. 12° follows the lyrics of a ParticleLive stage
+# at mid distance; the first version's 3.5° was hard to read in VR.
+TEXT_ANGLE = {"near": 12.0, "mid": 12.0, "far": 12.0}
+EMPH_FACTOR = 5.5 / 3.5           # emphasized lines are this much bigger
+TEXT_SCALE = 1.0                  # multiplies every text size (1.2 = 20 % bigger)
+MAX_LINE_ANGLE = 70.0             # widest horizontal extent of a flat line, degrees: longer lines get smaller letters
+KEPT_LINE_ANGLE = 38.0            # lines kept in the side slots (±62°, ±105°) stay this narrow: clear of each other
+
+
+def text_angle(distance, emphasis=False):
+    """Visual angle (degrees) of 1 em of a line at a distance layer ("near" | "mid" | "far")."""
+    return TEXT_ANGLE[distance] * TEXT_SCALE * (EMPH_FACTOR if emphasis else 1.0)
+
+
+def text_em(distance, emphasis=False):
+    """1 em in metres of a line at a distance layer."""
+    return 2 * DISTANCE[distance] * math.tan(math.radians(text_angle(distance, emphasis)) / 2)
 
 
 @dataclass

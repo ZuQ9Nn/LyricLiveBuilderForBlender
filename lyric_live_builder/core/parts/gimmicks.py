@@ -1,7 +1,7 @@
 """Stage gimmicks: an object × a way of appearing × the moment of a line (spec §8.3, design §8.3)."""
 import math
 
-from .. import color, gimmick_shapes as shapes
+from .. import color, gimmick_shapes as shapes, model
 from .. import synonyms
 from ..rng import Rng, h
 
@@ -83,8 +83,8 @@ def plan(lines, inputs, duration, seed, fx, stage, disabled=None, user_assets=No
             air = False                                      # chosen by hand: it stands on the floor
         side = last_side.get(ln.section_index, 1 if rng.chance(0.5) else -1) * -1
         last_side[ln.section_index] = side
-        az = ln.anchor[0] + side * rng.range(*SIDE) * DEG
         rel = shapes.SHAPES[tag][4] if source == "builtin" else 1.0
+        az = ln.anchor[0] + side * rng.range(*_side(ln, rel)) * DEG
         size = 2 * RADIUS * math.tan(ANGLE * DEG / 2) * rel
         end = min(min(max(ln.end, ln.start + MIN_TIME), ln.start + MAX_TIME) + 0.3, duration)
         colour = shapes.SHAPES[tag][2] if source == "builtin" else ""
@@ -92,6 +92,15 @@ def plan(lines, inputs, duration, seed, fx, stage, disabled=None, user_assets=No
                     "end": max(end, ln.start + 0.1), "az": az, "air": bool(air), "size": size, "color": colour,
                     "asset": (user_assets or {}).get(tag), "role": ln.font_role, "accent": (ln.colors or {}).get("accent")})
     return out
+
+
+def _side(ln, rel):
+    """Degrees beside the line's anchor: SIDE, or further out when the line is wide (big letters)."""
+    n = sum(1 for c in ln.text if not c.isspace())
+    limit = model.KEPT_LINE_ANGLE if ln.glide else model.MAX_LINE_ANGLE
+    half = min(limit, n * model.text_angle(ln.distance, ln.emphasis)) / 2
+    lo = max(SIDE[0], half + ANGLE * rel / 2 + 4.0)
+    return lo, max(SIDE[1], lo + 20.0)
 
 
 def plan_spectrum(section_plans, fx, levels, rate):

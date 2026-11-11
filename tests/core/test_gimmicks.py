@@ -105,6 +105,23 @@ class TestPlan(unittest.TestCase):
         off, _ = make(lines, settings=model.Settings(fx={"gimmick": 1.0}, disabled={"gimmick": {"star"}}))
         self.assertEqual(off.gimmicks, [])
 
+    def test_objects_stand_beside_the_line(self):
+        import math
+        lines = lines_with("星が降る", "星が降る夜に君の名前を呼んでいた", "星", "星が降る夜に君の名前を呼んでいた空")
+        for ln in lines:                                 # a flat line: as wide as its letters (big layouts spread wider)
+            ln.layout, ln.hold, ln.persist = "front", "still", "next"
+        p, b = make(lines, settings=model.Settings(fx={"gimmick": 1.0}))
+        self.assertTrue(p.gimmicks)
+        for g in p.gimmicks:
+            ln = p.lines[g["line"]]
+            off = abs((math.degrees(g["az"] - ln.anchor[0]) + 180) % 360 - 180)
+            # the line's letters, measured where they really are (a long line is shrunk to 70°)
+            pos = [v for k, v in bake.world_positions(b, ln.start + 1.5).items() if k.startswith(f"line{ln.index:03d}_")]
+            half = max((abs(math.degrees(math.atan2(v[0], v[1]) - ln.anchor[0])) for v in pos), default=0.0)
+            obj = math.degrees(math.atan2(g["size"] / 2, gimmicks.RADIUS))
+            self.assertGreaterEqual(off, half + obj, (ln.text, off, half, obj))
+            self.assertGreaterEqual(off, gimmicks.SIDE[0])
+
     def test_reroll_stage_leaves_the_text_alone(self):
         lines = lines_with(*["星が降る"] * 6)
         a, _ = make(lines, settings=model.Settings(fx={"gimmick": 1.0}))

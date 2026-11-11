@@ -189,7 +189,7 @@ class TestContracts(unittest.TestCase):
 class TestLayouts(unittest.TestCase):
     def ctx(self, text="夜明けの色を覚えてる", distance=3.5, is_3d=True, anchor=(0.0, 0.0)):
         m = FakeMetrics()
-        em = 2 * distance * math.tan(math.radians(model.ANGLE_BODY) / 2)
+        em = 2 * distance * math.tan(math.radians(model.text_angle("mid")) / 2)
         return registry.LayoutCtx(text=text, adv=[m.advance_em(c) for c in text], vadv=[1.0] * len(text),
                                   em=em, distance=distance, eye=1.5, is_3d=is_3d, depth=0.15,
                                   chunks=lyrics.chunk_text(text), char_times=[float(i) for i in range(len(text))],
@@ -230,10 +230,23 @@ class TestLayouts(unittest.TestCase):
     def test_front_size_is_the_visual_angle(self):
         c = self.ctx(text="あい", distance=3.5)
         pl = registry.get("layout", "front").place(c, {})
-        self.assertAlmostEqual(pl.em, 2 * 3.5 * math.tan(math.radians(model.ANGLE_BODY) / 2))
+        self.assertAlmostEqual(pl.em, model.text_em("mid"))
+        self.assertAlmostEqual(math.degrees(2 * math.atan(pl.em / 2 / 3.5)), model.TEXT_ANGLE["mid"] * model.TEXT_SCALE)
         np.testing.assert_allclose(pl.loc, [0, 3.5, 1.5], atol=1e-9)
         # the face (-y) points back at the eye
         np.testing.assert_allclose(xform.rotate(pl.rot, [0, -1, 0]), [0, -1, 0], atol=1e-9)
+
+    def test_text_size_settings(self):
+        keep = model.TEXT_SCALE
+        try:
+            base = {d: model.text_em(d) for d in model.DISTANCE}
+            model.TEXT_SCALE = 1.25
+            for d in model.DISTANCE:                         # the one knob scales the angle of every layer
+                self.assertAlmostEqual(model.text_angle(d), 1.25 * model.TEXT_ANGLE[d])
+                self.assertGreater(model.text_em(d), base[d])
+            self.assertAlmostEqual(model.text_angle("mid", True), model.text_angle("mid") * model.EMPH_FACTOR)
+        finally:
+            model.TEXT_SCALE = keep
 
     def test_long_line_is_shrunk_to_70_degrees(self):
         c = self.ctx(text="あ" * 60, distance=1.2)
