@@ -133,6 +133,18 @@ def _pick_line(self, context):
     details.picked()
 
 
+def _get_all_3d(self):
+    """On while every unlocked line is 3D (the box shows the lines as they are, not a stored value)."""
+    free = [ln for ln in self.lines if not ln.locked]
+    return bool(free) and all(ln.is_3d for ln in free)
+
+
+def _set_all_3d(self, value):
+    for ln in self.lines:
+        if not ln.locked and ln.is_3d != value:
+            ln.is_3d = value
+
+
 def _pick_section(self, context):
     from .ui import trial
     self.trial_focus = "section"
@@ -281,6 +293,8 @@ class LLBProject(bpy.types.PropertyGroup):
     section_active: IntProperty(update=_pick_section)
     line_active: IntProperty(update=_pick_line)
     line_clipboard: StringProperty(description="JSON of the line effects copied with Copy Effects")
+    all_3d: BoolProperty(name="All Lines in 3D", get=_get_all_3d, set=_set_all_3d,
+                         description="Turn 3D text on or off for every line at once (locked lines stay as they are)")
     part_group: EnumProperty(name="Part Group", items=PART_GROUP_ITEMS,
                              description="Show only the layouts and motions of one group in the line details")
     ui_page: EnumProperty(name="LyricLive Page", items=[("setup", "Setup", "Lyrics, fonts, song and sync"),

@@ -112,6 +112,10 @@ def steps():
     proj.line_active = 3
     check(open_trial() == {"FINISHED"}, "Try Out opens")
     yield from settle()
+    for _ in range(25):                         # the split areas get their places on a later redraw
+        if all(a.width > 1 and (a.x > 0 or a == min(view3d(win0), key=lambda b: b.x)) for a in view3d(win0)):
+            break
+        yield 0.2
     win, sides = trial.views()
     others = [a for a in view3d(win0) if a not in sides]
     check(win == win0 and len(sides) == 2 and len(others) == 1 and len(wm.windows) == 1,

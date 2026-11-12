@@ -784,6 +784,8 @@ MESSAGES = {
     'The theme only picks\nthe particles here': 'テーマは、パーティクルの組\nとしてだけ使われます',
     'In Use': '実際に使われるもの',
     'Copy Effects': '演出をコピー',
+    'All Lines in 3D': 'すべての行を 3D 文字に',
+    'Turn 3D text on or off for every line at once (locked lines stay as they are)': 'すべての行の 3D 文字を一括でオン・オフします（鍵のかかった行は変えません）',
     'Paste Effects': '演出をペースト',
     'Copied: line {} “{}”': 'コピー中：{} 行目「{}」',
     "Remember this line's effects as they are now (what the planner chose included), to paste them on a line with the same lyrics or the same melody": 'この行の今の演出（おまかせで選ばれている内容を含む）を覚えます。歌詞やメロディーが同じ行にペーストするため',

@@ -236,6 +236,20 @@ def main():
     check(not bpy.ops.llb.line_paste.poll(), "no paste on a locked line")
     bpy.ops.llb.line_lock()
 
+    # 3D text on / off for every unlocked line at once
+    proj.line_active = 2
+    bpy.ops.llb.line_lock()
+    kept = proj.lines[2].is_3d
+    proj.all_3d = True
+    check(all(ln.is_3d for k, ln in enumerate(proj.lines) if k != 2) and proj.lines[2].is_3d == kept and proj.all_3d,
+          "All Lines in 3D turns every unlocked line 3D, the locked one stays")
+    proj.lines[5].is_3d = False
+    check(not proj.all_3d, "...and the box shows the lines as they are")
+    proj.all_3d = False
+    check(not any(ln.is_3d for k, ln in enumerate(proj.lines) if k != 2) and proj.lines[2].is_3d == kept,
+          "...and off again")
+    bpy.ops.llb.line_lock()
+
     # a locked section keeps its theme and background
     proj.section_active = 2
     bpy.ops.llb.section_lock()

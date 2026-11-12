@@ -347,6 +347,7 @@ def draw_lines(col, proj):
         src = json.loads(proj.line_clipboard)
         col.label(text=iface_("Copied: line {} “{}”").format(src["line"] + 1, src["text"][:14]), icon="INFO",
                   translate=False)
+    col.prop(proj, "all_3d")
     col.template_list("LLB_UL_lines", "", proj, "lines", proj, "line_active", rows=6)
     if ln is not None:
         box = col.box()
