@@ -14,18 +14,23 @@ GRAVITY = 9.81
 
 
 def _colors(spec):
-    """Flat [r, g, b, a, r, g, b, a, ...] in sRGB (JsonUtility cannot read nested arrays)."""
-    return [float(x) for c in spec["colors"] for x in convert.rgba(list(c) + [1.0])]
+    """Flat [r, g, b, a, r, g, b, a, ...] in sRGB (JsonUtility cannot read nested arrays); a = the preset's opacity."""
+    a = float(spec["preset"].get("opacity", 1.0))
+    return [float(x) for c in spec["colors"] for x in convert.rgba(list(c) + [a])]
 
 
 def _renderer(p):
     shape = p["shape"]
     if shape in pts.SHAPES_3D:
         return {"mode": "Mesh", "mesh": f"shape:{shape}", "meshes": [f"shape:{s}" for s in pts.shapes_of(p)],
-                "tile": -1, "tileLast": -1, "blend": "alpha", "stretch": 0.0}
+                "tile": -1, "tileLast": -1, "blend": "alpha", "stretch": 0.0, "length": 1.0}
     first, last = pts.tile_range(p)
-    return {"mode": "Stretch" if p.get("trail") else "Billboard", "mesh": "", "meshes": [], "tile": first,
-            "tileLast": last, "blend": p.get("blend", "add"), "stretch": float(p.get("trail", 0.0))}
+    beam = p.get("beam")
+    # a beam: stretched by length (lengthScale × size), forward (negative), not by speed
+    length = -beam["length"] / beam["width"] if beam else 1.0
+    return {"mode": "Stretch" if p.get("trail") or beam else "Billboard", "mesh": "", "meshes": [], "tile": first,
+            "tileLast": last, "blend": p.get("blend", "add"), "stretch": float(p.get("trail", 0.0)),
+            "length": float(length)}
 
 
 def _common(spec, p):
@@ -37,9 +42,19 @@ def _common(spec, p):
         "fade": [float(x) for x in p.get("fade", (0.1, 0.3))], "sizeLife": p.get("size_life", "flat"),
         "spin": [float(x) for x in p.get("spin", (0.0, 0.0))],
         "noise": {"strength": amp * 2 * math.pi * freq, "frequency": 0.5, "scroll": freq},
-        "velocity": {"x": [0.0, 0.0], "y": [0.0, 0.0], "z": [0.0, 0.0], "orbitalY": [0.0, 0.0]},
+        "velocity": {"x": [0.0, 0.0], "y": [0.0, 0.0], "z": [0.0, 0.0], "orbitalY": [0.0, 0.0], "radial": [0.0, 0.0],
+                     "offsetY": 0.0},
         "drag": 0.0, "renderer": _renderer(p), "sub": None, "burst": 0, "steps": None, "trail": _trail(p, life),
+        "size3d": _size3d(p), "tumble": bool(p.get("tumble")),
     }
+
+
+def _size3d(p):
+    """Per-axis size ranges in Unity axes [x lo, hi, y lo, hi, z lo, hi] (Blender y / z swap), or None."""
+    s = p.get("size3d")
+    if not s:
+        return None
+    return [float(v) for axis in (s[0], s[2], s[1]) for v in axis]
 
 
 def _trail(p, life):
@@ -100,10 +115,16 @@ def line_params(p):
                                           float(lp.get("link", 0.0)), lines.MIN_ANGLE]}]
 
 
-def _shape(kind, radius, r_in=0.0, position=(0.0, 0.0, 0.0), rotation=(0.0, 0.0, 0.0), random_dir=0.0):
+def _shape(kind, radius, r_in=0.0, position=(0.0, 0.0, 0.0), rotation=(0.0, 0.0, 0.0), random_dir=0.0, angle=0.0):
     thick = 1.0 if radius <= 0 else max(0.0, min(1.0, (radius - r_in) / radius))
     return {"type": kind, "radius": float(radius), "thickness": thick, "position": [float(x) for x in position],
-            "rotation": [float(x) for x in rotation], "randomDirection": float(random_dir)}
+            "rotation": [float(x) for x in rotation], "randomDirection": float(random_dir), "angle": float(angle)}
+
+
+def _look_euler(d):
+    """Unity Euler angles (degrees) turning +Z to the Unity direction d (as Quaternion.LookRotation)."""
+    x, y, z = (float(c) for c in np.asarray(d) / np.linalg.norm(d))
+    return (-math.degrees(math.asin(max(-1.0, min(1.0, y)))), math.degrees(math.atan2(x, z)), 0.0)
 
 
 def continuous(spec, ratio=1.0):
@@ -123,7 +144,10 @@ def continuous(spec, ratio=1.0):
         for j in range(len(pts.STEP_AXES)):
             out.append(dict(d, steps=_steps(p, j), rate=d["rate"] / 3, max=max(1, d["max"] // 3)))
     elif kind in ("sphere", "sky_shell"):
-        if kind == "sphere":
+        if kind == "sphere" and p.get("direction") == "up":          # drifting up slowly, not scattered
+            d["shape"] = _shape("Sphere", r_out, r_in, EYE)
+            d["velocity"]["y"] = speed
+        elif kind == "sphere":
             d["shape"] = _shape("Sphere", r_out, r_in, EYE, random_dir=1.0)
             d["speed"] = speed
         else:
@@ -139,6 +163,8 @@ def continuous(spec, ratio=1.0):
         out.append(d)
     elif kind in ("ring", "point_orbit"):
         heights = (lo, hi) if p.get("height_pick") else ((lo + hi) / 2,)
+        if p.get("levels"):
+            heights = tuple(p["levels"])
         r_mid = (r_in + r_out) / 2
         a = math.radians(p.get("angle", 0.0))
         for h in heights:
@@ -149,13 +175,24 @@ def continuous(spec, ratio=1.0):
                 e["shape"] = _shape("Sphere", 0.0, 0.0, convert.pos([math.sin(a) * r_in, math.cos(a) * r_in, h]))
             e["velocity"]["orbitalY"] = [speed[0] / r_mid, speed[1] / r_mid]       # radians per second
             e["velocity"]["y"] = [float(p.get("rise", 0.0))] * 2
+            if p.get("radial"):                         # toward the ring's own centre (offset to its height)
+                e["velocity"]["radial"] = [-float(p["radial"])] * 2
+                e["velocity"]["offsetY"] = float(h)
             e["rate"] = d["rate"] / len(heights)
             e["max"] = max(1, d["max"] // len(heights))
             out.append(e)
     elif kind == "tunnel":
-        d["shape"] = _shape("Circle", r_out, r_in, (0.0, EYE[1], 40.0))
+        t = pts.tunnel(p)
+        d["shape"] = _shape("Circle", r_out, r_in, convert.pos([0.0, t["ahead"], t["axis"]]))
         d["velocity"]["z"] = [-speed[1], -speed[0]]
         out.append(d)
+    elif kind == "cone_pair":                           # left and right floor points, cones up and inward
+        c = p["cones"]
+        for side in (-1.0, 1.0):
+            e = dict(d, speed=speed, rate=d["rate"] / 2, max=max(1, d["max"] // 2))
+            e["shape"] = _shape("Cone", 0.3, 0.0, convert.pos([side * c["x"], c["y"], c["z"]]),
+                                rotation=_look_euler(convert.pos(pts.cone_axis(p, side))), angle=c["spread"])
+            out.append(e)
     else:
         raise KeyError(kind)
     return out

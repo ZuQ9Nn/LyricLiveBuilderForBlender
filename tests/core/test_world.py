@@ -64,7 +64,7 @@ class TestParticles(unittest.TestCase):
     def test_counts(self):
         self.assertEqual(len(pts.SHAPES_2D), 15)
         self.assertEqual(len(pts.SHAPES_3D), 6)
-        self.assertEqual(len(pts.AMBIENT), 19)
+        self.assertEqual(len(pts.AMBIENT), 26)
 
     def test_mixed_shapes(self):
         for key, p in pts.PRESETS.items():
@@ -153,6 +153,54 @@ class TestParticles(unittest.TestCase):
             alpha = col.reshape(-1, 4, 4)[:, 0, 3]
             self.assertTrue((alpha[seg & (d >= link)] == 0).all())
             self.assertTrue((alpha[seg & (d < 0.5 * link)] > 0).all())
+
+    def test_second_round_motions(self):
+        # rings closing in stop at their smallest radius (life x inward speed), never at the audience
+        for key in ("swirl_in", "rising_shards", "closing_panels"):
+            spec = self.spec(key)
+            p = spec["preset"]
+            least = p["radius"][0] - p["radial"] * p["life"][1]
+            self.assertGreater(least, 2.4, key)
+            for t in np.arange(spec["start"], spec["end"], 0.5):
+                s = pts.state(spec, t)
+                live = s["alpha"] > 0
+                if live.any():
+                    r = np.linalg.norm(s["pos"][live, :2], axis=1)
+                    self.assertGreaterEqual(r.min(), least - 1e-6, (key, t))
+                    if p.get("levels"):
+                        self.assertTrue(np.isin(np.round(s["pos"][live, 2], 6), np.round(p["levels"], 6)).all(), key)
+        # lasers: from the two floor points, up and inward within the spread, passing well above the audience
+        spec = self.spec("lasers")
+        p = spec["preset"]
+        c = p["cones"]
+        seen = 0
+        for t in np.arange(spec["start"], spec["end"], 0.25):
+            s = pts.state(spec, t)
+            live = np.flatnonzero(s["alpha"] > 0)
+            for k in live:
+                pos, v = s["pos"][k], s["vel"][k]
+                side = -1.0 if pos[0] < 0 else 1.0
+                self.assertAlmostEqual(abs(pos[0]), c["x"], delta=c["x"] * 0.2)
+                d = v / np.linalg.norm(v)
+                self.assertGreaterEqual(d @ pts.cone_axis(p, side), math.cos(math.radians(c["spread"])) - 1e-6)
+                cross = abs(pos[0]) / max(abs(d[0]), 1e-9)          # where the beam is above the middle
+                if cross < p["beam"]["length"]:
+                    self.assertGreater(pos[2] + d[2] * cross, 3.0)
+                seen += 1
+        self.assertGreater(seen, 0)
+        # bokeh: faint (opacity), drifting up slowly
+        spec = self.spec("bokeh")
+        a, b = pts.state(spec, 6.0), pts.state(spec, 6.5)
+        self.assertLessEqual(a["alpha"].max(), spec["preset"]["opacity"] + 1e-9)
+        live = (a["alpha"] > 0) & (b["alpha"] > 0)
+        rise = (b["pos"][live] - a["pos"][live])[:, 2]
+        self.assertTrue(live.any() and np.allclose(rise[np.abs(rise) < 0.2], 0.05, atol=1e-6))
+        # pops start and end at nothing; slabs take their per-axis sizes
+        self.assertEqual(pts.POP_CURVE[1][0], 0.0)
+        self.assertEqual(pts.POP_CURVE[1][-1], 0.0)
+        s = pts.state(self.spec("slab_tunnel"), 6.0)
+        for a, (lo, hi) in enumerate(pts.PRESETS["slab_tunnel"]["size3d"]):
+            self.assertTrue(((s["size3"][:, a] >= lo - 1e-9) & (s["size3"][:, a] <= hi + 1e-9)).all())
 
     def test_every_preset_is_sane(self):
         for key in pts.PRESETS:

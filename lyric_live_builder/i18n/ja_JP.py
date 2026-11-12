@@ -808,4 +808,11 @@ MESSAGES = {
     'Background: {}': '背景：{}',
     'Particles from theme “{}”:': 'パーティクル（テーマ「{}」から）：',
     'Plexus': 'プレクサス',
+    'Shape Pops': '図形のポップ',
+    'Slab Tunnel': '板のトンネル',
+    'Stage Lasers': 'レーザー',
+    'Swirling Dots': '渦を巻く粒',
+    'Rising Shards': '昇る三角',
+    'Closing Panels': '寄ってくる板',
+    'Soft Bokeh': 'ぼんやりした玉',
 }

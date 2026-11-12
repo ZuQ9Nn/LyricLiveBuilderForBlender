@@ -73,6 +73,9 @@ def create(name, spec, collection):
         quad = []
         for t in tiles:
             u0, v0, u1, v1 = atlas.tile_uv(int(t))
+            if p.get("beam"):                             # a beam is one solid band: the middle of its dot
+                quad.append([[(u0 + u1) / 2, (v0 + v1) / 2]] * 4)
+                continue
             quad.append([[u0, v0], [u1, v0], [u1, v1], [u0, v1]])
         u0, v0, u1, v1 = atlas.tile_uv(pts.SHAPES_2D.index("circle_dot"))
         quad += [[[(u0 + u1) / 2, (v0 + v1) / 2]] * 4] * (quads - cap)         # tail: the solid middle of a dot
@@ -129,7 +132,16 @@ def _billboards(st, p):
     upv = np.cross(right, d)
     s = st["size"][:, None]
     trail = p.get("trail")
-    if trail:
+    beam = p.get("beam")
+    if beam:                                              # from the particle forward along its velocity
+        n = np.linalg.norm(st["vel"], axis=1, keepdims=True)
+        a = np.where(n > 1e-6, st["vel"] / np.maximum(n, 1e-9), upv)
+        b = np.cross(d, a)
+        b /= np.maximum(np.linalg.norm(b, axis=1, keepdims=True), 1e-9)
+        w = s / 2
+        end = c + a * beam["length"]
+        corners = [c - b * w, c + b * w, end + b * w, end - b * w]
+    elif trail:
         v = st["vel"] - np.sum(st["vel"] * d, axis=1, keepdims=True) * d
         n = np.linalg.norm(v, axis=1, keepdims=True)
         a = np.where(n > 1e-6, v / np.maximum(n, 1e-9), upv)
@@ -150,6 +162,8 @@ def _shapes(st, layout, axes):
     co, per = [], []
     for slots, v, _ in layout:
         local = v[None] * st["size"][slots][:, None, None]
+        if "size3" in st:                                 # per-axis sizes (slabs)
+            local = local * st["size3"][slots][:, None, :]
         co.append((xform.rotate(q[slots][:, None], local) + st["pos"][slots][:, None]).reshape(-1, 3))
         per.append((slots, len(v)))
     return np.concatenate(co), per

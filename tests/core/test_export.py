@@ -1,5 +1,6 @@
 """Phase 4 (Python side, no Blender): conversion, LLBM meshes, particle descriptions, manifest clips."""
 import json
+import math
 import unittest
 
 import numpy as np
@@ -90,7 +91,10 @@ class TestParticles(unittest.TestCase):
                 self.assertTrue(tile == -1 or 0 <= tile <= last < 15, key)
                 if p["shape"] in pts.SHAPES_3D:
                     self.assertEqual(len(d["renderer"]["meshes"]), len(pts.shapes_of(p)), key)
-                self.assertIn(d["shape"]["type"], ("Sphere", "Hemisphere", "Circle", "Box"))
+                self.assertIn(d["shape"]["type"], ("Sphere", "Hemisphere", "Circle", "Box", "Cone"))
+                if p.get("radial"):                          # pulled toward its own ring's centre
+                    self.assertLess(d["velocity"]["radial"][0], 0, key)
+                    self.assertAlmostEqual(d["velocity"]["offsetY"], d["shape"]["position"][1], 6)
                 if p.get("steps"):                           # one moving axis per segment, both curves alike
                     n = d["steps"]["n"]
                     lo, hi = np.reshape(d["steps"]["lo"], (3, n)), np.reshape(d["steps"]["hi"], (3, n))
@@ -101,6 +105,28 @@ class TestParticles(unittest.TestCase):
             if p.get("steps"):
                 self.assertEqual(len(systems), 3, key)
                 self.assertEqual(len({json.dumps(d["steps"]) for d in systems}), 3, key)
+            if p.get("levels"):
+                self.assertEqual(len(systems), len(p["levels"]), key)
+            if p.get("opacity") is not None:                     # faint: the colours' alpha
+                self.assertTrue(all(abs(a - p["opacity"]) < 1e-9 for a in systems[0]["colors"][3::4]), key)
+            if p["emitter"] == "sphere" and p.get("direction") == "up":
+                self.assertEqual(systems[0]["speed"], [0.0, 0.0])
+                self.assertEqual(systems[0]["velocity"]["y"], [float(x) for x in p["speed"]])
+            if p["emitter"] == "cone_pair":                      # left and right cones, beams stretched forward
+                self.assertEqual(len(systems), 2, key)
+                for d, side in zip(systems, (-1.0, 1.0)):
+                    self.assertEqual(d["shape"]["type"], "Cone")
+                    self.assertAlmostEqual(d["shape"]["angle"], p["cones"]["spread"])
+                    self.assertAlmostEqual(d["shape"]["position"][0], side * p["cones"]["x"])
+                    rx, ry, _ = (math.radians(a) for a in d["shape"]["rotation"])
+                    axis = [math.cos(rx) * math.sin(ry), -math.sin(rx), math.cos(rx) * math.cos(ry)]   # Unity +Z turned
+                    np.testing.assert_allclose(axis, convert.pos(pts.cone_axis(p, side)), atol=1e-6)
+                    self.assertEqual(d["renderer"]["mode"], "Stretch")
+                    self.assertAlmostEqual(-d["renderer"]["length"] * p["size"][0], p["beam"]["length"])
+            if p.get("size3d"):
+                self.assertEqual(systems[0]["size3d"], [p["size3d"][0][0], p["size3d"][0][1], p["size3d"][2][0],
+                                                        p["size3d"][2][1], p["size3d"][1][0], p["size3d"][1][1]])
+                self.assertTrue(systems[0]["tumble"])
             if p["emitter"] == "point_orbit":                    # a point per height, orbiting
                 self.assertEqual(len(systems), 2, key)
                 for d in systems:

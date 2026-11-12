@@ -10,7 +10,7 @@ import numpy as np
 
 from ..rng import h_np
 
-SHAPES_2D = ("circle_dot", "ring", "soft_dot", "triangle", "square", "cross", "hexagon", "octagon", "bubble",
+SHAPES_2D = ("circle_dot", "ring", "triangle", "square", "cross", "hexagon", "octagon", "soft_dot", "bubble",
              "star", "sparkle", "petal", "heart", "note", "snowflake")          # atlas tile = index
 SHAPES_3D = ("cube", "hexprism", "octahedron", "icosahedron", "shard", "tetra")
 EYE = np.array([0.0, 0.0, 1.5])
@@ -92,6 +92,36 @@ PRESETS = {
                       height=(0.4, 3.2), height_pick=True, rate=10, life=(15.0, 15.0), even=True,
                       speed=(2.0, 2.0), direction="orbit", size=(0.14, 0.14), fade=(0.03, 0.06),
                       colors=("fg", "white"), blend="add", max=150),
+    # second round of additions (design §8.1): pops all around, a tunnel of slabs, stage lasers, closing rings
+    "shape_pop": dict(name="Shape Pops", tags=("pop", "graphic", "glitch"), shape="circle_dot",
+                      shapes=("circle_dot", "ring", "triangle", "square", "cross"), emitter="sphere", radius=(3.0, 10.0),
+                      rate=45, life=(1.4, 1.8), speed=(0.0, 0.0), direction="random", size=(0.25, 0.6), size_life="pop",
+                      spin=(-30, 30), fade=(0.0, 0.0), colors=("accent", "white", "accent2"), blend="alpha", max=100,
+                      prewarm=True),
+    "slab_tunnel": dict(name="Slab Tunnel", tags=("graphic", "glitch", "editorial"), shape="cube", emitter="tunnel",
+                        tunnel=dict(ahead=14.0, axis=3.0), radius=(5.5, 6.5), rate=30, life=(5.0, 5.0), speed=(7.0, 7.0),
+                        direction="toward", size=(1.0, 1.0), size3d=((0.8, 1.8), (1.2, 2.6), (0.04, 0.08)), tumble=True,
+                        fade=(0.05, 0.15), colors=("sub", "ghostB", "ghostA"), blend="alpha", max=160, prewarm=True),
+    "lasers": dict(name="Stage Lasers", tags=("pop", "glitch", "graphic"), shape="circle_dot", emitter="cone_pair",
+                   cones=dict(x=8.0, y=4.0, z=0.0, tilt=30.0, spread=25.0), rate=20, life=(0.5, 0.5), speed=(1.0, 1.0),
+                   direction="cone", size=(0.08, 0.08), beam=dict(length=20.0, width=0.08), fade=(0.1, 0.3),
+                   colors=("accent2", "white", "accent"), blend="add", max=40),
+    "swirl_in": dict(name="Swirling Dots", tags=("pop", "emotional", "graphic"), shape="circle_dot", emitter="ring",
+                     radius=(9.0, 11.0), levels=(0.6, 3.0, 5.4), rate=36, life=(2.5, 2.5), speed=(3.0, 4.0),
+                     direction="orbit", radial=2.2, size=(0.15, 0.5), fade=(0.1, 0.35),
+                     colors=("accent", "accent2", "ghostA"), blend="alpha", max=110, prewarm=True),
+    "rising_shards": dict(name="Rising Shards", tags=("graphic", "glitch", "emotional"), shape="triangle", emitter="ring",
+                          radius=(8.0, 10.0), height=(0.2, 0.2), rate=30, life=(5.0, 5.0), speed=(0.6, 1.0),
+                          direction="orbit", rise=0.9, radial=0.9, size=(0.15, 0.5), spin=(-60, 60), fade=(0.1, 0.3),
+                          colors=("accent", "ghostB", "white"), blend="alpha", max=160, prewarm=True),
+    "closing_panels": dict(name="Closing Panels", tags=("graphic", "editorial", "calm"), shape="square", emitter="ring",
+                           radius=(10.0, 10.5), levels=(1.0, 2.6, 4.2), rate=48, life=(4.5, 4.5), speed=(0.0, 0.0),
+                           direction="orbit", radial=1.6, size=(0.35, 0.6), size_life="shrink", fade=(0.1, 0.2),
+                           colors=("ghostA", "accent", "sub"), blend="alpha", max=220, prewarm=True),
+    "bokeh": dict(name="Soft Bokeh", tags=("calm", "emotional", "pop", "editorial"), shape="soft_dot", emitter="sphere",
+                  radius=(5.0, 16.0), rate=10, life=(6.0, 9.0), speed=(0.1, 0.1), direction="up", size=(1.2, 2.4),
+                  opacity=0.35, fade=(0.3, 0.4), colors=("accent", "accent2", "ghostA"), blend="add", max=90,
+                  prewarm=True),
     # line effects (core/parts/lines.py): drawn as lines, picked like particles
     "horizon": dict(name="Horizon Line", tags=("calm", "emotional", "editorial"), shape="circle_dot", emitter="lines",
                     lines=dict(kind="ring", radius=14.0, height=1.5, segments=128, draw=2.0, erase=1.2,
@@ -108,6 +138,7 @@ PRESETS = {
                           max=120),
 }
 AMBIENT = [k for k in PRESETS if k != "sparkle_burst"]          # the section presets
+POP_CURVE = ((0.0, 0.12, 0.22, 0.8, 1.0), (0.0, 1.2, 1.0, 1.0, 0.0))      # size over the life of "pop"
 STEP_AXES = ("xyz", "yzx", "zxy")          # stepped motion: the axis order of the 3 systems (particle i: i % 3)
 TAIL_POINTS = 8                            # preview tail: earlier positions per particle
 
@@ -205,12 +236,32 @@ def _spawn(p, seed, i, gen):
         a = 2 * math.pi * u[1]
         lo, hi = p.get("height", (0.0, 0.0))
         z = np.where(u[2] < 0.5, lo, hi) if p.get("height_pick") else _rng((lo, hi), u[2])
+        if p.get("levels"):                               # rings at these heights (one Unity system each)
+            lv = np.asarray(p["levels"], dtype=np.float64)
+            z = lv[np.minimum((u[2] * len(lv)).astype(np.int64), len(lv) - 1)]
         return np.stack([np.sin(a) * r, np.cos(a) * r, z], axis=-1)
     if kind == "tunnel":
         r = _rng((r_in, r_out), u[0])
         a = 2 * math.pi * u[1]
-        return np.stack([np.cos(a) * r, np.full(r.shape, 40.0), EYE[2] + np.sin(a) * r], axis=-1)
+        t = tunnel(p)
+        return np.stack([np.cos(a) * r, np.full(r.shape, t["ahead"]), t["axis"] + np.sin(a) * r], axis=-1)
+    if kind == "cone_pair":                               # one of two floor points, left / right (particle i % 2)
+        c = p["cones"]
+        side = np.where(np.asarray(i) % 2 == 0, -1.0, 1.0)
+        return np.stack([side * c["x"], np.full(side.shape, c["y"]), np.full(side.shape, c["z"])], axis=-1)
     raise KeyError(kind)
+
+
+def tunnel(p):
+    """Where a tunnel starts: metres ahead, and the height of its axis (default: far ahead, at the eye)."""
+    t = p.get("tunnel") or {}
+    return {"ahead": t.get("ahead", 40.0), "axis": t.get("axis", EYE[2])}
+
+
+def cone_axis(p, side):
+    """Unit axis of a side's cone: up, tilted toward the middle (side -1 = left)."""
+    t = math.radians(p["cones"]["tilt"])
+    return np.array([-side * math.sin(t), 0.0, math.cos(t)])
 
 
 def _velocity(p, seed, i, gen, spawn):
@@ -225,6 +276,16 @@ def _velocity(p, seed, i, gen, spawn):
         v = np.broadcast_to([0.0, 0.0, -1.0], spawn.shape).copy()
     elif d == "toward":
         v = np.broadcast_to([0.0, -1.0, 0.0], spawn.shape).copy()
+    elif d == "cone":                                   # within `spread` of the side's axis, uniform on the cap
+        side = np.where(np.asarray(i) % 2 == 0, -1.0, 1.0)
+        axis = np.stack([cone_axis(p, s) for s in (-1.0, 1.0)])[(side > 0).astype(np.int64)]
+        cos_t = 1 - u[1] * (1 - math.cos(math.radians(p["cones"]["spread"])))
+        sin_t = np.sqrt(np.maximum(0.0, 1 - cos_t ** 2))
+        phi = 2 * math.pi * u[2]
+        e1 = np.cross(axis, [0.0, 1.0, 0.0])
+        e1 /= np.linalg.norm(e1, axis=-1, keepdims=True)
+        e2 = np.cross(axis, e1)
+        v = axis * cos_t[..., None] + (e1 * np.cos(phi)[..., None] + e2 * np.sin(phi)[..., None]) * sin_t[..., None]
     elif d == "fall":                                   # across the sky and slightly down
         a = 2 * math.pi * u[1]
         v = np.stack([np.cos(a), np.sin(a), np.full(a.shape, -0.35)], axis=-1)
@@ -263,12 +324,17 @@ def _position(p, spawn, vel, age, seed, i, gen, life=None):
         disp, v = _steps(p, age, life, seed, i, gen)
         return spawn + disp, v
     if p.get("direction") == "orbit":
-        r = np.linalg.norm(spawn[..., :2], axis=-1)
-        omega = _rng(p["speed"], _u(seed, i, gen, 10)) / np.maximum(r, 0.1)
+        r0 = np.linalg.norm(spawn[..., :2], axis=-1)
+        omega = _rng(p["speed"], _u(seed, i, gen, 10)) / np.maximum(r0, 0.1)
+        inward = p.get("radial", 0.0)                   # metres per second toward the axis (Unity: radial < 0)
+        r = np.maximum(r0 - inward * age, 0.0)
         a = np.arctan2(spawn[..., 0], spawn[..., 1]) + omega * age
         pos = np.stack([np.sin(a) * r, np.cos(a) * r, spawn[..., 2] + p.get("rise", 0.0) * age], axis=-1)
         tangent = np.stack([np.cos(a), -np.sin(a), np.zeros_like(a)], axis=-1) * (omega * r)[..., None]
-        return pos, tangent
+        out = np.stack([np.sin(a), np.cos(a), np.zeros_like(a)], axis=-1)
+        v = tangent - out * inward
+        v[..., 2] += p.get("rise", 0.0)
+        return pos, v
     pos = spawn + vel * age[..., None]
     g = p.get("gravity", 0.0)
     pos[..., 2] -= 0.5 * g * age ** 2
@@ -292,10 +358,12 @@ def _look(p, age, life, seed, i, gen, colors):
         size = size * (0.3 + 0.7 * (1 - (1 - x) ** 3))
     elif sl == "shrink":
         size = size * (1 - 0.8 * x)
+    elif sl == "pop":                                   # pops up, settles, shrinks away
+        size = size * np.interp(x, POP_CURVE[0], POP_CURVE[1])
     elif sl == "twinkle":
         size = size * (0.6 + 0.4 * np.sin(age * 5.0 + _u(seed, i, gen, 31) * 6.283))
     fi, fo = p.get("fade", (0.1, 0.3))
-    alpha = np.ones_like(x)
+    alpha = np.full_like(x, float(p.get("opacity", 1.0)))
     if fi > 0:
         alpha = np.minimum(alpha, x / fi)
     if fo > 0:
@@ -303,7 +371,7 @@ def _look(p, age, life, seed, i, gen, colors):
     cols = np.asarray(colors, dtype=np.float64)
     col = cols[(h_np(seed, i, gen, 32) % len(cols)).astype(np.int64)]
     lo, hi = p.get("spin", (0.0, 0.0))
-    start = _u(seed, i, gen, 33) * 6.283 if (lo or hi) else 0.0         # like Unity: a start angle only when spinning
+    start = _u(seed, i, gen, 33) * 6.283 if (lo or hi or p.get("tumble")) else 0.0   # Unity: only when turned
     spin = start + np.radians(_rng((lo, hi), _u(seed, i, gen, 34))) * age
     return size, np.clip(alpha, 0, 1), col, spin
 
@@ -331,6 +399,8 @@ def state(spec, t):
            "color": np.ones((cap, 3)), "spin": np.zeros(cap)}
     if p.get("tail"):
         out["tail"] = np.zeros((cap, TAIL_POINTS, 3))
+    if p.get("size3d"):
+        out["size3"] = np.ones((cap, 3))                  # per-axis scale of a 3D shape (Blender axes)
     env = envelope(spec, t)
     if env <= 0 or cap == 0:
         return out
@@ -352,6 +422,8 @@ def state(spec, t):
         vel = _velocity(p, seed, i, gen_u, spawn)
         pos, v_now = _position(p, spawn, vel, age, seed, i, gen_u, life)
         size, alpha, col, spin = _look(p, age, life, seed, i, gen_u, spec["colors"])
+        if p.get("size3d"):
+            out["size3"][:n] = np.stack([_rng(r, _u(seed, i, gen_u, 35 + k)) for k, r in enumerate(p["size3d"])], axis=-1)
         out["pos"][:n], out["vel"][:n], out["size"][:n] = pos, v_now, size
         out["alpha"][:n] = alpha * alive * env
         out["color"][:n], out["spin"][:n] = col, spin

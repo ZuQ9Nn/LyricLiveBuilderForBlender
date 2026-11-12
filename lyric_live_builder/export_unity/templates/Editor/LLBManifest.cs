@@ -46,10 +46,10 @@ namespace LyricLive.Editor
     [Serializable] public class LLBClip { public int section; public string category; public LLBCurve[] curves; }
 
     // ---- particle systems (export_unity/particles_unity.py) ----
-    [Serializable] public class LLBPSShape { public string type; public float radius, thickness, randomDirection; public float[] position, rotation; }
-    [Serializable] public class LLBPSVelocity { public float[] x, y, z, orbitalY; }
+    [Serializable] public class LLBPSShape { public string type; public float radius, thickness, randomDirection, angle; public float[] position, rotation; }
+    [Serializable] public class LLBPSVelocity { public float[] x, y, z, orbitalY, radial; public float offsetY; }
     [Serializable] public class LLBPSNoise { public float strength, frequency, scroll; }
-    [Serializable] public class LLBPSRenderer { public string mode, mesh, blend; public string[] meshes; public int tile, tileLast; public float stretch; }
+    [Serializable] public class LLBPSRenderer { public string mode, mesh, blend; public string[] meshes; public int tile, tileLast; public float stretch, length; }
     [Serializable] public class LLBPSSub { public int count; public float speed, life; }
     [Serializable] public class LLBPSSteps { public int n; public float[] lo, hi; }
     [Serializable] public class LLBPSTrail { public float ratio, width; }
@@ -64,5 +64,6 @@ namespace LyricLive.Editor
         public LLBPSShape shape; public LLBPSVelocity velocity; public LLBPSNoise noise;
         public LLBPSRenderer renderer; public LLBPSSub sub;
         public LLBPSSteps steps; public LLBPSTrail trail;
+        public float[] size3d; public bool tumble;
     }
 }

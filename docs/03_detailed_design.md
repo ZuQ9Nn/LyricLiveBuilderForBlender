@@ -428,6 +428,14 @@ class FrontLayout(LayoutPart):
 | `colors`（スタイルの配色の役割名）、`fade`（寿命の初めと終わりの透明度） | MainModule.startColor、ColorOverLifetime |
 | `direction`、`noise`・`noise_freq`、`spin`、`size_life`、`trail`、`sub` | VelocityOverLifetime・Noise・RotationOverLifetime・SizeOverLifetime・Trails・SubEmitters |
 | `steps`（寿命を `axes` の数の区間に分け、区間ごとに 1 軸だけ動く。速さは軸ごとに −`speed`〜`speed` の粒ごとの乱数） | VelocityOverLifetime の x・y・z を、区間ごとに一定の値の曲線 2 本（TwoCurves）にする。軸の順を入れ替えた 3 系に分ける（直角に曲がる向きを散らす） |
+| `size_life` の `pop`（0 → 1.2 → 1 → 0。ポンと出て消える） | SizeOverLifetime の曲線 |
+| `opacity`（粒全体の透明度。0〜1） | MainModule.startColor の透明度 |
+| 球の発生（`sphere`）で `direction` が `up` | 速さ 0、VelocityOverLifetime の y（上へゆっくり） |
+| `size3d`（軸ごとの大きさの範囲。3D の形） | MainModule.startSize3D（Unity の軸に直す） |
+| `tumble`（3 軸の乱数の向き。回らない） | MainModule.startRotation3D（各軸 0〜2π） |
+| `tunnel`（トンネルの前方の距離 `ahead` と軸の高さ `axis`） | ShapeModule の位置 |
+| `emitter="cone_pair"`・`cones`（左右 ±`x` の床の 2 点、内側への傾き `tilt`・広がり `spread`）、`beam`（光の帯の長さ `length`・幅 `width`） | 2 系。ShapeModule の円錐（角度・向き）、Renderer の Stretch（`lengthScale` で長さを決め、前へ伸ばす） |
+| `radial`（輪の中心へ寄る速さ。寿命×速さで最小の半径が決まる）、`levels`（輪の高さの段） | VelocityOverLifetime の radial（`orbitalOffset` を輪の高さに置く）。段ごとに 1 系 |
 | `tail`（尾：`time` 秒・太さ `width` m、先細り） | TrailModule（寿命は粒の寿命の割合。幅は粒の大きさに依らない）。尾のマテリアルはテクスチャの無い粒のマテリアル |
 | `even`（寿命を 1 つの値にして、粒を等間隔に出す） | 一定の発生数（Unity は元から等間隔） |
 | `blend`（add/alpha） | マテリアル |

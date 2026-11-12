@@ -113,7 +113,7 @@ def check_particles(scene, baked, t):
         else:
             centres = co.reshape(-1, 4, 3).mean(axis=1)[:cap]     # heads (tails follow)
         live = st["alpha"] > 0
-        if spec["preset"].get("trail") or not live.any():
+        if spec["preset"].get("trail") or spec["preset"].get("beam") or not live.any():
             alive += int(live.sum())
             continue
         if spec["preset"]["shape"] in pts.SHAPES_3D:

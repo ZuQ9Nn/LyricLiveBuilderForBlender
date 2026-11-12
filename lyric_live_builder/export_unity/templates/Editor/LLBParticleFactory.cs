@@ -19,8 +19,9 @@ namespace LyricLive.Editor
             var keys = new GradientColorKey[Mathf.Min(n, 8)];
             for (int i = 0; i < keys.Length; i++)
                 keys[i] = new GradientColorKey(new Color(c[i * 4], c[i * 4 + 1], c[i * 4 + 2]), (i + 1f) / keys.Length);
+            float a = c.Length >= 4 ? c[3] : 1f;            // the preset's opacity (the same for every colour)
             var g = new Gradient { mode = GradientMode.Fixed };
-            g.SetKeys(keys, new[] { new GradientAlphaKey(1f, 0f), new GradientAlphaKey(1f, 1f) });
+            g.SetKeys(keys, new[] { new GradientAlphaKey(a, 0f), new GradientAlphaKey(a, 1f) });
             return g;
         }
 
@@ -42,6 +43,9 @@ namespace LyricLive.Editor
             {
                 case "grow": return new AnimationCurve(new Keyframe(0, 0.3f), new Keyframe(0.4f, 0.9f), new Keyframe(1, 1));
                 case "shrink": return AnimationCurve.Linear(0, 1, 1, 0.2f);
+                case "pop":                                // pops up, settles, shrinks away (particles.POP_CURVE)
+                    return new AnimationCurve(new Keyframe(0, 0), new Keyframe(0.12f, 1.2f), new Keyframe(0.22f, 1f),
+                                              new Keyframe(0.8f, 1f), new Keyframe(1, 0));
                 case "twinkle":
                     var k = new Keyframe[9];
                     for (int i = 0; i < k.Length; i++) k[i] = new Keyframe(i / 8f, i % 2 == 0 ? 1f : 0.55f);
@@ -74,11 +78,23 @@ namespace LyricLive.Editor
             main.startLifetime = Range(d.life);
             main.startSpeed = Range(d.speed);
             main.startSize = Range(d.size);
+            if (d.size3d != null && d.size3d.Length == 6)
+            {
+                main.startSize3D = true;                    // per-axis sizes (slabs)
+                main.startSizeX = new ParticleSystem.MinMaxCurve(d.size3d[0], d.size3d[1]);
+                main.startSizeY = new ParticleSystem.MinMaxCurve(d.size3d[2], d.size3d[3]);
+                main.startSizeZ = new ParticleSystem.MinMaxCurve(d.size3d[4], d.size3d[5]);
+            }
             main.gravityModifier = d.gravity;
             main.maxParticles = Mathf.Max(1, d.max);
             main.simulationSpace = ParticleSystemSimulationSpace.World;
             main.startColor = new ParticleSystem.MinMaxGradient(Choices(d.colors)) { mode = ParticleSystemGradientMode.RandomColor };
             if (Any(d.spin)) main.startRotation = new ParticleSystem.MinMaxCurve(0f, Mathf.PI * 2f);
+            if (d.tumble)
+            {
+                main.startRotation3D = true;                // any way round, no turning
+                main.startRotationX = main.startRotationY = main.startRotationZ = new ParticleSystem.MinMaxCurve(0f, Mathf.PI * 2f);
+            }
 
             var em = ps.emission;
             em.rateOverTime = d.rate;
@@ -91,6 +107,7 @@ namespace LyricLive.Editor
                 case "Hemisphere": sh.shapeType = ParticleSystemShapeType.Hemisphere; break;
                 case "Circle": sh.shapeType = ParticleSystemShapeType.Circle; break;
                 case "Box": sh.shapeType = ParticleSystemShapeType.Box; break;
+                case "Cone": sh.shapeType = ParticleSystemShapeType.Cone; sh.angle = d.shape.angle; break;
                 default: sh.shapeType = ParticleSystemShapeType.Sphere; break;
             }
             sh.radius = Mathf.Max(0.001f, d.shape.radius);
@@ -101,7 +118,7 @@ namespace LyricLive.Editor
             sh.randomDirectionAmount = d.shape.randomDirection;
 
             var v = d.velocity;
-            if (Any(v.x) || Any(v.y) || Any(v.z) || Any(v.orbitalY))
+            if (Any(v.x) || Any(v.y) || Any(v.z) || Any(v.orbitalY) || Any(v.radial))
             {
                 var vel = ps.velocityOverLifetime;
                 vel.enabled = true;
@@ -110,6 +127,13 @@ namespace LyricLive.Editor
                 vel.orbitalX = new ParticleSystem.MinMaxCurve(0f, 0f);
                 vel.orbitalY = Range(v.orbitalY);
                 vel.orbitalZ = new ParticleSystem.MinMaxCurve(0f, 0f);
+                if (Any(v.radial))
+                {
+                    vel.radial = Range(v.radial);           // toward the ring's own centre
+                    vel.orbitalOffsetX = new ParticleSystem.MinMaxCurve(0f);
+                    vel.orbitalOffsetY = new ParticleSystem.MinMaxCurve(v.offsetY);
+                    vel.orbitalOffsetZ = new ParticleSystem.MinMaxCurve(0f);
+                }
             }
             if (d.steps != null && d.steps.n > 0)
             {
@@ -167,7 +191,7 @@ namespace LyricLive.Editor
             {
                 r.renderMode = d.renderer.mode == "Stretch" ? ParticleSystemRenderMode.Stretch : ParticleSystemRenderMode.Billboard;
                 r.velocityScale = d.renderer.stretch;
-                r.lengthScale = 1f;
+                r.lengthScale = d.renderer.length != 0f ? d.renderer.length : 1f;   // beams: their length
                 if (d.renderer.tile >= 0)
                 {
                     var tsa = ps.textureSheetAnimation;
