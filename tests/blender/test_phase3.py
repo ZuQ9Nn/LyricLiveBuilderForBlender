@@ -218,6 +218,24 @@ def main():
     check(planning.make_plan(proj).lines[0].cuts is None, "...unless the line is set to 1 cut")
     proj.lines[0].cuts = "AUTO"
 
+    # copy / paste a line's effects (spec §6.2): lines 5 and 7 are both "光の粒を/集めて"
+    def look(lp):
+        return (lp.layout, lp.layout_params, lp.enter, lp.hold, lp.exit, lp.distance, lp.seed,
+                [(c.text, c.layout, c.layout_params, c.enter, c.hold, c.exit, c.distance, c.seed) for c in lp.cuts or ()])
+    proj.line_active = 4
+    check(bpy.ops.llb.line_copy() == {"FINISHED"} and json.loads(proj.line_clipboard)["line"] == 4, "Copy Effects")
+    proj.line_active = 6
+    check(bpy.ops.llb.line_paste() == {"FINISHED"}, "Paste Effects")
+    plan = planning.make_plan(proj)
+    pasted = look(plan.lines[6])
+    check(pasted == look(plan.lines[4]), "the pasted line looks as the copied one (Planner's Choice items included)")
+    proj.lines[4].seed_offset += 1
+    bpy.ops.llb.omakase()
+    check(look(planning.make_plan(proj).lines[6]) == pasted, "...and stays when the source changes and on Make It for Me")
+    bpy.ops.llb.line_lock()
+    check(not bpy.ops.llb.line_paste.poll(), "no paste on a locked line")
+    bpy.ops.llb.line_lock()
+
     # a locked section keeps its theme and background
     proj.section_active = 2
     bpy.ops.llb.section_lock()

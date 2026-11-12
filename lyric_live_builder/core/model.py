@@ -61,6 +61,7 @@ class LineInput:
     gimmick_show: str = ""           # way of appearing (core/parts/gimmicks.py)
     gimmick_word: str = ""           # the emblem's word
     seed_offset: int = 0             # per-line re-roll count
+    look_seed: int = 0               # pasted line: the copied line's look (motions, layout details); 0 = its own
 
 
 FX_DEFAULTS = {"motion": 0.7, "particles": 0.6, "decor": 0.5, "density": 0.5, "world_switch": 0.6, "koma": 0,

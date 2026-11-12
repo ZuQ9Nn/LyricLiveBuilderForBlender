@@ -15,7 +15,8 @@ LINE_DEFAULTS = {"tap_time": -1.0, "use_manual": False, "manual_start": 0.0, "is
                  "bevel": "0.015", "layout": "AUTO", "enter": "AUTO", "hold": "AUTO", "exit": "AUTO",
                  "distance_layer": "AUTO", "cuts": "AUTO", "persist": "AUTO", "guide": "AUTO", "gimmick": "AUTO", "gimmick_show": "AUTO",
                  "gimmick_word": "", "particle": "AUTO",
-                 "background": "AUTO", "transition": "AUTO", "locked": False, "lock_frozen": "", "lock_cuts": "", "seed_offset": 0}
+                 "background": "AUTO", "transition": "AUTO", "locked": False, "lock_frozen": "", "lock_cuts": "", "seed_offset": 0,
+                 "look_seed": "", "paste_cuts": ""}
 SECTION_USER_FIELDS = ("theme", "background", "transition", "locked", "lock_frozen")
 LINE_USER_FIELDS = tuple(LINE_DEFAULTS)
 _busy = False
@@ -335,5 +336,6 @@ def line_inputs(proj, snap=None):
             particle=auto(ln.particle), background=auto(ln.background), transition=auto(ln.transition),
             guide=auto(ln.guide), gimmick=auto(ln.gimmick), gimmick_show=auto(ln.gimmick_show),
             gimmick_word=ln.gimmick_word, seed_offset=ln.seed_offset,
-            cuts=int(auto(ln.cuts) or 0), cut_specs=json.loads(ln.lock_cuts) if ln.lock_cuts else None))
+            cuts=int(auto(ln.cuts) or 0), look_seed=int(ln.look_seed or 0),
+            cut_specs=json.loads(ln.lock_cuts or ln.paste_cuts) if (ln.lock_cuts or ln.paste_cuts) else None))
     return out

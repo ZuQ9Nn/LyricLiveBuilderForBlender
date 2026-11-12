@@ -65,8 +65,9 @@ def _section_input(s):
     return model.SectionInput(s[0], s[1], *s[2:])
 
 
-def _compose(ln, rng, history, keep, stage_busy, settings):
-    """Layout, motions, distance and layout params of one line, drawn from rng in a fixed order."""
+def _compose(ln, rng, history, keep, stage_busy, settings, look):
+    """Layout, motions and distance of one line, drawn from rng in a fixed order; the layout's details come from
+    the line's look seed (its own stream: fixing the parts by hand or by paste leaves them as they were)."""
     n = len(ln.text.replace(" ", ""))
     emphasis = ln.impact or bool(ln.emph_words)
 
@@ -104,7 +105,7 @@ def _compose(ln, rng, history, keep, stage_busy, settings):
         distance = "mid"
     else:
         distance = rng.wpick([("near", 0.5 if emphasis else 0.25), ("mid", 0.6), ("far", 0.05 if emphasis else 0.15)])
-    params = lp.plan(rng, _Ctx(ln.text, ln.chunks))
+    params = lp.plan(Rng(h(look, 11)), _Ctx(ln.text, ln.chunks))
     return {"layout": layout, "lp": lp, "keep": keep, "enter": enter, "hold": hold, "exit": exit_,
             "distance": distance, "params": params}
 
@@ -142,11 +143,18 @@ def _cut_lines(ln, end):
         bounds[k] = max(bounds[k], bounds[k - 1] + MIN_CUT)
     for k in range(len(pieces) - 1, 0, -1):
         bounds[k] = min(bounds[k], bounds[k + 1] - MIN_CUT)
-    specs = ln.cut_specs or []
+    specs = [{f: v for f, v in s.items() if f != "seed"} for s in ln.cut_specs or []]      # "seed": _cut_seed
     return [(off, replace(ln, text=piece, start=bounds[k], end=bounds[k + 1], char_times=times[off:off + len(piece)],
                           chunks=None, emph_words=[w for w in ln.emph_words if w in piece], impact=ln.impact and k == 0,
                           **(specs[k] if k < len(specs) else {})))
             for k, (off, piece) in enumerate(pieces)]
+
+
+def _cut_look(ln, k, cut_seed):
+    """Look seed of cut k: the copied / locked one when there is, else from the cut's own seed."""
+    specs = ln.cut_specs or []
+    seed = specs[k].get("seed") if k < len(specs) else None
+    return int(seed) if seed else h(cut_seed, 7)
 
 
 def _compose_cuts(ln, end, history, settings, text_seed, style, world_):
@@ -156,9 +164,10 @@ def _compose_cuts(ln, end, history, settings, text_seed, style, world_):
     for k, (off, cut) in enumerate(_cut_lines(ln, end)):
         # in front only: no gaze guide leads to a later cut
         cut_seed = h(text_seed, STAGE_TEXT, ln.index + 1, 100 + k, ln.seed_offset)
-        c = _compose(cut, Rng(cut_seed), recent, False, True, settings)
+        look = _cut_look(ln, k, cut_seed)
+        c = _compose(cut, Rng(cut_seed), recent, False, True, settings, look)
         recent.append({key: c[key] for key in ("layout", "enter", "hold", "exit")})
-        out.append(_line_plan(cut, c, style, cut.end, mask[off:off + len(cut.text)], h(cut_seed, 7),
+        out.append(_line_plan(cut, c, style, cut.end, mask[off:off + len(cut.text)], look,
                               world.line_colors(world_, style, settings.accent, cut.start), cut=k))
     return out
 
@@ -191,14 +200,15 @@ def plan(lines, sections, duration, seed, bpm=0.0, settings=None):
             keep = len(slots) < len(KEEP_SLOTS) and sec_end - ln.start > 4.0 and rng.chance(keep_chance)
         keep = keep and ln.cuts < 2            # the parts follow each other: nothing can stand aside
         stage_busy = bool(slots)               # earlier lines of this section are still standing
-        c = _compose(ln, rng, history, keep, stage_busy, settings)
+        look = ln.look_seed or h(text_seed, STAGE_TEXT, ln.index + 1, 7, ln.seed_offset)
+        c = _compose(ln, rng, history, keep, stage_busy, settings, look)
         keep = c["keep"]
         # a re-rolled line draws again with its own stream; the others still see the first draw
         # (novelty history, slots), so re-rolling one line changes only that line
         history.append({key: c[key] for key in ("layout", "enter", "hold", "exit")})
         if ln.seed_offset:
             c = _compose(ln, Rng(h(text_seed, STAGE_TEXT, ln.index + 1, ln.seed_offset)), history[:-1], keep,
-                         stage_busy, settings)
+                         stage_busy, settings, look)
             c["keep"] = keep = keep and c["keep"]
         anchor = (0.0, 0.0)
         if keep and nxt < sec_end:             # the last kept line of a section simply stays in front
@@ -213,8 +223,7 @@ def plan(lines, sections, duration, seed, bpm=0.0, settings=None):
         if keep and anchor != (0.0, 0.0):
             gs = max(ln.start, nxt - GLIDE_LEAD)
             glide = (gs, gs + GLIDE_DUR)
-        line = _line_plan(ln, c, style, end, emph_mask(text, ln.emph_words),
-                          h(text_seed, STAGE_TEXT, ln.index + 1, 7, ln.seed_offset),
+        line = _line_plan(ln, c, style, end, emph_mask(text, ln.emph_words), look,
                           world.line_colors(world_, style, settings.accent, ln.start), anchor, glide)
         if ln.cuts > 1:
             line.cuts = _compose_cuts(ln, end, history[:-1], settings, text_seed, style, world_) or None

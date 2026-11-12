@@ -192,9 +192,52 @@ def lock_line(proj, index, plan=None):
             setattr(ln, f, chosen[f])
             frozen.append(f)
     ln.lock_frozen = json.dumps(frozen)
-    ln.lock_cuts = json.dumps([{"layout": c.layout, "enter": c.enter, "hold": c.hold, "exit": c.exit, "distance": c.distance}
-                               for c in lp.cuts or ()])
+    ln.lock_cuts = json.dumps(_cut_specs(lp))
     ln.locked = True
+
+
+def _cut_specs(lp):
+    """Each cut's parts and look seed, as LineInput.cut_specs takes them."""
+    return [{"layout": c.layout, "enter": c.enter, "hold": c.hold, "exit": c.exit, "distance": c.distance,
+             "seed": int(c.seed)} for c in lp.cuts or ()]
+
+
+# copy / paste of a line's effects (spec §6.2): what the planner chose, as fixed values
+COPY_FIELDS = ("is_3d", "depth", "bevel", "layout", "enter", "hold", "exit", "distance_layer", "cuts", "persist",
+               "guide", "gimmick", "gimmick_show", "gimmick_word", "particle", "background", "transition")
+
+
+def copy_line(proj, index, plan=None):
+    """The line's effects with every automatic choice filled in -> JSON for proj.line_clipboard."""
+    ln = proj.lines[index]
+    plan = plan or make_plan(proj)
+    lp = next(x for x in plan.lines if x.index == index)
+    fields = {f: getattr(ln, f) for f in COPY_FIELDS}
+    fields.update(layout=lp.layout, enter=lp.enter, hold=lp.hold, exit=lp.exit, distance_layer=lp.distance,
+                  persist="section" if lp.persist else "next", cuts=str(len(lp.cuts)) if lp.cuts else "1")
+    g = next((x for x in plan.gimmicks if x["line"] == index), None)
+    if g is None:
+        fields.update(gimmick="none", gimmick_show=AUTO)
+    elif g["source"] in ("builtin", "emblem"):             # a user's tag is no item: it stays with the lyrics
+        fields.update(gimmick=g["tag"] if g["source"] == "builtin" else "emblem", gimmick_show=g["show"],
+                      gimmick_word=g["word"] if g["source"] == "emblem" else ln.gimmick_word)
+    if ln.particle == world.LYRIC_PARTICLES:                 # the preset its words picked (none: nothing added)
+        st = settings(proj)
+        fields["particle"] = next((k for k in synonyms.particles(ln.text) if world._ok(st, "particle", k)), AUTO)
+    return json.dumps({"line": index, "text": ln.text, "fields": fields, "look_seed": str(int(lp.seed)),
+                       "cuts": _cut_specs(lp)})
+
+
+def paste_line(proj, index):
+    """Write the copied effects into a line (not a locked one). They are plain settings from then on."""
+    ln = proj.lines[index]
+    data = json.loads(proj.line_clipboard)
+    if ln.locked:
+        raise ValueError("Unlock the line first")
+    for f, v in data["fields"].items():
+        setattr(ln, f, v)
+    ln.look_seed = data["look_seed"]
+    ln.paste_cuts = json.dumps(data["cuts"]) if data["cuts"] else ""
 
 
 def unlock(item):

@@ -247,6 +247,10 @@ class LLBLine(bpy.types.PropertyGroup):
     lock_frozen: StringProperty(description="Fields the lock filled in (set back to automatic on unlock)")
     lock_cuts: StringProperty(description="JSON of what each cut had when the line was locked", update=_trial)
     seed_offset: IntProperty(name="Re-roll Count", min=0, update=_trial)
+    # pasted effects (spec §6.2): the copied line's look seed (a 32-bit number, kept as text) and cut parts
+    look_seed: StringProperty(description="Seed of the look copied from another line (empty = this line's own)",
+                              update=_trial)
+    paste_cuts: StringProperty(description="JSON of each cut's parts and seed copied from another line", update=_trial)
 
 
 class LLBProject(bpy.types.PropertyGroup):
@@ -276,6 +280,7 @@ class LLBProject(bpy.types.PropertyGroup):
     lines: CollectionProperty(type=LLBLine)
     section_active: IntProperty(update=_pick_section)
     line_active: IntProperty(update=_pick_line)
+    line_clipboard: StringProperty(description="JSON of the line effects copied with Copy Effects")
     part_group: EnumProperty(name="Part Group", items=PART_GROUP_ITEMS,
                              description="Show only the layouts and motions of one group in the line details")
     ui_page: EnumProperty(name="LyricLive Page", items=[("setup", "Setup", "Lyrics, fonts, song and sync"),

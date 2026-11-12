@@ -109,7 +109,46 @@ class LLB_OT_line_reroll(_NeedsLines, bpy.types.Operator):
             self.report({"WARNING"}, iface_("Unlock the line first"))
             return {"CANCELLED"}
         ln.seed_offset += 1
+        ln.look_seed = ""                                # a pasted look is drawn again too
         return _build(self, context)
+
+
+class LLB_OT_line_copy(_NeedsLines, bpy.types.Operator):
+    bl_idname = "llb.line_copy"
+    bl_label = "Copy Effects"
+    bl_description = ("Remember this line's effects as they are now (what the planner chose included), "
+                      "to paste them on a line with the same lyrics or the same melody")
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        proj = context.scene.llb
+        if not 0 <= proj.line_active < len(proj.lines):
+            return {"CANCELLED"}
+        try:
+            proj.line_clipboard = planning.copy_line(proj, proj.line_active)
+        except Exception as e:
+            self.report({"ERROR"}, str(e))
+            return {"CANCELLED"}
+        return {"FINISHED"}
+
+
+class LLB_OT_line_paste(bpy.types.Operator):
+    bl_idname = "llb.line_paste"
+    bl_label = "Paste Effects"
+    bl_description = ("Give this line the copied effects. They stay as pasted: changes to the copied line later "
+                      "do not follow (copy and paste again). Not on a locked line")
+    bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        proj = context.scene.llb
+        return bool(proj.line_clipboard) and 0 <= proj.line_active < len(proj.lines) \
+            and not proj.lines[proj.line_active].locked
+
+    def execute(self, context):
+        proj = context.scene.llb
+        planning.paste_line(proj, proj.line_active)
+        return {"FINISHED"}
 
 
 class LLB_OT_section_lock(_NeedsLines, bpy.types.Operator):
@@ -176,4 +215,5 @@ class LLB_OT_pick_part(bpy.types.Operator):
 
 
 CLASSES = (LLB_OT_pick_part, LLB_OT_omakase, LLB_OT_history_step, LLB_OT_reroll, LLB_OT_line_lock, LLB_OT_line_reroll,
+           LLB_OT_line_copy, LLB_OT_line_paste,
            LLB_OT_section_lock, LLB_OT_parts_set, LLB_OT_view_standard)

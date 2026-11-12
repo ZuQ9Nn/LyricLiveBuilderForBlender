@@ -22,7 +22,7 @@ RESTORE = "llb_trial_restore"          # scene custom property: range and sound 
 # what Before keeps; the same fields' update rebuilds After
 LINE_FIELDS = ("is_3d", "depth", "bevel", "layout", "enter", "hold", "exit", "distance_layer", "cuts", "persist",
                "guide", "gimmick", "gimmick_show", "gimmick_word", "particle", "background", "transition",
-               "seed_offset", "lock_cuts")
+               "seed_offset", "lock_cuts", "look_seed", "paste_cuts")
 SECTION_FIELDS = ("kind", "theme", "background", "transition")
 LEAD, TAIL = 1.4, 0.4                  # seconds shown before a line (its gaze guide) and after it has left
 SECTION_SPAN = (-1.5, 6.0)             # around a section start: the transition and the new background

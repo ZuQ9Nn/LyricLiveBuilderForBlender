@@ -1,4 +1,5 @@
 """Sidebar panels (3D Viewport > N > LyricLive), in work order."""
+import json
 import os
 
 import bpy
@@ -339,6 +340,13 @@ def draw_lines(col, proj):
     sub = row.row(align=True)
     sub.enabled = ln is not None and not ln.locked
     sub.operator("llb.line_reroll", icon="FILE_REFRESH")
+    row = col.row(align=True)                             # copy / paste a line's effects (spec §6.2)
+    row.operator("llb.line_copy", icon="COPYDOWN")
+    row.operator("llb.line_paste", icon="PASTEDOWN")
+    if proj.line_clipboard:
+        src = json.loads(proj.line_clipboard)
+        col.label(text=iface_("Copied: line {} “{}”").format(src["line"] + 1, src["text"][:14]), icon="INFO",
+                  translate=False)
     col.template_list("LLB_UL_lines", "", proj, "lines", proj, "line_active", rows=6)
     if ln is not None:
         box = col.box()

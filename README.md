@@ -27,17 +27,19 @@ add-on already contains it.
 ## From lyrics to a world
 
 1. **Lyrics**: **Edit in External Editor** opens them in your system's text editor and saving there updates them here;
-   you can also paste from the clipboard or load a file. `A/B` breaks a chunk, `*word*` emphasizes, `line!` is a strong accent,
+   you can also paste from the clipboard or load a file. `A/B` breaks a chunk (and shows the line in cuts), `*word*` emphasizes, `line!` is a strong accent,
    `[Chorus]` starts a section, and LRC time tags are read.
 2. **Fonts**: set at least the Body font. Characters missing from a font are listed.
 3. **Song**: load it. Tempo and beats are estimated.
 4. **Sync**: measure the tap latency once, then press a key at each line while the song plays. **Tap Speed** slows
    the song to 0.75× or 0.5× with its pitch kept; the real times are stored. **Countdown** counts 3, 2, 1 first,
-   **Tap from This Line** in the line details redoes the song from a line, and Backspace undoes a tap and jumps back.
+   **Tap from This Line** above the line list redoes the song from a line, and Backspace undoes a tap and jumps back.
 5. **Make It for Me**: every press is a new proposal. **Change Only** re-rolls one aspect, and locked lines stay.
-6. **Sections and Lines**: fix what you want by hand. Each line has its own layout, motion, gaze guide, stage object
-   and particles.
-   **Line Cuts** shows a line in 2 to 6 parts, one after the other.
+6. **Song Sections** and **Lyric Lines**: fix what you want by hand. The gear button of a line opens its details on the
+   left of the 3D view (layout, motion, gaze guide, stage object, particles), seen from the audience.
+   **Line Cuts** shows a line in 2 to 6 parts, one after the other; on Planner's Choice, a `/` in the lyrics makes a cut.
+   **Copy Effects** / **Paste Effects** give a line the look of another one (the same lyrics or melody in verse 2);
+   a pasted line stays as pasted.
    **Try Out (Before / After)** adds two views beside the sidebar, showing the picked line as last generated and as set now.
 7. **Unity Export**: choose the project and press Export. Unity builds the Prefab by itself, whether it is open or not.
 
@@ -119,12 +121,12 @@ MIT, see [LICENSE](LICENSE). Parts of the logic are ported from JIZURA (MIT, Cop
 
 ### 使い方
 
-1. 「外部エディタで編集」で歌詞を書く（メモ帳などが開き、保存すると自動で取り込みます。Blender のテキストエディタは日本語を直接入力できません。「クリップボードから貼り付け」「ファイルから読み込む」も使えます。`A/B` で区切り、`*語*` で強調、`行!` で強いアクセント、`[サビ]` でセクション）
+1. 「外部エディタで編集」で歌詞を書く（メモ帳などが開き、保存すると自動で取り込みます。Blender のテキストエディタは日本語を直接入力できません。「クリップボードから貼り付け」「ファイルから読み込む」も使えます。`A/B` で区切り（区切りごとのカットにもなる）、`*語*` で強調、`行!` で強いアクセント、`[サビ]` でセクション）
 2. フォントを指定する（最低限「本文」）
 3. 曲を読み込む
-4. タップの遅延を一度測り、曲に合わせて行ごとにキーを押す（「タップの速さ」で、音程を保ったまま 0.75×・0.5× に遅くできます。記録されるのは本来の速さの時刻です。「カウントダウン」で 3、2、1 の後に始められ、行の詳細の「この行からタップ」で途中の行からやり直せます。Backspace で取り消すと、曲が少し戻ります）
+4. タップの遅延を一度測り、曲に合わせて行ごとにキーを押す（「タップの速さ」で、音程を保ったまま 0.75×・0.5× に遅くできます。記録されるのは本来の速さの時刻です。「カウントダウン」で 3、2、1 の後に始められ、行の一覧の上の「この行からタップ」で途中の行からやり直せます。Backspace で取り消すと、曲が少し戻ります）
 5. 「おまかせ」を押す（押すたびに新しい案。「ここだけ変える」で一部だけ振り直し、鍵を掛けた行は残る）
-6. 「セクションと行」で、気になる行を手で直す（「カット」で、1 行を 2〜6 回に分けて順に見せられます。「試し見」で、変える前と後を 3D ビューの横に並べて見られます）
+6. 「セクション」と「歌詞の行」で、気になる行を手で直す（行の歯車のボタンで、3D ビューの左に行の詳細が開き、観客の位置から見ながら設定できます。「カット」で、1 行を 2〜6 回に分けて順に見せられます。おまかせのときは歌詞の `/` の区切りごとに分かれます。「演出をコピー」「演出をペースト」で、1 番と 2 番などの行を同じ演出にできます。ペーストした行は、コピー元を後で変えても変わりません。「試し見」で、変える前と後を 3D ビューの横に並べて見られます）
 7. 「Unity 出力」でプロジェクトを選んで出力する（Unity が開いていても閉じていても、自動で組み立てます）
 
 ### ステージの物体
