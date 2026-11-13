@@ -352,13 +352,7 @@ def draw_lines(col, proj):
     if ln is not None:
         box = col.box()
         box.label(text=ln.text, translate=False)
-        box.label(text=iface_("Start {}  End {}  ({})").format(
-            fmt_time(ln.start), fmt_time(ln.end), iface_(ln.bl_rna.properties["source"].enum_items[ln.source].name)),
-            translate=False)
-        if 0 <= ln.section_index < len(proj.sections):
-            sec = proj.sections[ln.section_index]
-            box.label(text=iface_("Section {}").format(
-                f"{ln.section_index + 1}. {sec.label or iface_(KIND_LABELS[sec.kind])}"), translate=False)
+        draw_line_timing(box, proj, ln)
         if ln.tap_time >= 0:
             box.label(text=iface_("Tap {}").format(fmt_time(ln.tap_time)), translate=False)
         row = box.row()
@@ -366,6 +360,17 @@ def draw_lines(col, proj):
         sub = row.row()
         sub.active = ln.use_manual
         sub.prop(ln, "manual_start", text="")
+
+
+def draw_line_timing(layout, proj, ln):
+    """Start, end (and where they come from) and the section of a line (the Lyric Lines panel and the details)."""
+    layout.label(text=iface_("Start {}  End {}  ({})").format(
+        fmt_time(ln.start), fmt_time(ln.end), iface_(ln.bl_rna.properties["source"].enum_items[ln.source].name)),
+        translate=False)
+    if 0 <= ln.section_index < len(proj.sections):
+        sec = proj.sections[ln.section_index]
+        layout.label(text=iface_("Section {}").format(
+            f"{ln.section_index + 1}. {sec.label or iface_(KIND_LABELS[sec.kind])}"), translate=False)
 
 
 def draw_line_details(col, proj, ln):

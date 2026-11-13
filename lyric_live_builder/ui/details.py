@@ -214,7 +214,7 @@ class LLB_PT_line_details(bpy.types.Panel):
         return is_details_area(getattr(context, "area", None))
 
     def draw(self, context):
-        from .panels import draw_line_details
+        from .panels import draw_line_details, draw_line_timing
         proj = context.scene.llb
         col = self.layout.column()
         col.label(text="Line Details", icon="PREFERENCES")
@@ -225,6 +225,7 @@ class LLB_PT_line_details(bpy.types.Panel):
         box = col.box()
         box.label(text=iface_("Line {}").format(proj.line_active + 1), translate=False)
         box.label(text=ln.text, translate=False)
+        draw_line_timing(box, proj, ln)                   # which section the line is in (spec §6.2)
         draw_line_details(col, proj, ln)
 
 
