@@ -72,6 +72,7 @@ def plan_world(sections, lines, seed, settings, style):
     bseed = stage_seed(settings, seed, STAGE_BACKGROUND)
     switch = 0.25 + 0.75 * settings.fx_value("world_switch")
     world, plans, current = [], [], None
+    planned = []                                  # each section's own background (before the lines change it)
     for i, (sec, tk) in enumerate(zip(sections, theme_keys)):
         rng = Rng(h(bseed, STAGE_BACKGROUND, i + 1))
         theme = themes.THEMES[tk]
@@ -94,13 +95,23 @@ def plan_world(sections, lines, seed, settings, style):
             world.append({"t": max(0.0, sec.start - dur / 2), "dur": dur, "spec": current, "transition": trans})
         plans.append(model.SectionPlan(index=i, kind=sec.kind, start=sec.start, end=sec.end, theme=tk,
                                        background=current, particles=[], palette={}, background_from=origin))
-    # per-line background overrides start with the line
+        planned.append(current)
+    # per-line background overrides start with the line and last to the end of its section (spec §6.2)
+    back = {}                                     # next section -> the latest override before it
     for ln in lines:
         if ln.background in bgs.PRESETS and (settings.panorama or not bgs.needs_image(ln.background)):
             rng = Rng(h(bseed, STAGE_BACKGROUND, 1000 + ln.index))
             trans = _transition(rng, settings, ln.transition)
             world.append({"t": ln.start, "dur": bgs.TRANSITIONS[trans]["dur"],
                           "spec": bgs.resolve(ln.background, style), "transition": trans, "line": ln.index})
+            k = next((j for j, sec in enumerate(sections) if sec.start <= ln.start < sec.end), len(sections) - 1) + 1
+            if k < len(sections):
+                back[k] = max(back.get(k, ln.start), ln.start)
+    for k, after in back.items():                # back to the next section's own background
+        trans = _transition(Rng(h(bseed, STAGE_BACKGROUND, 2000 + k)), settings, sections[k].transition)
+        dur = bgs.TRANSITIONS[trans]["dur"]
+        world.append({"t": max(sections[k].start - dur / 2, after + 0.01), "dur": dur, "spec": planned[k],
+                      "transition": trans})
     world.sort(key=lambda w: w["t"])
     _space_out(world)
     for sp in plans:
@@ -194,6 +205,43 @@ def emitter(key, start, end, seed, palette, settings, bursts=None, intensity=Non
     return spec
 
 
+def line_particle(choice, text, impact, emphasis, lseed, settings):
+    """(preset added on a line or "", automatic?): the chosen one, the one its words name ("From the Lyrics"),
+    else a sparkle burst on a strong line (always on `!`, sometimes on an emphasized one)."""
+    key = choice
+    if key == LYRIC_PARTICLES:                  # the first word of the line that names a preset (none: automatic)
+        key = next((k for k in synonyms.particles(text) if _ok(settings, "particle", k)), "")
+    if key in pts.PRESETS:
+        return key, False
+    if impact or (emphasis and Rng(lseed).chance(0.3 * settings.fx_value("decor"))):
+        return "sparkle_burst", True
+    return "", False
+
+
+def line_summary(sections, lines, seed, settings):
+    """What each line really gets, for the line details: [{section, background, background_from (this | line |
+    section | theme), line, added, added_auto}]. Plans only the background and particle stages."""
+    secs = [s if isinstance(s, model.SectionInput) else model.SectionInput(*s) for s in sections]
+    plans, world_ = plan_world(secs, lines, seed, settings, settings.style or styles.DEFAULT)
+    pseed = stage_seed(settings, seed, STAGE_PARTICLES)
+    out = []
+    for ln in lines:
+        k = ln.section_index if 0 <= ln.section_index < len(plans) else \
+            next((j for j, sp in enumerate(plans) if sp.start <= ln.start < sp.end), len(plans) - 1)
+        if ln.background in bgs.PRESETS and (settings.panorama or not bgs.needs_image(ln.background)):
+            bg, origin, by = ln.background, "this", ln.index
+        else:
+            w = active_entry(world_, ln.start + 0.01)
+            bg = w["spec"]["key"]
+            origin, by = ("line", w["line"]) if "line" in w else (plans[k].background_from, -1)
+        emphasis = ln.impact or bool(ln.emph_words)
+        added, auto = line_particle(ln.particle, ln.text, ln.impact, emphasis,
+                                    h(pseed, STAGE_PARTICLES, 5000 + ln.index), settings)
+        out.append({"section": k, "background": bg, "background_from": origin, "line": by, "added": added,
+                    "added_auto": auto})
+    return out
+
+
 def plan_particles(section_plans, line_plans, seed, settings):
     pseed = stage_seed(settings, seed, STAGE_PARTICLES)
     amount = settings.fx_value("particles")
@@ -219,16 +267,11 @@ def plan_particles(section_plans, line_plans, seed, settings):
         origin = [float(x) for x in pts.EYE + model.DISTANCE[lp.distance] *
                   xform.direction(*(lp.anchor if not lp.glide else (0.0, 0.0)))]
         lseed = h(pseed, STAGE_PARTICLES, 5000 + lp.index)
-        key = lp.particle
-        if key == LYRIC_PARTICLES:              # the first word of the line that names a preset (none: automatic)
-            key = next((k for k in synonyms.particles(lp.text) if _ok(settings, "particle", k)), "")
-        if key in pts.PRESETS:
+        key, auto = line_particle(lp.particle, lp.text, lp.impact, lp.emphasis, lseed, settings)
+        if key:
             p = pts.PRESETS[key]
-            bursts = [{"t": hit, "origin": origin}] if p["emitter"] == "burst" else None
+            bursts = [{"t": hit, "origin": origin}] if p["emitter"] == "burst" or auto else None
             out.append(emitter(key, lp.start, lp.end, lseed, sp.palette, settings, bursts=bursts))
-        elif lp.impact or (lp.emphasis and Rng(lseed).chance(0.3 * settings.fx_value("decor"))):
-            out.append(emitter("sparkle_burst", lp.start, lp.end, lseed, sp.palette, settings,
-                               bursts=[{"t": hit, "origin": origin}]))
     return out
 
 

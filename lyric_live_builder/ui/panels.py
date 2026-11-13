@@ -406,6 +406,38 @@ def draw_line_details(col, proj, ln):
     prop_above(box, ln, "transition").active = ln.background != "AUTO"
     if ln.background == "panorama" and not proj.panorama_path:
         labels(box, "Set the panorama image\nin the Effects panel", "ERROR")
+    draw_line_in_use(col, proj, proj.line_active)
+
+
+def draw_line_in_use(layout, proj, index):
+    """The background and particles a line really gets, and where they come from (spec §6.2)."""
+    try:
+        lines, secs = planning.line_summary(proj), planning.section_summary(proj)
+    except Exception as e:                                # the panel must always draw
+        print("[LLB] line summary:", e)
+        return
+    if not 0 <= index < len(lines):
+        return
+    s = lines[index]
+    sec = secs[s["section"]] if 0 <= s["section"] < len(secs) else None
+    theme = iface_(themes.THEMES[sec["theme"]]["name"]) if sec else ""
+    box = layout.box()
+    box.label(text="In Use", icon="VIEWZOOM")
+    bg = iface_(bgs.PRESETS[s["background"]]["name"]) if s["background"] in bgs.PRESETS else s["background"]
+    where = {"this": iface_("(changed on this line)"), "line": iface_("(from line {})").format(s["line"] + 1),
+             "section": iface_("(set in the section)")}.get(s["background_from"],
+                                                           iface_("(from theme “{}”)").format(theme))
+    col = box.column(align=True)
+    col.label(text=iface_("Background: {}").format(bg), translate=False)
+    col.label(text=where, icon="BLANK1", translate=False)
+    col = box.column(align=True)
+    col.label(text=iface_("Particles from theme “{}”:").format(theme), translate=False)
+    for key in (sec["particles"] if sec else ()):
+        col.label(text=iface_(pts.PRESETS[key]["name"]), icon="BLANK1", translate=False)
+    if s["added"]:
+        name = iface_(pts.PRESETS[s["added"]]["name"])
+        col.label(text=iface_("+ {} (on its strong words)").format(name) if s["added_auto"]
+                  else iface_("+ {} (added on this line)").format(name), icon="BLANK1", translate=False)
 
 
 class LLB_PT_effects(_Panel, bpy.types.Panel):

@@ -129,20 +129,32 @@ def make_plan(proj, snap=None):
 _summary = {"key": None, "value": None}
 
 
-def section_summary(proj):
-    """world.section_summary for the panel, reused while its inputs stay the same (a draw must stay cheap)."""
-    from ..core.model import LineInput
-    auto = lambda v: "" if v == AUTO else v
-    lines = [(ln.start, ln.end, ln.section_index, auto(ln.background), auto(ln.transition)) for ln in proj.lines]
+def _summaries(proj):
+    """(world.section_summary, world.line_summary) for the panels, reused while their inputs stay the same
+    (a draw must stay cheap)."""
     secs = project.section_inputs(proj)
     key = json.dumps([state(proj), [list(map(str, (s.start, s.end, s.kind, s.theme, s.background, s.transition)))
-                                    for s in secs], lines, proj.duration, proj.panorama_path], sort_keys=True)
+                                    for s in secs],
+                      [(ln.start, ln.end, ln.section_index, ln.background, ln.transition, ln.particle, ln.text)
+                       for ln in proj.lines], project.lyrics_source(proj), proj.duration, proj.panorama_path],
+                     sort_keys=True)
     if key != _summary["key"]:
-        ins = [LineInput(index=i, text="", start=a, end=b, section_index=k, background=bg, transition=tr)
-               for i, (a, b, k, bg, tr) in enumerate(lines)]
-        _summary["value"] = world.section_summary(secs, ins, proj.seed, settings(proj)) if secs else []
+        if secs:
+            ins, st = project.line_inputs(proj), settings(proj)
+            _summary["value"] = (world.section_summary(secs, ins, proj.seed, st),
+                                 world.line_summary(secs, ins, proj.seed, st))
+        else:
+            _summary["value"] = ([], [])
         _summary["key"] = key
     return _summary["value"]
+
+
+def section_summary(proj):
+    return _summaries(proj)[0]
+
+
+def line_summary(proj):
+    return _summaries(proj)[1]
 
 
 def build_preview(context):

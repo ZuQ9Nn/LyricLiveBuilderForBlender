@@ -355,11 +355,14 @@ class TestWorld(unittest.TestCase):
         lines = inputs(24, sec_len=16.0)
         duration = lines[-1].end + 2.0
         secs = [model.SectionInput(a, c, "verse") for a, c in sections_for(duration, 16.0)]
-        self.assertGreaterEqual(len(secs), 4)
+        self.assertGreaterEqual(len(secs), 5)
         secs[1].theme, secs[1].background = "morning_garden", "evening"        # the case from the review
-        secs[2].theme = secs[3].theme = "under_sea"             # one background: 3 does not switch at its start
-        last = max(ln.index for ln in lines if ln.section_index == 2)          # so this line's runs on into 3
-        lines[last].background = "starry"
+        secs[2].theme = secs[3].theme = "under_sea"             # one background for both sections
+        last = max(ln.index for ln in lines if ln.section_index == 2)
+        lines[last].background = "starry"                       # ...changed by a line: only to the end of 2
+        first = min(ln.index for ln in lines if ln.section_index == 4)
+        lines[first].start = secs[4].start                      # a line at a section's very start
+        lines[first].background = "dawn"
         st = model.Settings()
         p = planner.plan(lines, secs, duration, 5, settings=st)
         summary = world.section_summary(secs, lines, 5, st)
@@ -372,10 +375,44 @@ class TestWorld(unittest.TestCase):
         self.assertEqual(summary[1]["background_from"], "section")
         self.assertEqual(summary[1]["theme"], "morning_garden")
         self.assertTrue(summary[1]["theme_set"])
-        self.assertEqual((summary[3]["background"], summary[3]["background_from"], summary[3]["line"]),
-                         ("starry", "line", last))
+        self.assertEqual((summary[3]["background"], summary[3]["background_from"]), ("underwater", "theme"))
+        self.assertEqual((summary[4]["background"], summary[4]["background_from"], summary[4]["line"]),
+                         ("dawn", "line", first))
+        # the line's background is on from the line to the end of its section, then the next section's is back
+        self.assertEqual(world.active_background(p.world, lines[last].start + 1.0)["key"], "starry")
+        self.assertEqual(world.active_background(p.world, secs[3].start + 2.0)["key"], "underwater")
         self.assertEqual(summary[0]["background_from"], "theme")
         self.assertFalse(summary[0]["theme_set"])
+
+    def test_line_summary_matches_the_plan(self):
+        lines = inputs(24, sec_len=16.0)
+        lines[1].background = "starry"                       # section 0 is 0-16 s: lines 0-3
+        lines[5].particle = "fireworks"
+        lines[7].particle = world.LYRIC_PARTICLES
+        lines[7].text = "雪が降る夜に"
+        duration = lines[-1].end + 2.0
+        secs = [model.SectionInput(a, c, "verse") for a, c in sections_for(duration, 16.0)]
+        st = model.Settings()
+        p = planner.plan(lines, secs, duration, 5, settings=st)
+        summary = world.line_summary(secs, lines, 5, st)
+        self.assertEqual(len(summary), len(lines))
+        line_emitters = {}
+        for e in p.emitters:
+            for lp in p.lines:
+                if abs(e["start"] - lp.start) < 1e-9 and abs(e["end"] - lp.end) < 1e-9:
+                    line_emitters[lp.index] = e["key"]
+        for ln, s in zip(lines, summary):
+            self.assertEqual(s["section"], ln.section_index)
+            want = world.active_background(p.world, ln.start + 0.01)["key"] if s["background_from"] != "this" \
+                else ln.background
+            self.assertEqual(s["background"], want, ln.index)
+            self.assertEqual(s["added"], line_emitters.get(ln.index, ""), ln.index)
+        self.assertEqual((summary[1]["background"], summary[1]["background_from"]), ("starry", "this"))
+        self.assertEqual((summary[2]["background"], summary[2]["background_from"], summary[2]["line"]),
+                         ("starry", "line", 1))                                     # on to the section end
+        self.assertNotEqual(summary[4]["background_from"], "line")                  # the next section's own
+        self.assertEqual((summary[5]["added"], summary[5]["added_auto"]), ("fireworks", False))
+        self.assertEqual(summary[7]["added"], "snow")                                # from the lyrics
 
     def test_strong_flashes_are_spaced(self):
         for seed in range(6):

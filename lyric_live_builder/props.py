@@ -58,7 +58,10 @@ ENTER_ITEMS = _part_items("enter")
 HOLD_ITEMS = _part_items("hold")
 EXIT_ITEMS = _part_items("exit")
 THEME_ITEMS, BACKGROUND_ITEMS, TRANSITION_ITEMS, PARTICLE_ITEMS, MOOD_ITEMS, STYLE_ITEMS = _world_items()
-PARTICLE_ITEMS.insert(1, ("lyrics", "From the Lyrics", "A word in the line picks the particles (none: Planner's Choice)"))
+PARTICLE_ITEMS.insert(1, ("lyrics", "From the Lyrics", "A word in the line picks the particles (none: nothing added)"))
+# a line only adds to its section (spec §6.2): the automatic items say so
+PARTICLE_ITEMS[0] = (AUTO, "Add Nothing (Section's Only)", "Only the section's particles")
+LINE_BACKGROUND_ITEMS = [(AUTO, "No Change (Section's)", "The section's background goes on")] + BACKGROUND_ITEMS[1:]
 
 
 def _gimmick_items():
@@ -251,9 +254,10 @@ class LLBLine(bpy.types.PropertyGroup):
     gimmick: EnumProperty(name="Stage Object", items=GIMMICK_ITEMS, update=_trial)
     gimmick_show: EnumProperty(name="How It Appears", items=SHOW_ITEMS, update=_trial)
     gimmick_word: StringProperty(name="Emblem Word", description="The emblem's text (empty = the keyword or the longest chunk)", update=_trial)
-    particle: EnumProperty(name="Line Particles", items=PARTICLE_ITEMS,
-                           description="Particles added while this line is on stage", update=_trial)
-    background: EnumProperty(name="Background from Here", items=BACKGROUND_ITEMS, update=_trial)
+    particle: EnumProperty(name="Particles Added on This Line", items=PARTICLE_ITEMS,
+                           description="Particles added to the section's while this line is on stage", update=_trial)
+    background: EnumProperty(name="Background from This Line", items=LINE_BACKGROUND_ITEMS, update=_trial,
+                             description="Change the background from this line to the end of its section")
     transition: EnumProperty(name="Transition", items=TRANSITION_ITEMS, update=_trial)
     locked: BoolProperty(name="Lock State", description="Make It for Me and re-rolls keep this line as it is")
     lock_frozen: StringProperty(description="Fields the lock filled in (set back to automatic on unlock)")

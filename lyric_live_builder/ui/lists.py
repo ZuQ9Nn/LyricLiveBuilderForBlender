@@ -21,13 +21,32 @@ class LLB_UL_sections(bpy.types.UIList):
         sub.label(text=fmt_time(item.start), translate=False)
 
 
+def section_tag(proj, k):
+    """Short name of section k for the line list: "4.Chorus"."""
+    if not 0 <= k < len(proj.sections):
+        return ""
+    sec = proj.sections[k]
+    return f"{k + 1}.{sec.label or iface_(KIND_LABELS[sec.kind])}"
+
+
 class LLB_UL_lines(bpy.types.UIList):
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
         row = layout.row(align=True)
-        split = row.split(factor=0.38)
-        split.label(text=fmt_time(item.start), translate=False,
-                    icon={"tap": "REC", "lrc": "TIME", "manual": "GREASEPENCIL"}.get(item.source, "BLANK1"))
+        # the section the line is in (spec §6.2): plain on its first line, dimmed on the others
+        first = index == 0 or data.lines[index - 1].section_index != item.section_index
+        split = row.split(factor=0.26)
+        sub = split.row()
+        sub.active = first
+        sub.label(text=section_tag(data, item.section_index), translate=False)
+        split = split.split(factor=0.3)
+        # short, and without the source icon (shown below the list): room for the section and the text
+        split.label(text=f"{int(item.start // 60)}:{int(item.start % 60):02d}", translate=False)
         split.label(text=item.text, translate=False, icon="LOCKED" if item.locked else "NONE")
+        # set on the line itself: particles added, background changed
+        if item.particle != "AUTO":
+            row.label(text="", icon="PARTICLES")
+        if item.background != "AUTO":
+            row.label(text="", icon="WORLD")
         row.operator("llb.line_details", text="", icon="PREFERENCES", emboss=False).index = index     # spec §6.2
 
 

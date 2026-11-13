@@ -271,6 +271,14 @@ def main():
     check(summary[1]["background"] == "evening" and summary[1]["background_from"] == "section",
           "a section's own background is shown as set there")
     proj.sections[1].background = "AUTO"
+    lines_now = planning.line_summary(proj)
+    check(len(lines_now) == len(proj.lines) and all(s["section"] == ln.section_index for s, ln in zip(lines_now, proj.lines)),
+          "the line details know each line's section")
+    proj.lines[1].background = "starry"
+    lines_now = planning.line_summary(proj)
+    check(lines_now[1]["background_from"] == "this" and lines_now[1]["background"] == "starry",
+          "a line's own background is shown as changed on that line")
+    proj.lines[1].background = "AUTO"
 
     # change only the particles
     a = planning.make_plan(proj)
