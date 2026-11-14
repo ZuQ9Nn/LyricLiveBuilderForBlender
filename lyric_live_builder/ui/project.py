@@ -161,15 +161,15 @@ def _recompute(scene):
         ln.start, ln.end, ln.source = tm.starts[i], tm.ends[i], tm.sources[i]
         ln.section_index = sections.section_of(secs, tm.starts[i])
         ln.char_times = json.dumps([round(t, 4) for t in timing.char_times(src.text, tm.starts[i], tm.ends[i])])
-    # a hand-set kind (and theme, background, lock) stays while its section still starts at the same time
-    user_kinds = {round(x.start, 2): x.kind for x in proj.sections if x.user_kind}
+    # the kind comes from the headings or the estimate (not set by hand, spec §5.5); the theme, background and
+    # lock set by hand stay while the section still starts at the same time
     user_sets = {round(x.start, 2): {f: getattr(x, f) for f in SECTION_USER_FIELDS} for x in proj.sections}
     proj.sections.clear()
     for s in secs:
         item = proj.sections.add()
         key = round(s.start, 2)
-        item.kind, item.label, item.start, item.end = user_kinds.get(key, s.kind), s.label, s.start, s.end
-        item.user_kind = key in user_kinds
+        item.kind, item.label, item.start, item.end = s.kind, s.label, s.start, s.end
+        item.user_kind = False
         for f, v in user_sets.get(key, {}).items():
             setattr(item, f, v)
     if any(match.get(i) != i for i in range(len(proj.lines))) or len(old) != len(proj.lines):

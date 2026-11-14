@@ -271,6 +271,40 @@ def main():
     check(summary[1]["background"] == "evening" and summary[1]["background_from"] == "section",
           "a section's own background is shown as set there")
     proj.sections[1].background = "AUTO"
+    # the lyrics of a section under its Kind: the first lines, "… N more", all of them in a fold
+    from lyric_live_builder.ui import panels
+
+    class Shown:                                      # a layout that only records its labels (fold open)
+        def __init__(self):
+            self.texts = []
+
+        def box(self):
+            return self
+
+        def column(self, align=False):
+            return self
+
+        def label(self, text="", **kw):
+            self.texts.append(text)
+
+        def panel(self, idname, default_closed=False):
+            return self, self
+    counts = [sum(1 for ln in proj.lines if ln.section_index == k) for k in range(len(proj.sections))]
+    big = counts.index(max(counts))
+    shown = Shown()
+    panels.draw_section_lyrics(shown, proj, big)
+    texts = [ln.text for ln in proj.lines if ln.section_index == big]
+    check(max(counts) > panels.SECTION_PREVIEW and len(shown.texts) == panels.SECTION_PREVIEW + 2 + len(texts)
+          and all(t in shown.texts[k] for k, t in enumerate(texts[:panels.SECTION_PREVIEW]))
+          and all(t in shown.texts[-len(texts) + k] for k, t in enumerate(texts)),
+          f"a section shows its first lines, how many more, and all of them in the fold ({shown.texts})")
+    for k, n in enumerate(counts):
+        shown = Shown()
+        panels.draw_section_lyrics(shown, proj, k)
+        if n == 0:
+            check(shown.texts == ["No Lyrics"], "a section without lyrics says so")
+        elif n <= panels.SECTION_PREVIEW:
+            check(len(shown.texts) == n, f"a short section shows its lines without a fold ({n})")
     lines_now = planning.line_summary(proj)
     check(len(lines_now) == len(proj.lines) and all(s["section"] == ln.section_index for s, ln in zip(lines_now, proj.lines)),
           "the line details know each line's section")

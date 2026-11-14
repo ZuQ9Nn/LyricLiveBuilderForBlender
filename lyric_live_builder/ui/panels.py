@@ -307,14 +307,42 @@ def draw_in_use(layout, proj, index):
         col.label(text=iface_("No Particles"), icon="BLANK1", translate=False)
 
 
+SECTION_PREVIEW = 1                                       # lines of a section always shown
+
+
+def draw_section_lyrics(layout, proj, index):
+    """The lyrics in a section (spec §6.2): the first lines, "… N more", and all of them in a fold."""
+    lines = [ln for ln in proj.lines if ln.section_index == index]
+    box = layout.box()
+    col = box.column(align=True)
+    if not lines:
+        col.label(text="No Lyrics", icon="INFO")
+        return
+    for ln in lines[:SECTION_PREVIEW]:
+        col.label(text=f"{fmt_time(ln.start)}  {ln.text}", translate=False)
+    if len(lines) <= SECTION_PREVIEW:
+        return
+    col.label(text=iface_("… {} more").format(len(lines) - SECTION_PREVIEW), translate=False)
+    header, body = box.panel("LLB_section_lyrics", default_closed=True)
+    header.label(text=iface_("All Lyrics of the Section ({} Lines)").format(len(lines)), translate=False)
+    if body:
+        col = body.column(align=True)
+        for ln in lines:
+            col.label(text=f"{fmt_time(ln.start)}  {ln.text}", translate=False)
+
+
 def draw_sections(col, proj):
     """The section list and the picked section's settings."""
     labels(col, "Sections from headings" if proj.sections_from_headings else "Sections estimated\n(no headings)", "INFO")
     col.template_list("LLB_UL_sections", "", proj, "sections", proj, "section_active", rows=4)
     if 0 <= proj.section_active < len(proj.sections):
         sec = proj.sections[proj.section_active]
-        col.prop(sec, "kind")
+        # the kind is shown, not set (spec §5.5): the headings or the estimate decide it
+        where = iface_("set by hand") if sec.user_kind else \
+            iface_("from the headings") if proj.sections_from_headings else iface_("estimated")
+        col.label(text=iface_("Kind: {} ({})").format(iface_(KIND_LABELS[sec.kind]), where), translate=False)
         col.label(text=f"{fmt_time(sec.start)} – {fmt_time(sec.end)}", translate=False)
+        draw_section_lyrics(col, proj, proj.section_active)
         box = col.box()
         box.enabled = not sec.locked
         box.prop(sec, "theme")

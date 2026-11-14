@@ -119,9 +119,11 @@ def main():
     proj.lyrics_text.from_string(proj.lyrics_text.as_string().replace("挿入した行\n", "", 1))
     bpy.ops.llb.refresh()
     check([(ln.text, ln.tap_time, ln.use_manual) for ln in proj.lines] == before, "removing it restores the numbering")
-    proj.sections[2].kind = "bridge"
+    heading_kind = proj.sections[2].kind
+    proj.sections[2].kind = "bridge"                   # as a file from an earlier version set it by hand
     bpy.ops.llb.refresh()
-    check(proj.sections[2].kind == "bridge", "hand-set section kind survives a refresh")
+    check(proj.sections[2].kind == heading_kind and not proj.sections[2].user_kind,
+          "the kind comes from the headings again on a refresh (not set by hand any more)")
 
     blend = os.path.join(TMP, "p1.blend")
     bpy.ops.wm.save_as_mainfile(filepath=blend)

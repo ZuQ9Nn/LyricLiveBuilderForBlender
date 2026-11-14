@@ -155,7 +155,7 @@ tests/
 | `LLBProject` | `lyrics_text`（Text への参照）、`font_display` / `font_serif` / `font_body` / `font_mono`（`LLBFontRole`）、`audio_path`、`audio_duration`、`duration`、`bpm`、`beat_offset`、`tap_latency_ms`、`latency_measured`、`sections_from_headings`、`seed`、`mood`、`style`、`fx`（`LLBFx`）、`use_accent`・`accent`（独自のアクセント色）、`stage_offsets`（段階ごとの振り直しの回数。「ここだけ変える」）、`sections`（Collection）、`lines`（Collection）、`parts`（部品の ON/OFF：`LLBPartToggle` の Collection）、`parts_kind`、`history`（おまかせの履歴：Collection）、`history_index`、`reroll_target`、`panorama_path`、`export`（`LLBExportSettings`。段階 4） |
 | `LLBFontRole` | `filepath`（VectorFont への参照は、段階 2 の字形メッシュで読み込むときに作る） |
 | `LLBFx` | `motion`、`particles`、`decor`、`density`、`world_switch`、`koma`（0/12/8）、`guide`（視線の誘導の強さ。0 で切）、`flash` |
-| `LLBSection` | `kind`、`user_kind`（手で変えた種別。開始時刻が同じ間は、読み直しても残す）、`label`、`start`、`end`、`theme`・`background`・`transition`（AUTO＝おまかせ）、`locked`・`lock_frozen`（鍵で埋めた項目。外すと自動に戻す）。手で決めた項目も、開始時刻が同じ間は読み直しても残す |
+| `LLBSection` | `kind`（見出しまたは推定の種別。画面では変えない）、`user_kind`（前の版で手で変えた種別の印。読み直すと見出し・推定に戻し、外す）、`label`、`start`、`end`、`theme`・`background`・`transition`（AUTO＝おまかせ）、`locked`・`lock_frozen`（鍵で埋めた項目。外すと自動に戻す）。手で決めた項目も、開始時刻が同じ間は読み直しても残す |
 | `LLBLine` | `index`、`text`（表示用）、`start`、`end`（決定した時刻）、`source`（auto/tap/lrc/manual）、`tap_time`（遅延を補正したタップの時刻。負の値＝未タップ）、`use_manual`・`manual_start`（手動の時刻）、`char_times`（文字単位の時刻。JSON 文字列）、`section_index`、`is_3d`、`depth`、`bevel`、`layout`、`enter`、`hold`、`exit`、`distance_layer`、`persist`（次の行で消える/セクション末まで残る）、`guide`（視線の誘導：自動/あり/なし）、`particle`、`background`、`transition`、`locked`・`lock_frozen`、`seed_offset`（この行だけ選び直した回数）。`gimmick` は段階 6 |
 | `LLBExportSettings` | `project_path`、`folder_name`、`use_tmp`、`use_mobile`、`use_udon_sync`、`material_mode`（VRCHAT/STANDARD）、`allow_other_2022_3` |
 
@@ -896,7 +896,7 @@ def bake_palette_material(objects, *, max_colors=64) -> PaletteResult
 | 4. 同期 | タップで同期、遅延の測定、マーカーから取り込み、文字単位の配分 |
 | 5. おまかせ | おまかせで作る、前の案/次の案（n / m）、雰囲気・スタイル、ここだけ変える（スタイル／アクセントの色／雰囲気／文字の構成／パーティクル／背景） |
 | 6. 試し見 | 見出しの無いパネル。試し見を開く・確定・元に戻す・消音・閉じる、「生成するまでプレビューは変わらない」の注意 |
-| 6a. セクション | セクションの UIList と詳細（種別・テーマ・背景・トランジション・鍵。実際に使われる背景・パーティクルと出どころ） |
+| 6a. セクション | セクションの UIList と詳細（種別は表示だけ：「種別：サビ（見出しから／推定／手で指定）」。セクションの歌詞（`panels.draw_section_lyrics`。最初の 1 行と「…（ほか N 行）」、残りは `layout.panel` の折りたたみ。開閉は Blender が領域ごとに覚える）、テーマ・背景・トランジション・鍵。実際に使われる背景・パーティクルと出どころ） |
 | 6b. 行 | 行の一覧の各行に所属のセクション（`lists.section_tag`。セクションの最初の行だけ濃く）、開始（分:秒。狭いサイドバーでも読めるよう、出どころの印は一覧から外し、一覧の下の表示に出す）、歌詞、行でパーティクルを足す・背景を変える印。この行からタップ・行に鍵をかける・選び直す・演出をコピー・演出をペースト（一覧の上。コピー中の行の表示）、「すべての行を 3D 文字に」（`proj.all_3d`。値を持たない get / set のプロパティ。get は鍵の無い行がすべて 3D か、set は鍵の無い行の `is_3d` を書き換える）、行の UIList（各行に「詳細」ボタン）、選んだ行の時刻の情報（開始・終了・出どころ・セクション・タップ・手入力の開始） |
 | 行の詳細（別の領域） | 行番号・歌詞・開始と終了（出どころ）・所属のセクション（`panels.draw_line_timing`。「歌詞の行」パネルと同じ表示）。仕様書 §6.2 の 3D 文字から後ろ（3D 文字・厚み・部品の組・レイアウト・登場・保持・退場・距離の層・カット・消え方・視線の誘導・ステージの物体・この行で足すパーティクル・この行から背景を変える・トランジション）。上に行番号と歌詞、「閉じる」 |
 | 7. 演出 | 強さのスライダー（動き・パーティクル・装飾・密度・背景の切り替え・視線の誘導）、コマ打ち、フラッシュ、独自のアクセント、パノラマ画像、部品の ON/OFF（種類を選んで UIList。まとめて入/切） |
