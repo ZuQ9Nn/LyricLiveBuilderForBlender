@@ -23,7 +23,10 @@ namespace LyricLive.Editor
             AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType(fullName)).FirstOrDefault(t => t != null);
 
         /// <returns>"attached", "pending" (the script was just added: build again after it compiles) or "unavailable"</returns>
-        public static string Attach(GameObject root, PlayableDirector director, Transform[] pivots, LLBGuide[] guides)
+        /// <param name="stageNodes">every node a clip shows or hides, with <paramref name="stageDefaults"/>: put back
+        /// when the show stops or starts again</param>
+        public static string Attach(GameObject root, PlayableDirector director, Transform[] pivots, LLBGuide[] guides,
+                                    GameObject[] stageNodes, bool[] stageDefaults)
         {
             if (Find("UdonSharp.UdonSharpBehaviour") == null)
             {
@@ -46,6 +49,8 @@ namespace LyricLive.Editor
                 ("guideOn", guides.Select(g => g.tOn).ToArray()), ("guideHit", guides.Select(g => g.tHit).ToArray()),
                 ("guideTarget", guides.Select(g => new Vector3(g.target[0], g.target[1], g.target[2])).ToArray()),
                 ("guideMotes", guides.Select(g => g.motes).ToArray()),
+                ("stageNodes", stageNodes), ("stageDefaults", stageDefaults),
+                ("stageParticles", root.GetComponentsInChildren<ParticleSystem>(true)),
             };
             if (fields.Any(f => script.GetField(f.name) == null)) return "pending";   // still the previous LLBSync
             var progType = Find("UdonSharp.UdonSharpProgramAsset");

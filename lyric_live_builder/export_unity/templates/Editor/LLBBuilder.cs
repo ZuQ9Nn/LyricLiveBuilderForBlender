@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -203,7 +204,12 @@ namespace LyricLive.Editor
                 {
                     var guides = m.guides ?? new LLBGuide[0];
                     var pivots = Array.ConvertAll(guides, g => objs[g.node].transform);
-                    udon = LLBUdonSyncFactory.Attach(root, director, pivots, guides);
+                    // what the clips switch on and off, to put back when the show stops or starts again
+                    var switched = new HashSet<int>(m.clips.SelectMany(c => c.curves)
+                                                    .Where(cv => cv.attr == "m_IsActive").Select(cv => cv.node));
+                    var reset = m.nodes.Where(n => switched.Contains(n.id) && n.id < objs.Length && objs[n.id] != null).ToArray();
+                    udon = LLBUdonSyncFactory.Attach(root, director, pivots, guides,
+                                                     reset.Select(n => objs[n.id]).ToArray(), reset.Select(n => n.active).ToArray());
                     if (udon == "pending")
                     {
                         File.WriteAllText(Join(song, UdonMarker), name);

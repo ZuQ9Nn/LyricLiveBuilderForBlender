@@ -5,7 +5,7 @@ import unittest
 
 import numpy as np
 
-from lyric_live_builder.core import bake, meshes, model, planner, xform
+from lyric_live_builder.core import bake, meshes, model, planner, world, xform
 from lyric_live_builder.core.parts import particles as pts
 from lyric_live_builder.export_unity import convert, manifest, meshbin, particles_unity
 from tests.core.test_text_parts import inputs, metrics, sections_for
@@ -181,13 +181,19 @@ class TestManifest(unittest.TestCase):
         kept = [lp for lp in plan.lines if lp.persist and lp.section_index == last]
         self.assertTrue(kept)
         self.assertTrue(all(lp.end <= plan.duration - planner.END_GAP + 1e-6 for lp in plan.lines))
-        clip = next(c for c in doc["clips"] if c["section"] == last and c["category"] == "text")
-        switches = [cv for cv in clip["curves"] if cv["attr"] == "m_IsActive"]
-        self.assertTrue(switches)
+        self.assertTrue(plan.emitters and all(world.gone(e) <= plan.duration - planner.END_GAP + 1e-6
+                                              for e in plan.emitters))       # particles too (Unity holds the end)
         length = plan.sections[last][1] - plan.sections[last][0]
-        for cv in switches:
-            self.assertAlmostEqual(cv["times"][-1], length, 3)
-            self.assertEqual(cv["values"][-1], 0.0)
+        for cat in ("text", "particles", "gimmicks"):
+            clip = next(c for c in doc["clips"] if c["section"] == last and c["category"] == cat)
+            switches = [cv for cv in clip["curves"] if cv["attr"] == "m_IsActive"]
+            self.assertTrue(switches or cat == "gimmicks", cat)
+            for cv in switches:
+                self.assertAlmostEqual(cv["times"][-1], length, 3)
+                self.assertEqual(cv["values"][-1], 0.0, (cat, cv["node"]))
+            for cv in clip["curves"]:
+                if cv["attr"].startswith("EmissionModule.rateOverTime"):
+                    self.assertEqual(cv["values"][-1], 0.0, cv["node"])
 
     def test_clips_start_where_the_track_is(self):
         """The first key of every clip curve equals the baked track at the section start (self-contained clips)."""

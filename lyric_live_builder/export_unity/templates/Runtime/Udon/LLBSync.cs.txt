@@ -9,6 +9,9 @@
 // hidden. Otherwise the motes wait where the viewer looks, then flow from there to the line, taking
 // longer the farther it is. Timeline keeps their visibility, colour and size; LateUpdate runs after it
 // and replaces their baked positions. Visual only, nothing is synced.
+// Reset: a stopped director leaves the stage as it was, and a section's clip writes only what appears in it,
+// so on stop and before playing, every node a clip switches goes back to its first state and the particles
+// are cleared (no lyrics or particles left from where it stopped).
 using UdonSharp;
 using UnityEngine;
 using UnityEngine.Playables;
@@ -26,6 +29,9 @@ public class LLBSync : UdonSharpBehaviour
     public float[] guideHit;
     public Vector3[] guideTarget;                  // stage space
     public int[] guideMotes;
+    public GameObject[] stageNodes;                // every node a clip shows or hides
+    public bool[] stageDefaults;                   // ...and its state before the show
+    public ParticleSystem[] stageParticles;
 
     [UdonSynced] private double startServerTime;
     [UdonSynced] private bool playing;
@@ -49,8 +55,10 @@ public class LLBSync : UdonSharpBehaviour
     public override void Interact()
     {
         if (!Networking.IsOwner(gameObject)) Networking.SetOwner(Networking.LocalPlayer, gameObject);
-        playing = !playing;
-        startServerTime = Networking.GetServerTimeInSeconds();
+        double now = Networking.GetServerTimeInSeconds();
+        bool ended = playing && director != null && now - startServerTime > director.duration;
+        playing = ended || !playing;                // after the song has ended: start again
+        startServerTime = now;
         RequestSerialization();
         Apply();
     }
@@ -67,8 +75,10 @@ public class LLBSync : UdonSharpBehaviour
         if (!playing)
         {
             director.Stop();
+            ResetStage();
             return;
         }
+        ResetStage();
         double t = Networking.GetServerTimeInSeconds() - startServerTime;
         if (t < 0) t = 0;
         if (t > director.duration) return;
@@ -165,6 +175,16 @@ public class LLBSync : UdonSharpBehaviour
                 pivot.gameObject.SetActive(true);
             }
         }
+    }
+
+    private void ResetStage()
+    {
+        if (stageNodes != null)
+            for (int k = 0; k < stageNodes.Length; k++)
+                if (stageNodes[k] != null) stageNodes[k].SetActive(stageDefaults[k]);
+        if (stageParticles != null)
+            for (int k = 0; k < stageParticles.Length; k++)
+                if (stageParticles[k] != null) stageParticles[k].Clear();
     }
 
     private void ResetGuides()

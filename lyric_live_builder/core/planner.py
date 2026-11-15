@@ -230,7 +230,8 @@ def plan(lines, sections, duration, seed, bpm=0.0, settings=None):
         if ln.cuts > 1:
             line.cuts = _compose_cuts(ln, end, history[:-1], settings, text_seed, style, world_) or None
         out.append(line)
-    emitters = world.plan_particles(section_plans, out, seed, settings)
+    emitters = [world.fit_to_song(e, duration - END_GAP)                 # gone before the song ends (spec §6.2)
+                for e in world.plan_particles(section_plans, out, seed, settings)]
     events = world.plan_events(section_plans, out, world_, settings)
     fx = {key: settings.fx_value(key) for key in model.FX_DEFAULTS}
     gim = gimmicks.plan(out, lines, duration, world.stage_seed(settings, seed, world.STAGE_GIMMICK), fx, world.STAGE_GIMMICK,

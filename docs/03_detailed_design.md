@@ -749,7 +749,7 @@ Unity.exe -batchmode -nographics -quit -projectPath "<Project>"
 | Gimmicks | AnimationTrack | `Gimmicks` の Animator | セクションごと |
 
 - クリップ名：`<2桁の番号>_<セクション名>_<分類>`（例：`03_Chorus_Text`）。AnimationClip のアセット名も同じにします（`Generated/Clips/`）。
-- PlayableDirector：`playOnAwake = true`（Udon 同期を付けた場合は `false`。開始ボタンで再生する）、`extrapolationMode = Hold`（最後の状態を保つ。クリップの後の外挿は API で設定できないため、ディレクターで保つ）、`timeUpdateMode = DSPClock`（曲の時計に合わせる）。
+- PlayableDirector：`playOnAwake = true`（Udon 同期を付けた場合は `false`。開始ボタンで再生する）、`extrapolationMode = Hold`（最後の状態を保つ。クリップの後の外挿は API で設定できないため、ディレクターで保つ）、`timeUpdateMode = DSPClock`（曲の時計に合わせる）。最後の状態が保たれるので、文字もパーティクルの発生源も、曲の終わりより前に消し終えます（プランナーの `END_GAP`。発生源は、消え終わる時刻〔区間の終わり＋消える時間、線で描くものは消す時間〕が曲の終わりの `END_GAP` 前になるよう、区間の終わりを早めます。`world.fit_to_song`）。
 - マーカーのトラック（セクション名・行の目印）は、段階 4 では作りません（改善メモ #16）。
 - 曲は `CompressedInMemory`・Vorbis（品質 0.7）で取り込みます（4 分の曲を読み込み時に展開すると、Quest で数十 MB になるため）。
 
@@ -763,7 +763,8 @@ Unity.exe -batchmode -nographics -quit -projectPath "<Project>"
 - U# の部品の付け方（試作 S0-11 で確立）：`UdonSharpProgramAsset` を `ScriptableObject.CreateInstance` で作って `sourceCsScript` を設定・保存 → `UdonSharpProgramAsset.CompileAllCsPrograms(true, false)` → `UdonSharpEditor.UdonSharpUndo.AddComponent(GameObject, Type)` → フィールドを設定して `UdonSharpEditorUtility.CopyProxyToUdon` で反映。U# の版の差を吸収し、U# の無いプロジェクトでもコンパイルできるように、これらはリフレクションで呼びます。
   - 型は `MonoScript.GetClass()` で取ります。U# は同じクラスを自分のアセンブリ（`UdonSharpRoslynCompileAssembly<n>`）にもコンパイルするため、名前で型を探すと別の型が見つかります。
   - プログラムのコンパイルが終わっていない場合（`CopyProxyToUdon` が「outdated script version」で失敗する）は、手順 1 と同じく保留にして、再読み込みの後に組み立て直します。
-- 開始ボタン：ルートの子の立方体 `LLB_StartButton`（観客の後ろ、`(0, 1, -1.2)`、0.2 m）。押すと（`Interact`）押した人がオーナーになり、再生と停止を切り替えます。
+- 開始ボタン：ルートの子の立方体 `LLB_StartButton`（観客の後ろ、`(0, 1, -1.2)`、0.2 m）。押すと（`Interact`）押した人がオーナーになり、再生と停止を切り替えます。曲が終わった後に押すと、停止ではなく最初から再生します。
+- ステージを初めの状態に戻す：`director.Stop()` は、オブジェクトの表示を最後の状態のまま残します。また、各セクションのクリップは、そのセクションに出るノードしか書きません。そのため、止めた後に始め直すと、止めたときの歌詞やパーティクルが残っていました。組み立てのときに、どれかのクリップで表示を切り替える（`m_IsActive`）すべてのノードと、その初期の表示（manifest の `active`）、ステージのすべての `ParticleSystem` を部品の配列（`stageNodes`・`stageDefaults`・`stageParticles`）に入れます。止めたとき・再生を始める前（後から入室した人の受信時も）に、ノードを初期の表示に戻し、パーティクルを `Clear()` します。
 - 同期の内容：オーナーが同期変数 `startServerTime`（`Networking.GetServerTimeInSeconds()`）と `playing` を送る → 各クライアントは `director.time = now - startServerTime` にして `Play()` します。後から入室した人も、受信時に同じ計算で再生位置を合わせます。Udon からは再生速度を変えられないので、ずれが 0.2 秒を超えたときだけ `time` を設定し直します。
 - **視線に合わせた誘導**：誘導 1 回分の粒と光の玉は、親（`guide<番号>`）の子にします（§8.4）。manifest の `guides`（親のノード・`tOn`・`tHit`・行の位置 `target`・粒の数 `motes`。Unity の座標）を、部品の配列に入れます。
   - 各クライアントは、`tOn` の時刻に頭の位置と向き（`GetTrackingData(Head)`）を読みます。ステージの目の位置ではなく、観客の実際の頭の位置を基準にします。行との角度が 30° 未満なら、その誘導の親を非表示にします（もう見ている）。行の設定が「あり」でも同じです。

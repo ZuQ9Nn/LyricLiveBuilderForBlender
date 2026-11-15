@@ -8,6 +8,7 @@ import numpy as np
 
 from . import color, model, moods, styles, synonyms, themes, xform
 from .parts import backgrounds as bgs
+from .parts import lines as line_parts
 from .parts import particles as pts
 from .rng import Rng, h
 
@@ -189,6 +190,22 @@ def _bursts(rng, preset, start, end):
         out.append({"t": round(t, 3), "origin": [float(x) for x in pts.EYE + r * xform.direction(az, el)]})
         t += rng.range(*b["interval"])
     return out
+
+
+def gone(spec):
+    """When an emitter has gone from the stage: its end, then its fade (or the erase of one drawn in lines)."""
+    p = spec["preset"]
+    return spec["end"] + (p["lines"]["erase"] if line_parts.is_lines(p) else spec["fade_out"])
+
+
+def fit_to_song(spec, last):
+    """The emitter gone by `last` (the song's end less a gap: Unity holds the last frame): its end comes earlier,
+    and its bursts after that are dropped."""
+    over = gone(spec) - last
+    if over > 0:
+        spec["end"] = max(spec["start"] + 0.1, spec["end"] - over)
+        spec["bursts"] = [b for b in spec["bursts"] if b["t"] < spec["end"]]
+    return spec
 
 
 def emitter(key, start, end, seed, palette, settings, bursts=None, intensity=None):
