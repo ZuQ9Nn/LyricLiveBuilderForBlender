@@ -98,7 +98,8 @@ MIT, see [LICENSE](LICENSE). Parts of the logic are ported from JIZURA (MIT, Cop
 ## Development
 
 `tests/run_core.sh` runs the unit tests with Blender's Python. `tests/blender/` holds the integration tests.
-`docs/` has the specification, the design and the work procedure (in Japanese).
+`docs/` has the specification, the design and the work procedure (in Japanese). `docs/06_customization.md` explains how
+to change the text size and replace stage objects, particles and backgrounds (in the add-on, in its code or in Unity).
 
 ---
 

@@ -396,7 +396,7 @@ class FrontLayout(LayoutPart):
 
 - 観客点＝原点、目線＝(0, 0, `eye_height`)、正面＝+Y。
 - 距離の層の既定：近景 1.2 m、中景 3.5 m、遠景 8 m（行の中心までの距離）。
-- 文字の大きさは**視角**で決めます。`size = 2·d·tan(θ/2)`（`model.text_em`）。θ は `core/model.py` の定数で、開発者だけが変えます（画面には出さない。手順は非公開の `internal-docs/text_size.md`）。
+- 文字の大きさは**視角**で決めます。`size = 2·d·tan(θ/2)`（`model.text_em`）。θ は `core/model.py` の定数で、画面には出しません。変え方と注意は [06_customization.md](06_customization.md) §3.2 にあります。
   - `TEXT_ANGLE`：距離の層ごとの 1 文字（1 em）の視角。既定は近景・中景・遠景とも 12°。中景は、ParticleLive の歌詞の見え方（中景で約 12°）に合わせた（リリース前の確認で、初版の 3.5° では VR で小さく読みにくかった。段階 2 では 2.5° から 3.5° に上げていた）。
   - `EMPH_FACTOR`：強調の行の倍率（5.5 / 3.5）。`TEXT_SCALE`：全体の倍率（既定 1.0）。
   - 行の幅が水平の視野 `MAX_LINE_ANGLE`（70°）を超える場合は、文字を縮めます（`common.fit_em`）。長い行ほど文字は小さくなります。
