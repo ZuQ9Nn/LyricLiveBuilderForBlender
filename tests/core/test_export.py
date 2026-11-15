@@ -166,6 +166,29 @@ class TestManifest(unittest.TestCase):
                 self.assertEqual(len(cv["values"]), len(cv["times"]) * len(cv["fields"]))
                 self.assertTrue(all(0 <= t <= 16.0 + 1e-6 for t in cv["times"]))
 
+    def test_text_is_gone_when_the_song_ends(self):
+        """Lines kept to the end of the last section leave before the song ends, and the last clip switches them
+        off (it has no next clip to do it)."""
+        lines = inputs(12, sec_len=24.0, persist="section")           # the last section holds the last 6 lines
+        duration = lines[-1].end + 2.0
+        secs = [model.SectionInput(0.0, 24.0, "verse"), model.SectionInput(24.0, duration, "chorus")]
+        plan = planner.plan(lines, secs, duration, 4, bpm=120, settings=model.Settings(mood="pop"))
+        baked = bake.bake(plan, metrics)
+        sections = [{"index": i, "label": f"S{i}", "kind": "verse", "start": a, "end": b}
+                    for i, (a, b) in enumerate(plan.sections)]
+        doc = manifest.build(baked, plan, sections, [], {"title": "t"}, {"materialMode": "VRCHAT"}, [])
+        last = len(plan.sections) - 1
+        kept = [lp for lp in plan.lines if lp.persist and lp.section_index == last]
+        self.assertTrue(kept)
+        self.assertTrue(all(lp.end <= plan.duration - planner.END_GAP + 1e-6 for lp in plan.lines))
+        clip = next(c for c in doc["clips"] if c["section"] == last and c["category"] == "text")
+        switches = [cv for cv in clip["curves"] if cv["attr"] == "m_IsActive"]
+        self.assertTrue(switches)
+        length = plan.sections[last][1] - plan.sections[last][0]
+        for cv in switches:
+            self.assertAlmostEqual(cv["times"][-1], length, 3)
+            self.assertEqual(cv["values"][-1], 0.0)
+
     def test_clips_start_where_the_track_is(self):
         """The first key of every clip curve equals the baked track at the section start (self-contained clips)."""
         plan, baked, doc = self.build(persist="section")

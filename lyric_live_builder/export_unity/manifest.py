@@ -186,15 +186,15 @@ def _value_at(times, values, interp, t):
 
 
 def _window(times, values, interp, s0, s1):
-    """Keys of a track inside [s0, s1], with exact values at both ends, times from 0."""
+    """Keys of a track inside [s0, s1], with exact values at both ends, times from 0. A stepped track gets its end
+    value too: the last section has no next clip to switch a node off at the song's end."""
     times = np.asarray(times, dtype=np.float64)
     values = np.asarray(values, dtype=np.float64).reshape(len(times), -1)
     inside = (times > s0 + 1e-6) & (times < s1 - 1e-6)
     t = np.concatenate([[s0], times[inside]])
     v = np.concatenate([[_value_at(times, values, interp, s0)], values[inside]])
-    if interp != "constant":
-        t = np.append(t, s1)
-        v = np.vstack([v, _value_at(times, values, interp, s1)])
+    t = np.append(t, s1)
+    v = np.vstack([v, _value_at(times, values, interp, s1)])
     return np.round(t - s0, 4), v
 
 

@@ -16,6 +16,7 @@ KEEP_CHANCE = 0.22
 # a kept line first appears in front, then glides to its slot as the next line comes in
 GLIDE_LEAD = 0.9                     # seconds before the next line starts
 GLIDE_DUR = 1.0
+END_GAP = 0.25                       # seconds: every line has left before the song ends (Unity holds the last frame)
 # kept lines leave together at the section end; these exits stay in place (no falling into the slot below)
 KEEP_EXITS = ("fade", "dust", "fly_away", "shrink", "blur", "blur_stagger", "wipe", "crumble", "lamp_off")
 MIN_CUT = 0.22                       # seconds between the cuts of a line (JIZURA)
@@ -219,6 +220,7 @@ def plan(lines, sections, duration, seed, bpm=0.0, settings=None):
         # visible until the next line (or the section end when kept), JIZURA's visEnd rule
         end = sec_end if keep else min(nxt, ln.start + max(3.6, n * 0.5 + 1.2))
         end = max(end, ln.start + 0.5)
+        end = max(min(end, duration - END_GAP), ln.start + 0.1)     # gone before the song ends (spec §6.2)
         glide = None
         if keep and anchor != (0.0, 0.0):
             gs = max(ln.start, nxt - GLIDE_LEAD)
