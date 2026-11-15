@@ -136,6 +136,11 @@ def _pick_line(self, context):
     details.picked()
 
 
+def _thumbs():
+    from .ui import thumbnails
+    return thumbnails
+
+
 def _get_all_3d(self):
     """On while every unlocked line is 3D (the box shows the lines as they are, not a stored value)."""
     free = [ln for ln in self.lines if not ln.locked]
@@ -301,6 +306,21 @@ class LLBProject(bpy.types.PropertyGroup):
                          description="Turn 3D text on or off for every line at once (locked lines stay as they are)")
     part_group: EnumProperty(name="Part Group", items=PART_GROUP_ITEMS,
                              description="Show only the layouts and motions of one group in the line details")
+    # the thumbnails of the picked line's parts (ui/thumbnails.py): an enum over the line's field
+    pick_layout: EnumProperty(name="Layout", items=lambda s, c: _thumbs().enum_items("layout", s),
+                              get=lambda s: _thumbs().enum_get("layout", s),
+                              set=lambda s, v: _thumbs().enum_set("layout", s, v))
+    pick_enter: EnumProperty(name="Entrance", items=lambda s, c: _thumbs().enum_items("enter", s),
+                             get=lambda s: _thumbs().enum_get("enter", s),
+                             set=lambda s, v: _thumbs().enum_set("enter", s, v))
+    pick_hold: EnumProperty(name="Hold", items=lambda s, c: _thumbs().enum_items("hold", s),
+                            get=lambda s: _thumbs().enum_get("hold", s),
+                            set=lambda s, v: _thumbs().enum_set("hold", s, v))
+    pick_exit: EnumProperty(name="Exit Motion", items=lambda s, c: _thumbs().enum_items("exit", s),
+                            get=lambda s: _thumbs().enum_get("exit", s),
+                            set=lambda s, v: _thumbs().enum_set("exit", s, v))
+    gallery_filter: StringProperty(name="Filter Parts", options={"TEXTEDIT_UPDATE"},
+                                   description="Show only the parts whose name contains this")
     ui_page: EnumProperty(name="LyricLive Page", items=[("setup", "Setup", "Lyrics, fonts, song and sync"),
                                               ("compose", "Compose", "Make It for Me, sections and lines"),
                                               ("output", "Effects & Output", "Stage effects, preview and Unity export")])

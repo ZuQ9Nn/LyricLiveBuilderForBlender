@@ -9,7 +9,7 @@ from ..core import registry, themes
 from ..core.parts import backgrounds as bgs
 from ..core.parts import particles as pts
 from ..props import FONT_ROLES, SECTION_KIND_ITEMS
-from . import details, operators_input, planning, project, tap_sync, trial
+from . import details, operators_input, planning, project, tap_sync, thumbnails, trial
 from .lists import fmt_time
 
 ROLE_LABELS = {"display": "Heading Font", "serif": "Serif Font", "body": "Body Font", "mono": "Mono Font"}
@@ -32,12 +32,33 @@ def labels(layout, msg, icon="NONE"):
         layout.label(text=line, icon=icon if i == 0 else "BLANK1", translate=False)
 
 
-def prop_above(layout, data, name):
+def prop_above(layout, data, name, chosen=None):
     """A property with its name on its own row (long names would be cut in the narrow sidebar)."""
     col = layout.column(align=True)
     col.label(text=data.bl_rna.properties[name].name)
-    col.prop(data, name, text="")
+    auto_prop(col, data, name, chosen, text="")
     return col
+
+
+def auto_text(data, name, chosen):
+    """"Planner's Choice (Slanted Wall)" for an enum left to the planner (spec §6.2), or None."""
+    items = data.bl_rna.properties[name].enum_items
+    if getattr(data, name) != "AUTO" or not chosen or chosen == "AUTO" or chosen not in items:
+        return None
+    return iface_("{} ({})").format(iface_(items["AUTO"].name), iface_(items[chosen].name))
+
+
+def auto_prop(layout, data, name, chosen, text=None):
+    """An enum field; left to the planner, it says what the planner picks now. The items stay as they are."""
+    shown = auto_text(data, name, chosen)
+    if shown is None:
+        layout.prop(data, name, **({} if text is None else {"text": text}))
+    elif text == "":
+        layout.prop_menu_enum(data, name, text=shown, translate=False)
+    else:
+        split = layout.split(factor=0.3)
+        split.label(text=iface_(data.bl_rna.properties[name].name) + ":", translate=False)
+        split.prop_menu_enum(data, name, text=shown, translate=False)
 
 
 class _Panel:
@@ -245,37 +266,6 @@ class LLB_PT_lines(_Panel, bpy.types.Panel):
         draw_lines(self.layout.column(), context.scene.llb)
 
 
-def part_field(layout, proj, ln, field, above=False):
-    """A layout / motion field; with a group picked, a menu of that group's parts only (design §13)."""
-    if proj.part_group == "all":
-        (prop_above(layout, ln, field) if above else layout.prop(ln, field))
-        return
-    prop = ln.bl_rna.properties[field]
-    current = iface_(prop.enum_items[getattr(ln, field)].name)
-    row = layout.column(align=True) if above else layout.row()
-    row.label(text=iface_(prop.name) + ("" if above else ":"), translate=False)
-    row.menu(f"LLB_MT_pick_{field}", text=current, translate=False)
-
-
-class _PickMenu:
-    bl_label = "Parts of the Group"
-    field = ""
-
-    def draw(self, context):
-        proj = context.scene.llb
-        col = self.layout.column()
-        op = col.operator("llb.pick_part", text=iface_("Planner's Choice"), translate=False)
-        op.field, op.key = self.field, "AUTO"
-        for part in registry.parts(self.field):
-            if part.group == proj.part_group:
-                op = col.operator("llb.pick_part", text=iface_(part.name), translate=False)
-                op.field, op.key = self.field, part.key
-
-
-PICK_MENUS = tuple(type(f"LLB_MT_pick_{f}", (_PickMenu, bpy.types.Menu), {"bl_idname": f"LLB_MT_pick_{f}", "field": f})
-                   for f in ("layout", "enter", "hold", "exit"))
-
-
 def draw_in_use(layout, proj, index):
     """What the section really uses and where it comes from (spec §5: theme and background)."""
     try:
@@ -345,11 +335,13 @@ def draw_sections(col, proj):
         draw_section_lyrics(col, proj, proj.section_active)
         box = col.box()
         box.enabled = not sec.locked
-        box.prop(sec, "theme")
+        got = _chosen(proj)[1]
+        got = got[proj.section_active] if proj.section_active < len(got) else {}
+        auto_prop(box, sec, "theme", got.get("theme"))
         if sec.background != "AUTO":
             labels(box, "The theme only picks\nthe particles here", "INFO")
-        box.prop(sec, "background")
-        prop_above(box, sec, "transition")
+        auto_prop(box, sec, "background", got.get("background"))
+        prop_above(box, sec, "transition", got.get("transition"))
         draw_in_use(col, proj, proj.section_active)
         col.operator("llb.section_lock", text="Unlock Section" if sec.locked else "Lock Section",
                      icon="UNLOCKED" if sec.locked else "LOCKED", depress=sec.locked)
@@ -401,6 +393,14 @@ def draw_line_timing(layout, proj, ln):
             f"{ln.section_index + 1}. {sec.label or iface_(KIND_LABELS[sec.kind])}"), translate=False)
 
 
+def _chosen(proj):
+    try:
+        return planning.chosen(proj)
+    except Exception as e:                                # the panel must always draw
+        print("[LLB] planner's choices:", e)
+        return {}, []
+
+
 def draw_line_details(col, proj, ln):
     """Layout and below (spec §6.2): drawn in the line details area beside the 3D view."""
     box = col
@@ -410,28 +410,28 @@ def draw_line_details(col, proj, ln):
         row.prop(ln, "depth")
         row.prop(ln, "bevel", text="")
     box.prop(proj, "part_group", text="")
-    part_field(box, proj, ln, "layout", above=True)
-    if not ln.is_3d and ln.layout != "AUTO" and getattr(registry.get("layout", ln.layout), "only_3d", False):
-        labels(box, "This layout is for 3D lines.\nIt is chosen automatically", "ERROR")
-    for field in ("enter", "hold", "exit"):
-        part_field(box, proj, ln, field)
-    box.prop(ln, "distance_layer")
-    box.prop(ln, "cuts")
-    sub = box.row()
-    sub.active = ln.cuts in ("AUTO", "1")           # a split line never stays on stage
-    sub.prop(ln, "persist")
+    box.prop(proj, "gallery_filter", text="", icon="VIEWZOOM", placeholder=iface_("Filter the Thumbnails by Name"))
+    for field in ("layout", "enter", "hold", "exit"):     # each a thumbnail dropdown (spec §6.2)
+        thumbnails.draw(box, proj, ln, field)
+        if field == "layout" and not ln.is_3d and ln.layout != "AUTO" \
+                and getattr(registry.get("layout", ln.layout), "only_3d", False):
+            labels(box, "This layout is for 3D lines.\nIt is chosen automatically", "ERROR")
+    got = _chosen(proj)[0].get(proj.line_active, {})
+    auto_prop(box, ln, "distance_layer", got.get("distance_layer"))
+    auto_prop(box, ln, "cuts", got.get("cuts"))
+    prop_above(box, ln, "persist", got.get("persist")).active = ln.cuts in ("AUTO", "1")   # a split line leaves
     prop_above(box, ln, "guide")
     box.separator()
-    prop_above(box, ln, "gimmick")
+    prop_above(box, ln, "gimmick", got.get("gimmick"))
     sub = box.column()
     sub.active = ln.gimmick != "none"
-    sub.prop(ln, "gimmick_show")
+    auto_prop(sub, ln, "gimmick_show", got.get("gimmick_show"))
     if ln.gimmick == "emblem":
         sub.prop(ln, "gimmick_word")
     box.separator()
     prop_above(box, ln, "particle")
     prop_above(box, ln, "background")
-    prop_above(box, ln, "transition").active = ln.background != "AUTO"
+    prop_above(box, ln, "transition", got.get("transition")).active = ln.background != "AUTO"
     if ln.background == "panorama" and not proj.panorama_path:
         labels(box, "Set the panorama image\nin the Effects panel", "ERROR")
     draw_line_in_use(col, proj, proj.line_active)
@@ -577,5 +577,5 @@ class LLB_PT_export(_Panel, bpy.types.Panel):
                 box.label(text=st.log_path, translate=False)
 
 
-CLASSES = PICK_MENUS + (LLB_PT_pages, LLB_PT_lyrics, LLB_PT_lyrics_notation, LLB_PT_fonts, LLB_PT_song, LLB_PT_sync, LLB_PT_omakase,
+CLASSES = (LLB_PT_pages, LLB_PT_lyrics, LLB_PT_lyrics_notation, LLB_PT_fonts, LLB_PT_song, LLB_PT_sync, LLB_PT_omakase,
            LLB_PT_trial, LLB_PT_sections, LLB_PT_lines, LLB_PT_effects, LLB_PT_preview, LLB_PT_export)

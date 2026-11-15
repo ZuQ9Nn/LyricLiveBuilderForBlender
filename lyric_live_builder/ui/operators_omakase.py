@@ -197,23 +197,6 @@ class LLB_OT_view_standard(bpy.types.Operator):
         return {"FINISHED"}
 
 
-class LLB_OT_pick_part(bpy.types.Operator):
-    bl_idname = "llb.pick_part"
-    bl_label = "Pick a Part"
-    bl_description = "Use this layout or motion for the line"
-    bl_options = {"UNDO", "INTERNAL"}
-
-    field: bpy.props.StringProperty()
-    key: bpy.props.StringProperty()
-
-    def execute(self, context):
-        proj = context.scene.llb
-        if not 0 <= proj.line_active < len(proj.lines):
-            return {"CANCELLED"}
-        setattr(proj.lines[proj.line_active], self.field, self.key)
-        return {"FINISHED"}
-
-
-CLASSES = (LLB_OT_pick_part, LLB_OT_omakase, LLB_OT_history_step, LLB_OT_reroll, LLB_OT_line_lock, LLB_OT_line_reroll,
+CLASSES = (LLB_OT_omakase, LLB_OT_history_step, LLB_OT_reroll, LLB_OT_line_lock, LLB_OT_line_reroll,
            LLB_OT_line_copy, LLB_OT_line_paste,
            LLB_OT_section_lock, LLB_OT_parts_set, LLB_OT_view_standard)

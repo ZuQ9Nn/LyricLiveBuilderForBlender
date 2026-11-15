@@ -14,6 +14,7 @@ import traceback
 
 import bpy
 import numpy as np
+import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.normpath(os.path.join(HERE, "..", ".."))
@@ -21,7 +22,7 @@ sys.path[:0] = [ROOT, HERE]
 
 import lyric_live_builder as llb                                     # noqa: E402
 from common import check, failures, font_arg, setup, song, text_objects, translation_checks  # noqa: E402
-from lyric_live_builder.core import bake, color, world               # noqa: E402
+from lyric_live_builder.core import bake, color, registry, world     # noqa: E402
 from lyric_live_builder.core.parts import backgrounds as bgs          # noqa: E402
 from lyric_live_builder.core.parts import lines, particles as pts     # noqa: E402
 from lyric_live_builder.preview import particles as preview_particles  # noqa: E402
@@ -235,6 +236,67 @@ def main():
     bpy.ops.llb.line_lock()
     check(not bpy.ops.llb.line_paste.poll(), "no paste on a locked line")
     bpy.ops.llb.line_lock()
+
+    # thumbnail dropdowns of the parts in the line details: frames, filter, pick
+    from lyric_live_builder.ui import thumbnails
+    proj.line_active = 0
+    thumbnails.icon("enter", "fade")                   # loads the kind (icon ids are 0 without a GUI)
+    pv, tile = thumbnails._previews.get("enter:fade"), thumbnails.index()["tile"]
+    seen = []
+    for k in (0, 7):                                   # the ticks put each frame in the one preview of the part
+        thumbnails._paint("enter", k)
+        seen.append(np.array(pv.image_pixels_float[:]))
+    check(pv is not None and tuple(pv.image_size) == (tile, tile) and len(seen[1]) == tile * tile * 4
+          and seen[1].max() > 0.5 and np.abs(seen[1] - seen[0]).mean() > 0.01,
+          "a thumbnail of an entrance moves through its frames")
+    shown = thumbnails.parts("enter", "all", "FADE")
+    check(shown and all("fade" in (p.name + p.key).casefold() for p in shown)
+          and len(thumbnails.parts("enter", "basic", "")) < len(thumbnails.parts("enter", "all", "")),
+          "the gallery filters by name and by group")
+    step, rest = thumbnails.STEP, thumbnails.REST
+    shown = [thumbnails.frame("enter", k * step + 1e-6) for k in range(8 + rest)]
+    exits = [thumbnails.frame("exit", k * step + 1e-6) for k in range(rest + 8)]
+    check(shown == list(range(8)) + [7] * rest and exits == [0] * rest + list(range(8))
+          and thumbnails.frame("layout", 5.0) == 0, "entrances rest on their end, exits on their start")
+    items = thumbnails.enum_items("enter", proj)
+    check(items[0][0] == "AUTO" and len(items) == 1 + len(thumbnails.parts("enter", proj.part_group, ""))
+          and len({it[4] for it in items}) == len(items), "the thumbnail grid holds Planner's Choice and the parts")
+    proj.part_group = "basic"
+    check(len(thumbnails.enum_items("enter", proj)) < len(items), "the grid follows the group")
+    proj.part_group = "all"
+    proj.gallery_filter = "fade"
+    check([it[0] for it in thumbnails.enum_items("enter", proj)[1:]] == [p.key for p in thumbnails.parts("enter", "all", "fade")],
+          "the grid follows the filter")
+    proj.pick_enter = "fade"                           # a thumbnail pressed in the grid
+    check(proj.lines[0].enter == "fade" and proj.pick_enter == "fade", "a thumbnail picks its part for the line")
+    proj.gallery_filter = "zzz"
+    check(proj.pick_enter == "fade", "...and the line's part stays in the grid when the filter hides the others")
+    proj.gallery_filter = ""
+    proj.lines[0].enter = "AUTO"
+
+    # automatic fields say what the planner picks now (spec §6.2)
+    from lyric_live_builder.ui import panels
+    t0 = time.perf_counter()
+    got, secs_got = planning.chosen(proj)
+    cold = time.perf_counter() - t0
+    t0 = time.perf_counter()
+    for _ in range(50):
+        planning.chosen(proj)
+    warm = (time.perf_counter() - t0) / 50
+    print(f"chosen: cold {cold * 1000:.0f} ms, warm {warm * 1000:.2f} ms")
+    plan = planning.make_plan(proj)
+    lp = next(x for x in plan.lines if x.index == 0)
+    ln0 = proj.lines[0]
+    check(got[0]["enter"] == lp.enter and got[0]["layout"] == lp.layout and len(secs_got) == len(proj.sections)
+          and secs_got[0]["theme"] == plan.section_plans[0].theme, "the planner's choices are known for the panels")
+    check(warm < 0.02, "...and cheap while nothing changes")
+    name = registry.get("enter", lp.enter).name
+    check(panels.auto_text(ln0, "enter", got[0]["enter"]) == f"Planner's Choice ({name})"
+          and thumbnails.enum_items("enter", proj)[0][1] == f"Planner's Choice ({name})"
+          and proj.pick_enter == "AUTO", "an automatic field reads Planner's Choice (its part)")
+    ln0.enter = "fade"
+    check(panels.auto_text(ln0, "enter", planning.chosen(proj)[0][0]["enter"]) is None, "...a set one does not")
+    ln0.enter = "AUTO"
 
     # 3D text on / off for every unlocked line at once
     proj.line_active = 2

@@ -36,7 +36,9 @@ add-on already contains it.
    **Tap from This Line** above the line list redoes the song from a line, and Backspace undoes a tap and jumps back.
 5. **Make It for Me**: every press is a new proposal. **Change Only** re-rolls one aspect, and locked lines stay.
 6. **Song Sections** and **Lyric Lines**: fix what you want by hand. The gear button of a line opens its details on the
-   left of the 3D view (layout, motion, gaze guide, stage object, particles), seen from the audience.
+   left of the 3D view (layout, motion, gaze guide, stage object, particles), seen from the audience. Each layout
+   and motion is a thumbnail dropdown: click the thumbnail for a grid of thumbnails with names (motions move), with a
+   name filter.
    **Line Cuts** shows a line in 2 to 6 parts, one after the other; on Planner's Choice, a `/` in the lyrics makes a cut.
    **Copy Effects** / **Paste Effects** give a line the look of another one (the same lyrics or melody in verse 2);
    a pasted line stays as pasted.
@@ -126,7 +128,7 @@ MIT, see [LICENSE](LICENSE). Parts of the logic are ported from JIZURA (MIT, Cop
 3. 曲を読み込む
 4. タップの遅延を一度測り、曲に合わせて行ごとにキーを押す（「タップの速さ」で、音程を保ったまま 0.75×・0.5× に遅くできます。記録されるのは本来の速さの時刻です。「カウントダウン」で 3、2、1 の後に始められ、行の一覧の上の「この行からタップ」で途中の行からやり直せます。Backspace で取り消すと、曲が少し戻ります）
 5. 「おまかせ」を押す（押すたびに新しい案。「ここだけ変える」で一部だけ振り直し、鍵を掛けた行は残る）
-6. 「セクション」と「歌詞の行」で、気になる行を手で直す（行の歯車のボタンで、3D ビューの左に行の詳細が開き、観客の位置から見ながら設定できます。「カット」で、1 行を 2〜6 回に分けて順に見せられます。おまかせのときは歌詞の `/` の区切りごとに分かれます。「演出をコピー」「演出をペースト」で、1 番と 2 番などの行を同じ演出にできます。ペーストした行は、コピー元を後で変えても変わりません。「試し見」で、変える前と後を 3D ビューの横に並べて見られます）
+6. 「セクション」と「歌詞の行」で、気になる行を手で直す（行の歯車のボタンで、3D ビューの左に行の詳細が開き、観客の位置から見ながら設定できます。レイアウト・登場・保持・退場は、サムネイル（動きはアニメーション）を押すと、サムネイルと名前の格子から選べ、名前で絞り込めます。「カット」で、1 行を 2〜6 回に分けて順に見せられます。おまかせのときは歌詞の `/` の区切りごとに分かれます。「演出をコピー」「演出をペースト」で、1 番と 2 番などの行を同じ演出にできます。ペーストした行は、コピー元を後で変えても変わりません。「試し見」で、変える前と後を 3D ビューの横に並べて見られます）
 7. 「Unity 出力」でプロジェクトを選んで出力する（Unity が開いていても閉じていても、自動で組み立てます）
 
 ### ステージの物体

@@ -116,6 +116,29 @@ def tile_uv(k):
     return col / GRID, 1 - (row + 1) / GRID, (col + 1) / GRID, 1 - row / GRID
 
 
+def png_decode(data):
+    """(h, w, 4) uint8 of a PNG written by png_bytes (8-bit RGBA, no filters); ValueError for anything else."""
+    if data[:8] != b"\x89PNG\r\n\x1a\n":
+        raise ValueError("not a PNG")
+    pos, idat, size = 8, [], None
+    while pos < len(data):
+        n, tag = struct.unpack(">I4s", data[pos:pos + 8])
+        body = data[pos + 8:pos + 8 + n]
+        if tag == b"IHDR":
+            w, h, depth, ctype = struct.unpack(">IIBB", body[:10])
+            if (depth, ctype) != (8, 6):
+                raise ValueError("only 8-bit RGBA")
+            size = (h, w)
+        elif tag == b"IDAT":
+            idat.append(body)
+        pos += 12 + n
+    h, w = size
+    rows = np.frombuffer(zlib.decompress(b"".join(idat)), np.uint8).reshape(h, 1 + w * 4)
+    if rows[:, 0].any():
+        raise ValueError("filtered rows are not read")
+    return rows[:, 1:].reshape(h, w, 4)
+
+
 def png_bytes(rgba):
     """Minimal PNG (8-bit RGBA) writer with the standard library."""
     h, w = rgba.shape[:2]

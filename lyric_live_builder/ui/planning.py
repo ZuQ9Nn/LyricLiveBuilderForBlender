@@ -219,11 +219,9 @@ COPY_FIELDS = ("is_3d", "depth", "bevel", "layout", "enter", "hold", "exit", "di
                "guide", "gimmick", "gimmick_show", "gimmick_word", "particle", "background", "transition")
 
 
-def copy_line(proj, index, plan=None):
-    """The line's effects with every automatic choice filled in -> JSON for proj.line_clipboard."""
-    ln = proj.lines[index]
-    plan = plan or make_plan(proj)
-    lp = next(x for x in plan.lines if x.index == index)
+def _chosen(proj, ln, lp, plan, st):
+    """The line's effects with every automatic choice filled in with what the planner picks now."""
+    index = lp.index
     fields = {f: getattr(ln, f) for f in COPY_FIELDS}
     fields.update(layout=lp.layout, enter=lp.enter, hold=lp.hold, exit=lp.exit, distance_layer=lp.distance,
                   persist="section" if lp.persist else "next", cuts=str(len(lp.cuts)) if lp.cuts else "1")
@@ -234,10 +232,49 @@ def copy_line(proj, index, plan=None):
         fields.update(gimmick=g["tag"] if g["source"] == "builtin" else "emblem", gimmick_show=g["show"],
                       gimmick_word=g["word"] if g["source"] == "emblem" else ln.gimmick_word)
     if ln.particle == world.LYRIC_PARTICLES:                 # the preset its words picked (none: nothing added)
-        st = settings(proj)
         fields["particle"] = next((k for k in synonyms.particles(ln.text) if world._ok(st, "particle", k)), AUTO)
-    return json.dumps({"line": index, "text": ln.text, "fields": fields, "look_seed": str(int(lp.seed)),
-                       "cuts": _cut_specs(lp)})
+    return fields
+
+
+def copy_line(proj, index, plan=None):
+    """The line's effects with every automatic choice filled in -> JSON for proj.line_clipboard."""
+    ln = proj.lines[index]
+    plan = plan or make_plan(proj)
+    lp = next(x for x in plan.lines if x.index == index)
+    return json.dumps({"line": index, "text": ln.text, "fields": _chosen(proj, ln, lp, plan, settings(proj)),
+                       "look_seed": str(int(lp.seed)), "cuts": _cut_specs(lp)})
+
+
+def _section_chosen(plan, index):
+    sp = plan.section_plans[index]
+    trans = next((w["transition"] for w in plan.world if w["transition"] and abs(w["t"] + w["dur"] / 2 - sp.start) < 1.0),
+                 "")
+    return {"theme": sp.theme, "background": sp.background["key"], "transition": trans or AUTO}
+
+
+_chosen_cache = {"key": None, "value": ({}, [])}
+
+
+def chosen(proj):
+    """({line index: {field: value}}, [{field: value} per section]): what the planner picks now for the automatic
+    fields, shown as "Planner's Choice (...)" (spec §6.2). Reused while the inputs stay the same (a draw must stay
+    cheap). ponytail: the key leaves out the audio file and the add-on preferences; a change there shows on the
+    next edit."""
+    key = repr((state(proj), project.line_inputs(proj), project.section_inputs(proj), proj.duration, proj.bpm,
+                proj.panorama_path))
+    if key != _chosen_cache["key"]:
+        _chosen_cache["key"] = key
+        _chosen_cache["value"] = ({}, [])
+        if proj.lines and proj.sections:
+            plan, st = make_plan(proj), settings(proj)
+            lines = {lp.index: _chosen(proj, proj.lines[lp.index], lp, plan, st) for lp in plan.lines
+                     if 0 <= lp.index < len(proj.lines)}
+            for lp in plan.lines:                            # a line's own background: the transition into it
+                w = next((w for w in plan.world if w.get("line") == lp.index and w["transition"]), None)
+                if w and lp.index in lines:
+                    lines[lp.index]["transition"] = w["transition"]
+            _chosen_cache["value"] = (lines, [_section_chosen(plan, i) for i in range(len(plan.section_plans))])
+    return _chosen_cache["value"]
 
 
 def paste_line(proj, index):
@@ -264,12 +301,8 @@ def unlock(item):
 def lock_section(proj, index, plan=None):
     sec = proj.sections[index]
     plan = plan or make_plan(proj)
-    sp = plan.section_plans[index]
-    trans = next((w["transition"] for w in plan.world if w["transition"] and abs(w["t"] + w["dur"] / 2 - sp.start) < 1.0),
-                 "")
-    chosen = {"theme": sp.theme, "background": sp.background["key"], "transition": trans or AUTO}
     frozen = []
-    for f, v in chosen.items():
+    for f, v in _section_chosen(plan, index).items():
         if getattr(sec, f) == AUTO and v != AUTO:
             setattr(sec, f, v)
             frozen.append(f)

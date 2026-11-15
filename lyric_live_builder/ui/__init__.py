@@ -1,9 +1,10 @@
 import bpy
 
-from . import details, lists, operators_export, operators_input, operators_omakase, operators_preview, panels, tap_sync, trial
+from . import (details, lists, operators_export, operators_input, operators_omakase, operators_preview, panels, tap_sync,
+               thumbnails, trial)
 
 CLASSES = (operators_input.CLASSES + operators_preview.CLASSES + operators_omakase.CLASSES + operators_export.CLASSES
-           + tap_sync.CLASSES + trial.CLASSES + details.CLASSES + lists.CLASSES + panels.CLASSES)
+           + tap_sync.CLASSES + trial.CLASSES + details.CLASSES + thumbnails.CLASSES + lists.CLASSES + panels.CLASSES)
 
 
 def register():
@@ -17,6 +18,7 @@ def register():
 
 def unregister():
     operators_input.stop_watch()
+    thumbnails.unregister()
     details.unregister()
     trial.unregister()
     from ..preview import particles
