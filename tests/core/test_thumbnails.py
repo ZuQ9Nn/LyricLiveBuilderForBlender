@@ -5,7 +5,9 @@ import unittest
 
 import numpy as np
 
-from lyric_live_builder.core import atlas, registry
+from lyric_live_builder.core import atlas, registry, styles
+from lyric_live_builder.core.parts import backgrounds as bgs
+from lyric_live_builder.core.parts import particles as pts
 
 DIR = os.path.join(os.path.dirname(__file__), "..", "..", "lyric_live_builder", "thumbnails")
 
@@ -15,9 +17,12 @@ class Thumbnails(unittest.TestCase):
         with open(os.path.join(DIR, "index.json"), encoding="utf-8") as f:
             idx = json.load(f)
         t = idx["tile"]
-        for kind in ("layout", "enter", "hold", "exit"):
+        want = {k: registry.keys(k) for k in ("layout", "enter", "hold", "exit")}
+        want.update(particle=list(pts.PRESETS), style=list(styles.ORDER),
+                    background=[k for k in bgs.ORDER if not bgs.needs_image(k)])     # a panorama is the user's
+        for kind, keys in want.items():
             # a part added without running tools/make_part_thumbnails.py again fails here
-            self.assertEqual(idx["rows"][kind], registry.keys(kind), kind)
+            self.assertEqual(idx["rows"][kind], keys, kind)
             with open(os.path.join(DIR, f"{kind}.png"), "rb") as f:
                 px = atlas.png_decode(f.read())
             self.assertEqual(px.shape, (len(idx["rows"][kind]) * t, idx["frames"][kind] * t, 4), kind)

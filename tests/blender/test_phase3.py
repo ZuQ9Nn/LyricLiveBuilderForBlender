@@ -298,6 +298,30 @@ def main():
     check(panels.auto_text(ln0, "enter", planning.chosen(proj)[0][0]["enter"]) is None, "...a set one does not")
     ln0.enter = "AUTO"
 
+    # particles, background and style as thumbnail dropdowns: the items of the field itself, in its order
+    before = (ln0.particle, ln0.background, proj.style)
+    for kind, data in (("particle", ln0), ("background", ln0), ("style", proj)):
+        items = thumbnails.enum_items(kind, proj)
+        rna = data.bl_rna.properties[kind].enum_items
+        check([it[0] for it in items] == [it.identifier for it in rna] and [it[4] for it in items] == list(range(len(rna))),
+              f"the {kind} grid holds the field's items in order")
+    proj.pick_particle = "petals"
+    proj.pick_background = "grid"
+    proj.pick_style = "mint"
+    check(ln0.particle == "petals" and ln0.background == "grid" and proj.style == "mint"
+          and proj.pick_particle == "petals" and proj.pick_style == "mint", "a thumbnail sets the particles, background, style")
+    thumbnails.icon("particle", "petals")
+    pv = thumbnails._previews.get("particle:petals")
+    seen = []
+    for k in (0, 5):
+        thumbnails._paint("particle", k)
+        seen.append(np.array(pv.image_pixels_float[:]))
+    check(np.abs(seen[1] - seen[0]).mean() > 0.002, "a particle thumbnail moves")
+    ln0.particle = "lyrics"
+    name = thumbnails.enum_items("particle", proj)[1][1]
+    check(name.startswith("From the Lyrics"), "From the Lyrics reads with what the words picked, if any")
+    ln0.particle, ln0.background, proj.style = before
+
     # 3D text on / off for every unlocked line at once
     proj.line_active = 2
     bpy.ops.llb.line_lock()

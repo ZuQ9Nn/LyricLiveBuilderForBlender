@@ -319,6 +319,17 @@ class LLBProject(bpy.types.PropertyGroup):
     pick_exit: EnumProperty(name="Exit Motion", items=lambda s, c: _thumbs().enum_items("exit", s),
                             get=lambda s: _thumbs().enum_get("exit", s),
                             set=lambda s, v: _thumbs().enum_set("exit", s, v))
+    pick_particle: EnumProperty(name="Particles Added on This Line",
+                                items=lambda s, c: _thumbs().enum_items("particle", s),
+                                get=lambda s: _thumbs().enum_get("particle", s),
+                                set=lambda s, v: _thumbs().enum_set("particle", s, v))
+    pick_background: EnumProperty(name="Background from This Line",
+                                  items=lambda s, c: _thumbs().enum_items("background", s),
+                                  get=lambda s: _thumbs().enum_get("background", s),
+                                  set=lambda s, v: _thumbs().enum_set("background", s, v))
+    pick_style: EnumProperty(name="Style", items=lambda s, c: _thumbs().enum_items("style", s),
+                             get=lambda s: _thumbs().enum_get("style", s),
+                             set=lambda s, v: _thumbs().enum_set("style", s, v))
     gallery_filter: StringProperty(name="Filter Parts", options={"TEXTEDIT_UPDATE"},
                                    description="Show only the parts whose name contains this")
     ui_page: EnumProperty(name="LyricLive Page", items=[("setup", "Setup", "Lyrics, fonts, song and sync"),

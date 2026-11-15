@@ -1,6 +1,7 @@
-"""Part thumbnails in the line details (spec §6.2, design §13): each layout / motion field is a thumbnail dropdown
-(a grid of thumbnails with names), with a name filter. The images come from lyric_live_builder/thumbnails
-(tools/make_part_thumbnails.py); the motions are animated by stepping through their frames while the details are open."""
+"""Thumbnails (spec §6.2, design §13): the line's layout, motions, particles and background, and the style, are
+thumbnail dropdowns (a grid of thumbnails with names); the parts have a name filter. The images come from
+lyric_live_builder/thumbnails (tools/make_part_thumbnails.py); motions and particles are animated by stepping through
+their frames while they are drawn."""
 import json
 import os
 import time
@@ -10,10 +11,15 @@ import bpy.utils.previews
 import numpy as np
 from bpy.app.translations import pgettext_iface as iface_
 
+from .. import props
 from ..core import atlas, registry
 
 DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "thumbnails")
-KINDS = ("layout", "enter", "hold", "exit")
+PARTS = ("layout", "enter", "hold", "exit")        # with the planner's choice and the filter
+KINDS = PARTS + ("particle", "background", "style")
+ANIMATED = ("enter", "hold", "exit", "particle")
+STILL_ICONS = {"particle": {"AUTO": "X", "lyrics": "SYNTAX_OFF"}, "background": {"AUTO": "X", "panorama": "IMAGE_DATA"}}
+LINGER = 1.0                    # s the frames go on after an animated thumbnail was last drawn
 STEP = 0.16                     # seconds per frame
 SCALE = 5.0                     # thumbnail size in the field and in its grid (icon units)
 REST = 5                        # extra steps on the settled frame: entrances end on it, exits start from it
@@ -23,6 +29,7 @@ _previews = None
 _index = None
 _frames = {}                    # kind -> RGBA bytes (part, frame, row going up, column, 4)
 _shown = {}                     # kind -> the frame now in its previews
+_drawn = [0.0]                  # when an animated thumbnail was last drawn
 
 
 def index():
@@ -111,11 +118,25 @@ def chosen(kind, proj):
     return _chosen(proj)[0].get(proj.line_active, {}).get(kind)
 
 
+def _target(kind, proj):
+    """The data a kind's field sets: the project (style) or the picked line (None without one)."""
+    if kind == "style":
+        return proj
+    return proj.lines[proj.line_active] if 0 <= proj.line_active < len(proj.lines) else None
+
+
+def _rna_items(kind):
+    return (props.LLBProject if kind == "style" else props.LLBLine).bl_rna.properties[kind].enum_items
+
+
 def enum_items(kind, proj):
-    """Items of proj.pick_<kind>: Planner's Choice, then the shown parts with their thumbnails (the line's current
-    part always included). The number of an item is its place in the registry + 1."""
+    """Items of proj.pick_<kind>. Parts: Planner's Choice, then the shown parts (the line's current part always
+    included), numbered by their place in the registry + 1. The others: the items of the field itself in its order,
+    with thumbnails as icons."""
+    if kind not in PARTS:
+        return _other_items(kind, proj)
     keys = registry.keys(kind)
-    ln = proj.lines[proj.line_active] if 0 <= proj.line_active < len(proj.lines) else None
+    ln = _target(kind, proj)
     current = getattr(ln, kind) if ln else "AUTO"
     shown = parts(kind, proj.part_group, proj.gallery_filter)
     if current in keys and all(p.key != current for p in shown):
@@ -131,49 +152,113 @@ def enum_items(kind, proj):
     return items
 
 
+def _now_shown(kind, proj, data):
+    """(name, thumbnail key) of the field's value as it works out now: "From the Lyrics (Petals)", or the
+    section's background behind "No Change"."""
+    value = getattr(data, kind) if data is not None else "AUTO"
+    name = iface_(_rna_items(kind)[value].name)
+    if kind == "particle" and value == "lyrics":
+        got = chosen(kind, proj)
+        if got in index()["rows"]["particle"]:
+            return iface_("{} ({})").format(name, iface_(_rna_items(kind)[got].name)), got
+    if kind == "background" and value == "AUTO":
+        from .panels import _line_summary
+        lines = _line_summary(proj)
+        if 0 <= proj.line_active < len(lines):
+            return name, lines[proj.line_active]["background"]
+    return name, value
+
+
+def _other_items(kind, proj):
+    data = _target(kind, proj)
+    rows = index()["rows"][kind]
+    value = getattr(data, kind) if data is not None else None
+    items = []
+    for i, it in enumerate(_rna_items(kind)):
+        name, key = _now_shown(kind, proj, data) if it.identifier == value else (iface_(it.name), it.identifier)
+        ic = icon(kind, key) if key in rows else STILL_ICONS.get(kind, {}).get(it.identifier, "QUESTION")
+        items.append((it.identifier, _keep(name), _keep(iface_(it.description) if it.description else name), ic, i))
+    _items[kind] = items
+    return items
+
+
 def enum_get(kind, proj):
-    ln = proj.lines[proj.line_active] if 0 <= proj.line_active < len(proj.lines) else None
-    key = getattr(ln, kind) if ln else "AUTO"
+    data = _target(kind, proj)
+    if kind not in PARTS:
+        return max(0, _rna_items(kind).find(getattr(data, kind))) if data is not None else 0
+    key = getattr(data, kind) if data else "AUTO"
     keys = registry.keys(kind)
     return 1 + keys.index(key) if key in keys else 0
 
 
 def enum_set(kind, proj, value):
-    if 0 <= proj.line_active < len(proj.lines):
-        keys = registry.keys(kind)
-        setattr(proj.lines[proj.line_active], kind, keys[value - 1] if 0 < value <= len(keys) else "AUTO")
+    data = _target(kind, proj)
+    if data is None:
+        return
+    if kind not in PARTS:
+        setattr(data, kind, _rna_items(kind)[value].identifier)
+        return
+    keys = registry.keys(kind)
+    setattr(data, kind, keys[value - 1] if 0 < value <= len(keys) else "AUTO")
 
 
-def draw(layout, proj, ln, kind):
-    """One kind's field: its name and part, and the current part's thumbnail, which opens a grid of the shown
-    parts' thumbnails with their names to pick from."""
-    start()
+def draw(layout, proj, data, kind):
+    """One kind's field: its name and value, and the current thumbnail, which opens a grid of thumbnails with their
+    names to pick from."""
+    if kind in ANIMATED:
+        start()
     col = layout.column(align=True)
-    prop = ln.bl_rna.properties[kind]
-    from .panels import auto_text
-    shown = auto_text(ln, kind, chosen(kind, proj)) or iface_(prop.enum_items[getattr(ln, kind)].name)
-    col.label(text=f"{iface_(prop.name)}: {shown}", translate=False)
-    if proj.gallery_filter.strip() and not parts(kind, proj.part_group, proj.gallery_filter):
-        col.label(text="No Parts Found", icon="INFO")
+    prop = data.bl_rna.properties[kind]
+    if kind in PARTS:
+        from .panels import auto_text
+        shown = auto_text(data, kind, chosen(kind, proj)) or iface_(prop.enum_items[getattr(data, kind)].name)
+        col.label(text=f"{iface_(prop.name)}: {shown}", translate=False)
+        if proj.gallery_filter.strip() and not parts(kind, proj.part_group, proj.gallery_filter):
+            col.label(text="No Parts Found", icon="INFO")
+    elif kind == "style":
+        col.label(text=f"{iface_(prop.name)}: {_now_shown(kind, proj, data)[0]}", translate=False)
+    else:                                                # long names: the value on its own row
+        col.label(text=prop.name)
+        col.label(text=_now_shown(kind, proj, data)[0], translate=False)
     col.template_icon_view(proj, f"pick_{kind}", show_labels=True, scale=SCALE, scale_popup=SCALE)
 
 
+def thumb(layout, kind, key, name, scale=2.5):
+    """A thumbnail beside its name (the section's In Use); without one, the name alone."""
+    ic = icon(kind, key) if key in index()["rows"].get(kind, ()) else 0
+    if not ic:
+        layout.label(text=name, icon=STILL_ICONS.get(kind, {}).get(key, "BLANK1"), translate=False)
+        return
+    if kind in ANIMATED:
+        start()
+    split = layout.split(factor=0.34)
+    split.template_icon(icon_value=ic, scale=scale)
+    split.label(text=name, translate=False)
+
+
 def _tick():
-    """Next frame of the motions while the details area is open (an open grid is redrawn with the window)."""
-    from . import details
-    win, area = details.area()
-    if area is None:
-        return None
+    """Next frame of the animated thumbnails while they are being drawn: the 3D views' sidebars are redrawn (an open
+    grid of thumbnails is redrawn with its window)."""
     now = time.monotonic()
+    if now - _drawn[0] > LINGER:
+        return None
     for kind in list(_frames):
-        k = frame(kind, now)
-        if _shown.get(kind) != k:
-            _paint(kind, k)
-    area.tag_redraw()
+        if kind in ANIMATED:
+            k = frame(kind, now)
+            if _shown.get(kind) != k:
+                _paint(kind, k)
+    for win in bpy.context.window_manager.windows:
+        for area in win.screen.areas:
+            if area.type == "VIEW_3D":
+                for region in area.regions:
+                    if region.type == "UI":
+                        region.tag_redraw()
     return STEP
 
 
 def start():
+    """An animated thumbnail is being drawn: keep the frames going."""
+    _drawn[0] = time.monotonic()
     if not bpy.app.timers.is_registered(_tick):
         bpy.app.timers.register(_tick, first_interval=STEP)
 

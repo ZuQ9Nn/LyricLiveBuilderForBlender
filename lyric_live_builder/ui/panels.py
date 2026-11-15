@@ -221,7 +221,7 @@ class LLB_PT_omakase(_Panel, bpy.types.Panel):
         sub.operator("llb.history_step", text="Next Proposal", icon="TRIA_RIGHT").step = 1
         col.separator()
         col.prop(proj, "mood")
-        col.prop(proj, "style")
+        thumbnails.draw(col, proj, proj, "style")
         col.separator()
         row = col.row(align=True)
         row.prop(proj, "reroll_target", text="")
@@ -287,12 +287,12 @@ def draw_in_use(layout, proj, index):
     else:
         where = iface_("(from theme “{}”)").format(theme)
     col = box.column(align=True)
-    col.label(text=iface_("Background: {}").format(bg), translate=False)
+    thumbnails.thumb(col, "background", s["background"], iface_("Background: {}").format(bg))
     col.label(text=where, icon="BLANK1", translate=False)
     col = box.column(align=True)
     col.label(text=iface_("Particles from theme “{}”:").format(theme), translate=False)
-    for key in s["particles"] or ():
-        col.label(text=iface_(pts.PRESETS[key]["name"]), icon="BLANK1", translate=False)
+    for key in s["particles"] or ():                      # with their moving thumbnails
+        thumbnails.thumb(col, "particle", key, iface_(pts.PRESETS[key]["name"]))
     if not s["particles"]:
         col.label(text=iface_("No Particles"), icon="BLANK1", translate=False)
 
@@ -393,6 +393,14 @@ def draw_line_timing(layout, proj, ln):
             f"{ln.section_index + 1}. {sec.label or iface_(KIND_LABELS[sec.kind])}"), translate=False)
 
 
+def _line_summary(proj):
+    try:
+        return planning.line_summary(proj)
+    except Exception as e:                                # the panel must always draw
+        print("[LLB] line summary:", e)
+        return []
+
+
 def _chosen(proj):
     try:
         return planning.chosen(proj)
@@ -429,8 +437,8 @@ def draw_line_details(col, proj, ln):
     if ln.gimmick == "emblem":
         sub.prop(ln, "gimmick_word")
     box.separator()
-    prop_above(box, ln, "particle")
-    prop_above(box, ln, "background")
+    thumbnails.draw(box, proj, ln, "particle")
+    thumbnails.draw(box, proj, ln, "background")
     prop_above(box, ln, "transition", got.get("transition")).active = ln.background != "AUTO"
     if ln.background == "panorama" and not proj.panorama_path:
         labels(box, "Set the panorama image\nin the Effects panel", "ERROR")
