@@ -28,7 +28,8 @@ add-on already contains it.
 
 1. **Lyrics**: **Edit in External Editor** opens them in your system's text editor and saving there updates them here;
    you can also paste from the clipboard or load a file. `A/B` breaks a chunk (and shows the line in cuts), `*word*` emphasizes, `line!` is a strong accent,
-   `[Chorus]` starts a section, and LRC time tags are read.
+   `[Chorus]` starts a section, and LRC time tags are read. A backslash shows a mark as a letter: `\!`, `\/`, `\*`,
+   `\|`, `\#`, `\[`, `\]` (and `\\` for a backslash).
 2. **Fonts**: set at least the Body font. Characters missing from a font are listed.
 3. **Song**: load it. Tempo and beats are estimated.
 4. **Sync**: measure the tap latency once, then press a key at each line while the song plays. **Tap Speed** slows
@@ -124,7 +125,7 @@ MIT, see [LICENSE](LICENSE). Parts of the logic are ported from JIZURA (MIT, Cop
 
 ### 使い方
 
-1. 「外部エディタで編集」で歌詞を書く（メモ帳などが開き、保存すると自動で取り込みます。Blender のテキストエディタは日本語を直接入力できません。「クリップボードから貼り付け」「ファイルから読み込む」も使えます。`A/B` で区切り（区切りごとのカットにもなる）、`*語*` で強調、`行!` で強いアクセント、`[サビ]` でセクション）
+1. 「外部エディタで編集」で歌詞を書く（メモ帳などが開き、保存すると自動で取り込みます。Blender のテキストエディタは日本語を直接入力できません。「クリップボードから貼り付け」「ファイルから読み込む」も使えます。`A/B` で区切り（区切りごとのカットにもなる）、`*語*` で強調、`行!` で強いアクセント、`[サビ]` でセクション。記号を歌詞の文字として出すときは、前に `\` を付けて `\!` `\/` `\*` `\|` `\#` `\[` `\]`、`\` そのものは `\\`）
 2. フォントを指定する（最低限「本文」）
 3. 曲を読み込む
 4. タップの遅延を一度測り、曲に合わせて行ごとにキーを押す（「タップの速さ」で、音程を保ったまま 0.75×・0.5× に遅くできます。記録されるのは本来の速さの時刻です。「カウントダウン」で 3、2、1 の後に始められ、行の一覧の上の「この行からタップ」で途中の行からやり直せます。Backspace で取り消すと、曲が少し戻ります）

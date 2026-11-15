@@ -68,6 +68,19 @@ _HEADING_KIND = {n: k for k, names in _HEADING_NAMES.items() for n in names}
 _HEADING_RE = re.compile(r"^\[([^\]\d:][^\]:]{0,15})\]$")
 _META_RE = re.compile(r"^\[(ti|ar|al|by|offset):(.*)\]$", re.I)
 _LRC_RE = re.compile(r"^\[(\d+):(\d+(?:[.:]\d+)?)\]")
+# a notation mark after a backslash is a letter (spec §5.1): it becomes a private-use character no notation reads
+ESCAPABLE = "\\!/*|#[]"
+_ESC = {c: chr(0xE000 + i) for i, c in enumerate(ESCAPABLE)}
+_ESC_RE = re.compile(r"\\([" + re.escape(ESCAPABLE) + r"])")
+_UNESC = str.maketrans({v: k for k, v in _ESC.items()})
+
+
+def _escape(s):
+    return _ESC_RE.sub(lambda m: _ESC[m.group(1)], s)
+
+
+def _unescape(s):
+    return s.translate(_UNESC) if s else s
 
 
 def heading_kind(name):
@@ -107,7 +120,7 @@ def parse(raw):
     pending_gap = False
     cur_heading = None
     for src in str(raw or "").replace("\r", "").split("\n"):
-        s0 = src.strip()
+        s0 = _escape(src.strip())
         if not s0:
             if lines:
                 pending_gap = True
@@ -116,11 +129,11 @@ def parse(raw):
             continue
         mm = _META_RE.match(s0)
         if mm:
-            meta[mm.group(1).lower()] = mm.group(2).strip()
+            meta[mm.group(1).lower()] = _unescape(mm.group(2).strip())
             continue
         mh = _HEADING_RE.match(s0)
         if mh:
-            label = mh.group(1).strip()
+            label = _unescape(mh.group(1).strip())
             headings.append(Heading(heading_kind(label), label))
             cur_heading = len(headings) - 1
             continue
@@ -154,7 +167,8 @@ def parse(raw):
             s = (" " if latin else "").join(manual)
         if not s:
             continue
-        base = dict(text=s, note=note, impact=impact, emph=emph, manual=manual,
+        base = dict(text=_unescape(s), note=_unescape(note), impact=impact, emph=[_unescape(e) for e in emph],
+                    manual=[_unescape(x) for x in manual] if manual else manual,
                     gap_before=pending_gap, heading=cur_heading)
         pending_gap = False
         for t in times or [None]:

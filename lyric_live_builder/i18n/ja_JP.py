@@ -49,6 +49,7 @@ MESSAGES = {
     "Section heading": "セクションの見出し",
     "Comment": "コメント",
     "Meta data": "メタ情報",
+    "Mark as a letter": "記号を文字で出す",
     # fonts
     "Heading Font": "見出し",
     "Serif Font": "明朝",

@@ -23,6 +23,7 @@ NOTATION = (
     ("[A] [Chorus] [Outro]", "Section heading"),
     ("# ...", "Comment"),
     ("[ti:Title] [ar:Artist]", "Meta data"),
+    ("\\! \\/ \\* \\\\", "Mark as a letter"),
 )
 
 

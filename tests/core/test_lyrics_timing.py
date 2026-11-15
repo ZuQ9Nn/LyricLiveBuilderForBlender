@@ -182,6 +182,19 @@ class TestParse(unittest.TestCase):
             self.assertEqual((got.text, got.note, got.impact, got.emph, got.manual, got.gap_before, got.lrc),
                              (want["text"], want["note"], want["impact"], want["emph"], want["manual"], want["gapBefore"], want["lrc"]))
 
+    def test_escaped_marks_are_letters(self):
+        p = lyrics.parse("\\#1 行くよ\\!\nA\\/B *強\\*調*\n[サビ]\n\\[サビ\\]\n終わり\\\\!\n曲名\\|副題|注\\/釈\nC:\\x/y\n")
+        got = [(ln.text, ln.impact, ln.emph, ln.manual, ln.note) for ln in p.lines]
+        self.assertEqual(got, [
+            ("#1 行くよ!", False, [], None, None),                 # not a comment, not an accent
+            ("A/B 強*調", False, ["強*調"], None, None),          # not a chunk break, a star in the emphasis
+            ("[サビ]", False, [], None, None),                    # not a heading
+            ("終わり\\", True, [], None, None),                    # \\ is a backslash; the ! after it is the accent
+            ("曲名|副題", False, [], None, "注/釈"),
+            ("C:\\x y", False, [], ["C:\\x", "y"], None),         # a backslash before another letter stays
+        ])
+        self.assertEqual(len(p.headings), 1)
+
     def test_headings(self):
         p = lyrics.parse("[Ａメロ]\n一行目\n[サビ]\n二行目\n[01:02.00]時刻\n[Verse 2]\n[間奏]\n[ラップ]\n三行目")
         self.assertEqual([(h.kind, h.label) for h in p.headings],
