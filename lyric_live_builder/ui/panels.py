@@ -43,6 +43,8 @@ def prop_above(layout, data, name, chosen=None):
 
 def auto_text(data, name, chosen):
     """"Planner's Choice (Slanted Wall)" for an enum left to the planner (spec §6.2), or None."""
+    if not chosen:                                        # also every non-enum field (paths, names)
+        return None
     items = data.bl_rna.properties[name].enum_items
     if getattr(data, name) != "AUTO" or not chosen or chosen == "AUTO" or chosen not in items:
         return None

@@ -21,7 +21,7 @@ ROOT = os.path.normpath(os.path.join(HERE, "..", ".."))
 sys.path[:0] = [ROOT, HERE]
 
 import lyric_live_builder as llb                                     # noqa: E402
-from common import check, failures, font_arg, setup, song, text_objects, translation_checks  # noqa: E402
+from common import check, draw_panels, failures, font_arg, setup, song, text_objects, translation_checks  # noqa: E402
 from lyric_live_builder.core import bake, color, registry, world     # noqa: E402
 from lyric_live_builder.core.parts import backgrounds as bgs          # noqa: E402
 from lyric_live_builder.core.parts import lines, particles as pts     # noqa: E402
@@ -454,6 +454,8 @@ def main():
     bpy.ops.llb.omakase()
     dt = time.perf_counter() - t0
     check(dt < 30.0, f"4 minute song made in {dt:.1f} s (< 30 s)")
+
+    draw_panels()
 
     translation_checks()
     bpy.ops.llb.preview_clear()

@@ -35,6 +35,34 @@ def text_objects():
     return {ob["llb_node"]: ob for ob in root.all_objects if "llb_node" in ob and ob["llb_node"].startswith("line")}
 
 
+class _Layout:
+    """Takes any layout call, so a panel's draw can run without a window (it still reads the real data)."""
+    def __getattr__(self, name):
+        if name == "panel":                               # layout.panel() gives (header, body)
+            return lambda *a, **k: (self, self)
+        return lambda *a, **k: self
+
+
+def draw_panels():
+    """Every LyricLive panel of every page draws without an error (a failing draw leaves the panel empty)."""
+    from types import SimpleNamespace
+    from lyric_live_builder import ui
+    proj = bpy.context.scene.llb
+    page, errors, drawn = proj.ui_page, [], 0
+    for p in ("setup", "compose", "output"):
+        proj.ui_page = p
+        for cls in ui.CLASSES:
+            if not issubclass(cls, bpy.types.Panel) or (hasattr(cls, "poll") and not cls.poll(bpy.context)):
+                continue
+            try:
+                cls.draw(SimpleNamespace(layout=_Layout()), bpy.context)
+                drawn += 1
+            except Exception as e:
+                errors.append(f"{p}/{cls.__name__}: {e!r}")
+    proj.ui_page = page
+    check(drawn > 10 and not errors, f"{drawn} panels draw {errors}")
+
+
 def setup(lyrics_text, font):
     scene = bpy.context.scene
     proj = scene.llb

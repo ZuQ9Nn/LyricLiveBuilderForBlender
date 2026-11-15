@@ -18,7 +18,7 @@ ROOT = os.path.normpath(os.path.join(HERE, "..", ".."))
 sys.path[:0] = [ROOT, HERE]
 
 import lyric_live_builder as llb                                     # noqa: E402
-from common import check, failures, font_arg, setup, song, translation_checks  # noqa: E402
+from common import check, draw_panels, failures, font_arg, setup, song, translation_checks  # noqa: E402
 from test_phase5 import arg, batch                                   # noqa: E402
 from lyric_live_builder.core import bake                             # noqa: E402
 from lyric_live_builder.core.parts import gimmicks                   # noqa: E402
@@ -142,6 +142,7 @@ def main():
         done = [ln for ln in log_lines if ln.startswith("[LLB] done")]
         check(code == 0 and not errors and done, f"batch build: exit {code} {errors[:3]} {done[-1:]}")
         check("Shader error" not in log, "the shaders compile")
+        draw_panels()
         translation_checks()
     finally:
         shutil.rmtree(work, ignore_errors=True)
