@@ -56,11 +56,14 @@ def pick_themes(sections, seed, settings):
 
 
 def _transition(rng, settings, wanted=""):
+    """With Flashes off nothing lights or darkens the whole dome (spec §7.5): no White Out / Fade Through Black,
+    and one set by hand becomes a crossfade."""
+    calm = not settings.fx_value("flash")
     if wanted in bgs.TRANSITIONS:
-        return wanted
+        return "crossfade" if calm and bgs.TRANSITIONS[wanted]["flash"] else wanted
     pref = (moods.MOODS.get(settings.mood) or {}).get("transitions")
     return _wpick(rng, [(k, (2.0 if pref and k in pref else 1.0)) for k in bgs.TRANSITION_ORDER
-                        if _ok(settings, "transition", k)]) or "crossfade"
+                        if _ok(settings, "transition", k) and not (calm and bgs.TRANSITIONS[k]["flash"])]) or "crossfade"
 
 
 def _background_ok(settings, key):
@@ -322,7 +325,7 @@ def plan_events(section_plans, line_plans, world, settings):
             continue
         kept.append(ev)
         last = ev["t"]
-    if mood.get("pulse") and settings.beats is not None:
+    if mood.get("pulse") and settings.beats is not None and settings.fx_value("flash"):
         for sp in section_plans:
             if sp.kind != "chorus":
                 continue

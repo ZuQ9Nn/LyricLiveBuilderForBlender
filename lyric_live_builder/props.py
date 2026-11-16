@@ -174,7 +174,9 @@ class LLBFx(bpy.types.PropertyGroup):
     koma: EnumProperty(name="Frame Stepping", items=KOMA_ITEMS, default="0")
     guide: FloatProperty(name="Gaze Guide", default=0.7, min=0.0, max=1.0, subtype="FACTOR",
                          description="Light that leads the eye to lines appearing out of view (0 = off)")
-    flash: BoolProperty(name="Flashes", default=True, description="Brief white flashes on strong lines and choruses")
+    flash: BoolProperty(name="Flashes", default=True,
+                        description="Brief white flashes on strong lines and choruses, white-out and fade-through-black "
+                                    "transitions and beat pulses. Off: nothing lights or darkens the whole view")
     gimmick: FloatProperty(name="Stage Object Amount", default=0.6, min=0.0, max=1.0, subtype="FACTOR",
                            description="How often a keyword in the lyrics brings an object on stage (0 = only lines set by hand)")
     bg_colors: EnumProperty(name="Background Colors", items=BG_COLOR_ITEMS, default="style")

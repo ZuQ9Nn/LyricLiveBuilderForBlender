@@ -449,6 +449,28 @@ class TestWorld(unittest.TestCase):
             for t in np.arange(0, duration, 0.25):
                 self.assertLessEqual(sum(1 for x in strong if t <= x < t + 1.0), 3)
 
+    def test_flashes_off_lights_nothing(self):
+        """Flashes off: no flash or pulse, and no transition that whitens or darkens the dome, even one set by hand
+        (spec §7.5)."""
+        lines = inputs(30, gap=1.0, sec_len=8.0)
+        for ln in lines:
+            ln.impact = True
+        lines[3].background, lines[3].transition = "starry", "whiteout"              # a flashing one set by hand
+        duration = lines[-1].end + 2.0
+        secs = [model.SectionInput(a, c, "chorus", transition="blackout" if k == 1 else "")
+                for k, (a, c) in enumerate(sections_for(duration, 8.0))]
+        flashy = lambda p: [w for w in p.world if bgs.TRANSITIONS.get(w["transition"], {}).get("flash")]
+        beats = np.arange(0.0, duration, 0.5)
+        for seed in range(6):
+            off = model.Settings(mood="pop", beats=beats, fx={"world_switch": 1.0, "flash": False})
+            p = planner.plan(lines, secs, duration, seed, settings=off)
+            self.assertFalse(p.events, seed)
+            self.assertFalse(flashy(p), seed)
+            self.assertTrue(len(p.world) > 2, seed)                         # the background still changes
+        on = planner.plan(lines, secs, duration, 0, settings=model.Settings(mood="pop", beats=beats,
+                                                                             fx={"world_switch": 1.0}))
+        self.assertTrue(flashy(on) and {"flash", "pulse"} <= {e["type"] for e in on.events})
+
     def test_change_only_particles(self):
         base = {"mood": "calm", "style": "paper", "fx": {}, "disabled": {}, "accent": "", "seed": 7, "stage_offsets": {}}
         new = omakase.reroll(base, "particles", Rng(5))

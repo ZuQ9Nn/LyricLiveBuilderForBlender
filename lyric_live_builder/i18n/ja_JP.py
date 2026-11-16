@@ -340,7 +340,10 @@ MESSAGES = {
     '8 Steps per Second': '1 秒に 8 コマ',
     'Light that leads the eye to lines appearing out of view (0 = off)': '視野の外に出る行へ、視線を導く光（0 で切）',
     'Flashes': 'フラッシュ',
-    'Brief white flashes on strong lines and choruses': '強い行とサビの始まりで、一瞬白く光ります',
+    'Brief white flashes on strong lines and choruses, white-out and fade-through-black transitions and beat pulses. '
+    'Off: nothing lights or darkens the whole view':
+        '強い行とサビの始まりの白い光、ホワイトアウト・暗転のトランジション、拍のパルス。'
+        'OFF にすると、画面全体が光ったり暗くなったりする演出を出しません',
     'Own Accent': '独自のアクセント',
     'Accent': 'アクセント',
     "Replace the style's accent colour": 'スタイルのアクセントの色を置き換えます',
