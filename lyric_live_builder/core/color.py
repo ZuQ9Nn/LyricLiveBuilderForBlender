@@ -116,6 +116,18 @@ def random_palette(bg, rnd):
     return {"accent": fit_contrast(acc, bg, 3.0), "ghostA": a, "ghostB": b}
 
 
+def dim_to(hex_, limit):
+    """The colour darkened to a relative luminance of at most `limit`, its hue kept (linear RGB scaled)."""
+    lum_ = _rel_lum(hex_)
+    if lum_ <= limit:
+        return hex_.upper()
+
+    def srgb(v):
+        v = 12.92 * v if v <= 0.0031308 else 1.055 * v ** (1 / 2.4) - 0.055
+        return round(max(0.0, min(1.0, v)) * 255)
+    return to_hex(*(srgb(c * limit / lum_) for c in linear(hex_)))
+
+
 def linear(hex_):
     """'#RRGGBB' (sRGB) -> linear (r, g, b) floats, the values Blender colour properties hold."""
     def lin(v):

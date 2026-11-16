@@ -55,25 +55,33 @@ TRANSITION_ORDER = list(TRANSITIONS)
 SOFTNESS = 0.06                       # half width of the wipe / ring edge (0..1 of the sweep)
 
 
-def _resolve(value, style_key, scheme=None):
+CALM_LUMINANCE = 0.25                 # with Flashes off, colours from the style stay this dark at most (spec §7.5)
+
+
+def _resolve(value, style_key, scheme=None, calm=False):
     if isinstance(value, str) and value.startswith("style:"):
         schemes = styles.STYLES.get(style_key, styles.STYLES[styles.DEFAULT])["schemes"]
         s = styles.scheme_for(style_key, "#000000") if scheme is None else schemes[scheme % len(schemes)]
         role = value[6:]
-        return s["bg"] if role == "bg" else color.mix(s[role], s["bg"], 0.35)
+        out = s["bg"] if role == "bg" else color.mix(s[role], s["bg"], 0.35)
+        return color.dim_to(out, CALM_LUMINANCE) if calm else out
     return value
 
 
-def resolve(key, style_key=styles.DEFAULT, image_index=0, scheme=None):
-    """Preset key -> concrete spec {key, mode, top, horizon, bottom, ink, bands, pattern, pscale, image, far}.
-    scheme: which of the style's schemes gives the "style:" colours (None: its darkest)."""
+def resolve(key, style_key=styles.DEFAULT, image_index=0, scheme=None, calm=False):
+    """Preset key -> concrete spec {key, mode, top, horizon, bottom, ink, bands, pattern, pscale, image, far,
+    scheme}. scheme: which of the style's schemes gives the "style:" colours (None: its darkest); it stays in the
+    spec when the preset takes its colours from it (the text then uses that scheme). calm: those colours no
+    brighter than CALM_LUMINANCE."""
     p = PRESETS.get(key) or PRESETS[DEFAULT]
-    top, hor, bot = (_resolve(p[k], style_key, scheme) for k in ("top", "horizon", "bottom"))
-    ink = _resolve(p.get("ink", hor), style_key, scheme)
+    top, hor, bot = (_resolve(p[k], style_key, scheme, calm) for k in ("top", "horizon", "bottom"))
+    ink = _resolve(p.get("ink", hor), style_key, scheme, calm)
+    from_style = any(str(p.get(k, "")).startswith("style:") for k in ("top", "horizon", "bottom", "ink"))
     return {"key": key if key in PRESETS else DEFAULT, "mode": MODE[p["kind"]], "top": top, "horizon": hor,
             "bottom": bot, "ink": ink, "bands": float(p.get("bands", 1)), "pattern": float(PATTERN.get(p.get("pattern"), 0)),
             "pscale": float(p.get("pscale", 1.0)), "image": float(image_index),
-            "far": [dict(kind=k, az=az, el=el, size=size, color=c) for k, az, el, size, c in p["far"]]}
+            "far": [dict(kind=k, az=az, el=el, size=size, color=c) for k, az, el, size, c in p["far"]],
+            "scheme": scheme if from_style else None}
 
 
 SILHOUETTES = ("mountains", "city")

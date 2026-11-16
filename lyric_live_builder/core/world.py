@@ -77,6 +77,7 @@ def plan_world(sections, lines, seed, settings, style):
     bseed = stage_seed(settings, seed, STAGE_BACKGROUND)
     switch = 0.25 + 0.75 * settings.fx_value("world_switch")
     by_style = settings.fx_value("bg_colors") == "style"
+    calm = not settings.fx_value("flash")          # bright colours from the style kept down (spec §7.5)
     n_schemes = len(styles.STYLES.get(style, styles.STYLES[styles.DEFAULT])["schemes"])
     world, plans, current = [], [], None
     planned = []                                  # each section's own background (before the lines change it)
@@ -99,7 +100,7 @@ def plan_world(sections, lines, seed, settings, style):
             key = _wpick(rng, [(b, (2.0 if k == 0 else 1.0) * (0.25 if current and b == current["key"] else 1.0))
                                for k, b in enumerate(cands)])
         trans = _transition(rng, settings, sec.transition)
-        spec = bgs.resolve(key, style, scheme=scheme if by_style else None)
+        spec = bgs.resolve(key, style, scheme=scheme if by_style else None, calm=calm)
         if current is None:
             current = spec
             world.append({"t": 0.0, "dur": 0.0, "spec": current, "transition": ""})
@@ -118,7 +119,8 @@ def plan_world(sections, lines, seed, settings, style):
             trans = _transition(rng, settings, ln.transition)
             k = next((j for j, sec in enumerate(sections) if sec.start <= ln.start < sec.end), len(sections) - 1) + 1
             world.append({"t": ln.start, "dur": bgs.TRANSITIONS[trans]["dur"], "transition": trans, "line": ln.index,
-                          "spec": bgs.resolve(ln.background, style, scheme=schemes[k - 1] if by_style else None)})
+                          "spec": bgs.resolve(ln.background, style, scheme=schemes[k - 1] if by_style else None,
+                                              calm=calm)})
             if k < len(sections):
                 back[k] = max(back.get(k, ln.start), ln.start)
     for k, after in back.items():                # back to the next section's own background
@@ -133,7 +135,8 @@ def plan_world(sections, lines, seed, settings, style):
         if "line" in w:                           # a line's background is still on at the section start
             sp.background_from, sp.background_line = "line", w["line"]
         sp.background = active_background(world, sp.start + 0.01)
-        sp.palette = styles.palette(style, bgs.backdrop(sp.background), settings.accent or None)
+        sp.palette = styles.palette(style, bgs.backdrop(sp.background), settings.accent or None,
+                                    sp.background.get("scheme"))
     return plans, world
 
 
@@ -175,7 +178,8 @@ def active_background(world, t):
 
 def line_colors(world, style, accent, t):
     """Linear text colours for a line starting at t (read against the background active then)."""
-    pal = styles.palette(style, bgs.backdrop(active_background(world, t + 0.01)), accent or None)
+    spec = active_background(world, t + 0.01)
+    pal = styles.palette(style, bgs.backdrop(spec), accent or None, spec.get("scheme"))
     return {"fg": color.linear(pal["fg"]), "accent": color.linear(pal["accent"])}
 
 

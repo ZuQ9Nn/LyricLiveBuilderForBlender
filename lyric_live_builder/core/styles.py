@@ -134,10 +134,12 @@ def scheme_for(style_key, backdrop):
     return min(schemes, key=lambda s: abs(color.lum(s["bg"]) - color.lum(backdrop)))
 
 
-def palette(style_key, backdrop, accent=None):
+def palette(style_key, backdrop, accent=None, scheme=None):
     """Readable colours for text and particles on this backdrop: {role: '#RRGGBB'}.
-    accent: a user / random accent that replaces the style's accent."""
-    s = dict(scheme_for(style_key, backdrop))
+    accent: a user / random accent that replaces the style's accent. scheme: the scheme the background came from
+    (else the one made for a background like this)."""
+    schemes = STYLES.get(style_key, STYLES[DEFAULT])["schemes"]
+    s = dict(schemes[scheme % len(schemes)] if scheme is not None else scheme_for(style_key, backdrop))
     if accent:
         s["accent"] = accent
     out = {"bg": backdrop, "fg": color.fit_contrast(s["fg"], backdrop, 3.0),

@@ -329,6 +329,24 @@ class TestWorld(unittest.TestCase):
         theme, _ = make(n_lines=40, settings=model.Settings(style="magenta", fx={"bg_colors": "theme"}))
         self.assertTrue(any(sp.background["key"] != world.STYLE_BACKGROUND for sp in theme.section_plans))
 
+    def test_flashes_off_keeps_bright_backgrounds_down(self):
+        """Flashes off: the style's bright colours are darkened to CALM_LUMINANCE, their hue kept; the text takes the
+        background's own scheme, made readable on the darker colour (spec §7.5)."""
+        self.assertEqual(color.dim_to("#123456", 0.25), "#123456")                 # dark already: as it is
+        for style in ("caution", "magenta", "noir", "blueprint"):
+            calm, _ = make(n_lines=40, settings=model.Settings(style=style, fx={"world_switch": 1.0, "flash": False}))
+            loud, _ = make(n_lines=40, settings=model.Settings(style=style, fx={"world_switch": 1.0}))
+            schemes = styles.STYLES[style]["schemes"]
+            for sp, sl in zip(calm.section_plans, loud.section_plans):
+                bg, raw = sp.background["horizon"], sl.background["horizon"]
+                self.assertLessEqual(color._rel_lum(bg), bgs.CALM_LUMINANCE + 0.005, (style, raw, bg))
+                self.assertEqual(raw, schemes[sl.background["scheme"]]["bg"])     # flashes on: JIZURA's colour
+                if color._rel_lum(raw) > bgs.CALM_LUMINANCE + 0.01 and color.to_hsl(raw)[1] > 0.2:
+                    self.assertLess(abs(color.to_hsl(bg)[0] - color.to_hsl(raw)[0]) % 360, 6, (style, raw, bg))
+                s = schemes[sp.background["scheme"]]
+                self.assertEqual(sp.palette["fg"], color.fit_contrast(s["fg"], bg, 3.0))
+                self.assertGreaterEqual(color.contrast(sp.palette["fg"], bg), 3.0)
+
     def test_sections_get_themes_backgrounds_and_particles(self):
         p, b = make(settings=model.Settings(mood="pop", beats=np.arange(0, 120, 0.5), fx={"bg_colors": "theme"}))
         self.assertEqual(len(p.section_plans), len(p.sections))
