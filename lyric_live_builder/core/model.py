@@ -65,7 +65,8 @@ class LineInput:
 
 
 FX_DEFAULTS = {"motion": 0.7, "particles": 0.6, "decor": 0.5, "density": 0.5, "world_switch": 0.6, "koma": 0,
-               "guide": 0.7, "flash": True, "gimmick": 0.6, "spectrum": "chorus"}
+               "guide": 0.7, "flash": True, "gimmick": 0.6, "spectrum": "chorus",
+               "bg_colors": "style"}             # style: the dome in the style's scheme colours (JIZURA); theme: skies...
 
 
 @dataclass

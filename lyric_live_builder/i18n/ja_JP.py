@@ -824,6 +824,13 @@ MESSAGES = {
     '(set here)': '（このセクションで指定）',
     '(from line {})': '（{} 行目の「この行から背景を変える」から）',
     '(from theme “{}”)': '（テーマ「{}」から）',
+    '(colors of style “{}”)': '（スタイル「{}」の配色）',
+    'Background Colors': '背景の色',
+    'Style Colors': 'スタイルの配色',
+    'Theme Backgrounds': 'テーマの背景',
+    "The background in the style's scheme colours, changing between sections as in JIZURA":
+        '背景を、スタイルの配色の地の色にします。JIZURA と同じく、セクションの始めに配色が変わります',
+    "Skies and patterns picked by each section's theme": 'セクションのテーマから、空や模様の背景を選びます',
     'Background: {}': '背景：{}',
     'Particles from theme “{}”:': 'パーティクル（テーマ「{}」から）：',
     'Plexus': 'プレクサス',

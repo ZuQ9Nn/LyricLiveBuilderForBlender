@@ -79,6 +79,9 @@ PART_GROUP_ITEMS = [("all", "Every Part Group", ""), ("basic", "Basic", ""), ("e
                     ("typo", "Typography", "Make It for Me uses them with editorial and graphic moods"),
                     ("horror", "Horror", "Make It for Me uses them only with the horror mood")]
 TAP_SPEED_ITEMS = [("1", "Normal Speed", ""), ("0.75", "0.75× Speed", ""), ("0.5", "0.5× Speed", "")]
+BG_COLOR_ITEMS = [("style", "Style Colors", "The background in the style's scheme colours, changing between sections "
+                   "as in JIZURA"),
+                  ("theme", "Theme Backgrounds", "Skies and patterns picked by each section's theme")]
 SPECTRUM_ITEMS = [("off", "No Spectrum Bars", ""), ("chorus", "Bars in Choruses", ""), ("all", "Bars All Through", "")]
 GUIDE_ITEMS = [(AUTO, "Automatic Guide", "Only when the line appears away from where the audience is looking"),
                ("on", "Always Guide", ""), ("off", "No Guide", "")]
@@ -174,6 +177,7 @@ class LLBFx(bpy.types.PropertyGroup):
     flash: BoolProperty(name="Flashes", default=True, description="Brief white flashes on strong lines and choruses")
     gimmick: FloatProperty(name="Stage Object Amount", default=0.6, min=0.0, max=1.0, subtype="FACTOR",
                            description="How often a keyword in the lyrics brings an object on stage (0 = only lines set by hand)")
+    bg_colors: EnumProperty(name="Background Colors", items=BG_COLOR_ITEMS, default="style")
     spectrum: EnumProperty(name="Spectrum Bars", items=SPECTRUM_ITEMS, default="chorus",
                            description="24 bars around the audience, moving with the song (needs a song)")
 

@@ -5,7 +5,7 @@ import os
 import bpy
 from bpy.app.translations import pgettext_iface as iface_
 
-from ..core import registry, themes
+from ..core import registry, styles, themes
 from ..core.parts import backgrounds as bgs
 from ..core.parts import particles as pts
 from ..props import FONT_ROLES, SECTION_KIND_ITEMS
@@ -225,6 +225,7 @@ class LLB_PT_omakase(_Panel, bpy.types.Panel):
         col.separator()
         col.prop(proj, "mood")
         thumbnails.draw(col, proj, proj, "style")
+        col.prop(proj.fx, "bg_colors")
         col.separator()
         row = col.row(align=True)
         row.prop(proj, "reroll_target", text="")
@@ -269,6 +270,12 @@ class LLB_PT_lines(_Panel, bpy.types.Panel):
         draw_lines(self.layout.column(), context.scene.llb)
 
 
+def style_colors(proj):
+    """Where a background in the style's colours comes from (spec §6.1)."""
+    st = styles.STYLES.get(proj.style, styles.STYLES[styles.DEFAULT])
+    return iface_("(colors of style “{}”)").format(iface_(st["name"]))
+
+
 def draw_in_use(layout, proj, index):
     """What the section really uses and where it comes from (spec §5: theme and background)."""
     try:
@@ -287,6 +294,8 @@ def draw_in_use(layout, proj, index):
         where = iface_("(set here)")
     elif s["background_from"] == "line":
         where = iface_("(from line {})").format(s["line"] + 1)
+    elif s["background_from"] == "style":
+        where = style_colors(proj)
     else:
         where = iface_("(from theme “{}”)").format(theme)
     col = box.column(align=True)
@@ -464,7 +473,7 @@ def draw_line_in_use(layout, proj, index):
     box.label(text="In Use", icon="VIEWZOOM")
     bg = iface_(bgs.PRESETS[s["background"]]["name"]) if s["background"] in bgs.PRESETS else s["background"]
     where = {"this": iface_("(changed on this line)"), "line": iface_("(from line {})").format(s["line"] + 1),
-             "section": iface_("(set in the section)")}.get(s["background_from"],
+             "section": iface_("(set in the section)"), "style": style_colors(proj)}.get(s["background_from"],
                                                            iface_("(from theme “{}”)").format(theme))
     col = box.column(align=True)
     col.label(text=iface_("Background: {}").format(bg), translate=False)

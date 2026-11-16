@@ -62,6 +62,7 @@ def state(proj):
     fx["koma"] = int(proj.fx.koma)
     fx["flash"] = bool(proj.fx.flash)
     fx["spectrum"] = proj.fx.spectrum
+    fx["bg_colors"] = proj.fx.bg_colors
     accent = color.to_hex(*(c * 255 for c in proj.accent)) if proj.use_accent else ""
     offsets = {str(k): v for k, v in enumerate(proj.stage_offsets) if v}
     return {"mood": proj.mood, "style": proj.style, "fx": fx, "disabled": disabled(proj), "accent": accent,
@@ -76,6 +77,7 @@ def apply_state(proj, st):
     proj.fx.koma = str(int(st["fx"].get("koma", 0)))
     proj.fx.flash = bool(st["fx"].get("flash", True))
     proj.fx.spectrum = st["fx"].get("spectrum", model.FX_DEFAULTS["spectrum"])
+    proj.fx.bg_colors = st["fx"].get("bg_colors", model.FX_DEFAULTS["bg_colors"])
     proj.use_accent = bool(st["accent"])
     if st["accent"]:
         proj.accent = tuple(v / 255 for v in color.rgb(st["accent"]))

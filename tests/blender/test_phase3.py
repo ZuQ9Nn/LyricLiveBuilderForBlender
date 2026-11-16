@@ -159,7 +159,7 @@ def main():
     check(colls.get("LLB_Particles", 0) == len(baked1.emitters) > 0, f"one object per particle emitter ({len(baked1.emitters)})")
     check(colls.get("LLB_Guide", 0) == sum(1 + g["motes"] + ("glow" in g["kinds"]) for g in baked1.guides),
           f"guide objects ({len(baked1.guides)} guides, each a pivot with motes and glow)")
-    check(len({w["spec"]["key"] for w in plan1.world}) >= 2, "the background changes over the song")
+    check(len({w["spec"]["horizon"] for w in plan1.world}) >= 2, "the background changes over the song")
 
     # particle preview == core
     sp = plan1.section_plans[len(plan1.section_plans) // 2]
@@ -179,7 +179,7 @@ def main():
     bpy.ops.llb.history_step(step=-1)
     back = planning.make_plan(proj)
     check(proj.history_index == 1 and composition(back) == composition(plan1) and
-          [w["spec"]["key"] for w in back.world] == [w["spec"]["key"] for w in plan1.world],
+          [w["spec"] for w in back.world] == [w["spec"] for w in plan1.world],
           "Previous Proposal brings the first proposal back")
     bpy.ops.llb.history_step(step=1)
     check(composition(planning.make_plan(proj)) == composition(plan2), "Next Proposal goes forward again")
@@ -405,7 +405,7 @@ def main():
     proj.reroll_target = "particles"
     bpy.ops.llb.reroll()
     b = planning.make_plan(proj)
-    check(composition(a) == composition(b) and [w["spec"]["key"] for w in a.world] == [w["spec"]["key"] for w in b.world],
+    check(composition(a) == composition(b) and [w["spec"] for w in a.world] == [w["spec"] for w in b.world],
           "changing the particles leaves text and backgrounds")
     check([(e["key"], e["seed"]) for e in a.emitters] != [(e["key"], e["seed"]) for e in b.emitters], "the particles change")
     ga = bake.bake(a, project.metrics(proj)).guides

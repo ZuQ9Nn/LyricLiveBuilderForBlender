@@ -55,19 +55,21 @@ TRANSITION_ORDER = list(TRANSITIONS)
 SOFTNESS = 0.06                       # half width of the wipe / ring edge (0..1 of the sweep)
 
 
-def _resolve(value, style_key):
+def _resolve(value, style_key, scheme=None):
     if isinstance(value, str) and value.startswith("style:"):
-        s = styles.scheme_for(style_key, "#000000")
+        schemes = styles.STYLES.get(style_key, styles.STYLES[styles.DEFAULT])["schemes"]
+        s = styles.scheme_for(style_key, "#000000") if scheme is None else schemes[scheme % len(schemes)]
         role = value[6:]
         return s["bg"] if role == "bg" else color.mix(s[role], s["bg"], 0.35)
     return value
 
 
-def resolve(key, style_key=styles.DEFAULT, image_index=0):
-    """Preset key -> concrete spec {key, mode, top, horizon, bottom, ink, bands, pattern, pscale, image, far}."""
+def resolve(key, style_key=styles.DEFAULT, image_index=0, scheme=None):
+    """Preset key -> concrete spec {key, mode, top, horizon, bottom, ink, bands, pattern, pscale, image, far}.
+    scheme: which of the style's schemes gives the "style:" colours (None: its darkest)."""
     p = PRESETS.get(key) or PRESETS[DEFAULT]
-    top, hor, bot = (_resolve(p[k], style_key) for k in ("top", "horizon", "bottom"))
-    ink = _resolve(p.get("ink", hor), style_key)
+    top, hor, bot = (_resolve(p[k], style_key, scheme) for k in ("top", "horizon", "bottom"))
+    ink = _resolve(p.get("ink", hor), style_key, scheme)
     return {"key": key if key in PRESETS else DEFAULT, "mode": MODE[p["kind"]], "top": top, "horizon": hor,
             "bottom": bot, "ink": ink, "bands": float(p.get("bands", 1)), "pattern": float(PATTERN.get(p.get("pattern"), 0)),
             "pscale": float(p.get("pscale", 1.0)), "image": float(image_index),

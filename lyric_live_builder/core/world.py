@@ -14,6 +14,7 @@ from .rng import Rng, h
 
 STAGE_THEME, STAGE_TEXT, STAGE_PARTICLES, STAGE_BACKGROUND, STAGE_GIMMICK = 1, 2, 3, 4, 5
 LYRIC_PARTICLES = "lyrics"             # a line's particles picked from its words
+STYLE_BACKGROUND = "style_color"      # the background of "Style Colors" (in the scheme of the moment)
 FLASH_GAP = 0.4                      # strong flashes at least this far apart (≤ 3 per second, spec §7.5)
 STRONG = 0.3                         # flash amount that counts as a strong flash
 
@@ -72,14 +73,22 @@ def plan_world(sections, lines, seed, settings, style):
     theme_keys = pick_themes(sections, seed, settings)
     bseed = stage_seed(settings, seed, STAGE_BACKGROUND)
     switch = 0.25 + 0.75 * settings.fx_value("world_switch")
+    by_style = settings.fx_value("bg_colors") == "style"
+    n_schemes = len(styles.STYLES.get(style, styles.STYLES[styles.DEFAULT])["schemes"])
     world, plans, current = [], [], None
     planned = []                                  # each section's own background (before the lines change it)
+    schemes, scheme = [], 0                       # the style's scheme of each section (JIZURA: from scheme 0)
     for i, (sec, tk) in enumerate(zip(sections, theme_keys)):
         rng = Rng(h(bseed, STAGE_BACKGROUND, i + 1))
         theme = themes.THEMES[tk]
         origin = "theme"
+        if by_style and i > 0 and n_schemes > 1 and rng.chance(0.25 + 0.6 * settings.fx_value("world_switch")):
+            scheme = (scheme + 1 + rng.int(0, n_schemes - 2)) % n_schemes      # JIZURA's switch at a section start
+        schemes.append(scheme)
         if sec.background and (settings.panorama or not bgs.needs_image(sec.background)):
             key, origin = sec.background, "section"
+        elif by_style:
+            key, origin = STYLE_BACKGROUND, "style"
         elif current and current["key"] in theme["backgrounds"] and not rng.chance(switch):
             key = current["key"]                 # same family and a quiet switch setting: stay
         else:
@@ -87,11 +96,12 @@ def plan_world(sections, lines, seed, settings, style):
             key = _wpick(rng, [(b, (2.0 if k == 0 else 1.0) * (0.25 if current and b == current["key"] else 1.0))
                                for k, b in enumerate(cands)])
         trans = _transition(rng, settings, sec.transition)
+        spec = bgs.resolve(key, style, scheme=scheme if by_style else None)
         if current is None:
-            current = bgs.resolve(key, style)
+            current = spec
             world.append({"t": 0.0, "dur": 0.0, "spec": current, "transition": ""})
-        elif key != current["key"]:
-            current = bgs.resolve(key, style)
+        elif spec != current:                    # also the same preset in another scheme's colours
+            current = spec
             dur = bgs.TRANSITIONS[trans]["dur"]
             world.append({"t": max(0.0, sec.start - dur / 2), "dur": dur, "spec": current, "transition": trans})
         plans.append(model.SectionPlan(index=i, kind=sec.kind, start=sec.start, end=sec.end, theme=tk,
@@ -103,9 +113,9 @@ def plan_world(sections, lines, seed, settings, style):
         if ln.background in bgs.PRESETS and (settings.panorama or not bgs.needs_image(ln.background)):
             rng = Rng(h(bseed, STAGE_BACKGROUND, 1000 + ln.index))
             trans = _transition(rng, settings, ln.transition)
-            world.append({"t": ln.start, "dur": bgs.TRANSITIONS[trans]["dur"],
-                          "spec": bgs.resolve(ln.background, style), "transition": trans, "line": ln.index})
             k = next((j for j, sec in enumerate(sections) if sec.start <= ln.start < sec.end), len(sections) - 1) + 1
+            world.append({"t": ln.start, "dur": bgs.TRANSITIONS[trans]["dur"], "transition": trans, "line": ln.index,
+                          "spec": bgs.resolve(ln.background, style, scheme=schemes[k - 1] if by_style else None)})
             if k < len(sections):
                 back[k] = max(back.get(k, ln.start), ln.start)
     for k, after in back.items():                # back to the next section's own background

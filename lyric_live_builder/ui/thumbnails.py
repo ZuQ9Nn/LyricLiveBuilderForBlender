@@ -18,7 +18,9 @@ DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 
 PARTS = ("layout", "enter", "hold", "exit")        # with the planner's choice and the filter
 KINDS = PARTS + ("particle", "background", "style")
 ANIMATED = ("enter", "hold", "exit", "particle")
-STILL_ICONS = {"particle": {"AUTO": "X", "lyrics": "SYNTAX_OFF"}, "background": {"AUTO": "X", "panorama": "IMAGE_DATA"}}
+# no thumbnail, or one that cannot show it ("Style Color" is in the colours of the style picked now)
+STILL_ICONS = {"particle": {"AUTO": "X", "lyrics": "SYNTAX_OFF"},
+               "background": {"AUTO": "X", "panorama": "IMAGE_DATA", "style_color": "COLOR"}}
 LINGER = 1.0                    # s the frames go on after an animated thumbnail was last drawn
 STEP = 0.16                     # seconds per frame
 SCALE = 5.0                     # thumbnail size in the field and in its grid (icon units)
@@ -176,7 +178,9 @@ def _other_items(kind, proj):
     items = []
     for i, it in enumerate(_rna_items(kind)):
         name, key = _now_shown(kind, proj, data) if it.identifier == value else (iface_(it.name), it.identifier)
-        ic = icon(kind, key) if key in rows else STILL_ICONS.get(kind, {}).get(it.identifier, "QUESTION")
+        still = STILL_ICONS.get(kind, {})
+        ic = still[key] if key in still and key != "AUTO" else icon(kind, key) if key in rows else \
+            still.get(it.identifier, "QUESTION")
         items.append((it.identifier, _keep(name), _keep(iface_(it.description) if it.description else name), ic, i))
     _items[kind] = items
     return items
@@ -225,7 +229,7 @@ def draw(layout, proj, data, kind):
 
 def thumb(layout, kind, key, name, scale=2.5):
     """A thumbnail beside its name (the section's In Use); without one, the name alone."""
-    ic = icon(kind, key) if key in index()["rows"].get(kind, ()) else 0
+    ic = icon(kind, key) if key in index()["rows"].get(kind, ()) and key not in STILL_ICONS.get(kind, {}) else 0
     if not ic:
         layout.label(text=name, icon=STILL_ICONS.get(kind, {}).get(key, "BLANK1"), translate=False)
         return

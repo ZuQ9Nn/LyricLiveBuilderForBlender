@@ -309,8 +309,28 @@ class TestAtlasAndMeshes(unittest.TestCase):
 
 
 class TestWorld(unittest.TestCase):
+    def test_backgrounds_in_the_style_colors(self):
+        """As in JIZURA: the first section in the style's first scheme (its own colour), later sections may change
+        to another scheme at their start; the text is in that scheme's colours (spec §6.1)."""
+        for style, first in (("magenta", "#FF0A8C"), ("caution", "#F4D21F")):
+            p, _ = make(n_lines=40, settings=model.Settings(style=style, fx={"world_switch": 1.0}))
+            bgs_ = [sp.background for sp in p.section_plans]
+            self.assertTrue(all(b["key"] == world.STYLE_BACKGROUND for b in bgs_), style)
+            self.assertEqual(bgs_[0]["horizon"], first, style)
+            colors = {b["horizon"] for b in bgs_}
+            self.assertTrue(colors <= {s["bg"] for s in styles.STYLES[style]["schemes"]} and len(colors) > 1, style)
+            self.assertEqual(len(p.world), 1 + sum(a["horizon"] != b["horizon"] for a, b in zip(bgs_, bgs_[1:])))
+            for sp in p.section_plans:                          # the text in the colours made for this background
+                fg = next(s["fg"] for s in styles.STYLES[style]["schemes"] if s["bg"] == sp.background["horizon"])
+                self.assertEqual(sp.palette["fg"], color.fit_contrast(fg, sp.background["horizon"], 3.0))
+        busy, _ = make(n_lines=40, settings=model.Settings(style="magenta", fx={"world_switch": 1.0}))
+        quiet, _ = make(n_lines=40, settings=model.Settings(style="magenta", fx={"world_switch": 0.0}))
+        self.assertLessEqual(len(quiet.world), len(busy.world))                # fewer changes on a quiet setting
+        theme, _ = make(n_lines=40, settings=model.Settings(style="magenta", fx={"bg_colors": "theme"}))
+        self.assertTrue(any(sp.background["key"] != world.STYLE_BACKGROUND for sp in theme.section_plans))
+
     def test_sections_get_themes_backgrounds_and_particles(self):
-        p, b = make(settings=model.Settings(mood="pop", beats=np.arange(0, 120, 0.5)))
+        p, b = make(settings=model.Settings(mood="pop", beats=np.arange(0, 120, 0.5), fx={"bg_colors": "theme"}))
         self.assertEqual(len(p.section_plans), len(p.sections))
         self.assertTrue(all(sp.particles for sp in p.section_plans))
         self.assertGreater(len({w["spec"]["key"] for w in p.world}), 1)
@@ -363,7 +383,7 @@ class TestWorld(unittest.TestCase):
         first = min(ln.index for ln in lines if ln.section_index == 4)
         lines[first].start = secs[4].start                      # a line at a section's very start
         lines[first].background = "dawn"
-        st = model.Settings()
+        st = model.Settings(fx={"bg_colors": "theme"})
         p = planner.plan(lines, secs, duration, 5, settings=st)
         summary = world.section_summary(secs, lines, 5, st)
         for s, sp in zip(summary, p.section_plans):
