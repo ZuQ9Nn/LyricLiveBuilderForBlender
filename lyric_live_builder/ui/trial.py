@@ -23,7 +23,7 @@ RESTORE = "llb_trial_restore"          # scene custom property: range and sound 
 LINE_FIELDS = ("is_3d", "depth", "bevel", "layout", "enter", "hold", "exit", "distance_layer", "cuts", "persist",
                "guide", "gimmick", "gimmick_show", "gimmick_word", "particle", "background", "transition",
                "seed_offset", "lock_cuts", "look_seed", "paste_cuts")
-SECTION_FIELDS = ("kind", "theme", "background", "transition")
+SECTION_FIELDS = ("kind", "particle", "particle2", "background", "transition")
 LEAD, TAIL = 1.4, 0.4                  # seconds shown before a line (its gaze guide) and after it has left
 SECTION_SPAN = (-1.5, 6.0)             # around a section start: the transition and the new background
 SPLIT = 0.6                            # share of the 3D view the two trial views take (on the left)
@@ -458,7 +458,7 @@ class LLB_OT_trial_revert(bpy.types.Operator):
                 self.report({"WARNING"}, iface_("The sections changed since the preview was generated"))
                 return {"CANCELLED"}
         for f in (LINE_FIELDS if kind == "line" else SECTION_FIELDS):
-            if getattr(item, f) != values[f]:
+            if f in values and getattr(item, f) != values[f]:      # a Before from an older version may lack one
                 setattr(item, f, values[f])
         schedule()
         return {"FINISHED"}

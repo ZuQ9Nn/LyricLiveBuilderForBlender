@@ -1,4 +1,4 @@
-"""The world around the text: themes, backgrounds and transitions, particles, flashes (design §5.5 1, 4–6).
+"""The world around the text: backgrounds and transitions, particles, flashes (design §5.5 4–6).
 
 Each stage has its own random stream (seed × stage × index), so re-rolling one stage
 ("change only this") leaves the others alone."""
@@ -6,13 +6,13 @@ import math
 
 import numpy as np
 
-from . import color, model, moods, styles, synonyms, themes, xform
+from . import color, model, moods, styles, synonyms, xform
 from .parts import backgrounds as bgs
 from .parts import lines as line_parts
 from .parts import particles as pts
 from .rng import Rng, h
 
-STAGE_THEME, STAGE_TEXT, STAGE_PARTICLES, STAGE_BACKGROUND, STAGE_GIMMICK = 1, 2, 3, 4, 5
+STAGE_TEXT, STAGE_PARTICLES, STAGE_BACKGROUND, STAGE_GIMMICK = 2, 3, 4, 5      # 1 was the themes (gone)
 LYRIC_PARTICLES = "lyrics"             # a line's particles picked from its words
 STYLE_BACKGROUND = "style_color"      # the background of "Style Colors" (in the scheme of the moment)
 FLASH_GAP = 0.4                      # strong flashes at least this far apart (≤ 3 per second, spec §7.5)
@@ -34,26 +34,7 @@ def _wpick(rng, cands):
     return rng.wpick(cands) if cands else None
 
 
-# ---------------- sections: theme, background, palette ----------------
-
-def pick_themes(sections, seed, settings):
-    tseed = stage_seed(settings, seed, STAGE_THEME)
-    out, by_kind = [], {}
-    for i, sec in enumerate(sections):
-        rng = Rng(h(tseed, STAGE_THEME, i + 1))
-        if sec.theme in themes.THEMES:
-            key = sec.theme
-        elif sec.kind in by_kind and rng.chance(0.7):
-            key = by_kind[sec.kind]              # same kind, same theme: the chorus is recognisable
-        else:
-            prev = out[-1] if out else None
-            key = _wpick(rng, [(k, moods.favours(settings.mood, t["tags"]) * (1.6 if sec.kind in t["kinds"] else 1.0)
-                                * (0.3 if k == prev else 1.0))
-                               for k, t in themes.THEMES.items() if _ok(settings, "theme", k)]) or themes.ORDER[0]
-        by_kind.setdefault(sec.kind, key)
-        out.append(key)
-    return out
-
+# ---------------- sections: background, palette ----------------
 
 def _transition(rng, settings, wanted=""):
     """With Flashes off nothing lights or darkens the whole dome (spec §7.5): no White Out / Fade Through Black,
@@ -66,41 +47,27 @@ def _transition(rng, settings, wanted=""):
                         if _ok(settings, "transition", k) and not (calm and bgs.TRANSITIONS[k]["flash"])]) or "crossfade"
 
 
-def _background_ok(settings, key):
-    return _ok(settings, "background", key) and (settings.panorama or not bgs.needs_image(key))
-
-
 def plan_world(sections, lines, seed, settings, style):
-    """Background changes over the song and the section plans (theme, palette at the section start).
+    """Background changes over the song and the section plans (palette at the section start). The dome takes the
+    style's scheme colours as JIZURA does; a section or a line may set another background.
     lines: LineInputs (for per-line background overrides)."""
-    theme_keys = pick_themes(sections, seed, settings)
     bseed = stage_seed(settings, seed, STAGE_BACKGROUND)
-    switch = 0.25 + 0.75 * settings.fx_value("world_switch")
-    by_style = settings.fx_value("bg_colors") == "style"
     calm = not settings.fx_value("flash")          # bright colours from the style kept down (spec §7.5)
     n_schemes = len(styles.STYLES.get(style, styles.STYLES[styles.DEFAULT])["schemes"])
     world, plans, current = [], [], None
     planned = []                                  # each section's own background (before the lines change it)
     schemes, scheme = [], 0                       # the style's scheme of each section (JIZURA: from scheme 0)
-    for i, (sec, tk) in enumerate(zip(sections, theme_keys)):
+    for i, sec in enumerate(sections):
         rng = Rng(h(bseed, STAGE_BACKGROUND, i + 1))
-        theme = themes.THEMES[tk]
-        origin = "theme"
-        if by_style and i > 0 and n_schemes > 1 and rng.chance(0.25 + 0.6 * settings.fx_value("world_switch")):
+        if i > 0 and n_schemes > 1 and rng.chance(0.25 + 0.6 * settings.fx_value("world_switch")):
             scheme = (scheme + 1 + rng.int(0, n_schemes - 2)) % n_schemes      # JIZURA's switch at a section start
         schemes.append(scheme)
         if sec.background and (settings.panorama or not bgs.needs_image(sec.background)):
             key, origin = sec.background, "section"
-        elif by_style:
-            key, origin = STYLE_BACKGROUND, "style"
-        elif current and current["key"] in theme["backgrounds"] and not rng.chance(switch):
-            key = current["key"]                 # same family and a quiet switch setting: stay
         else:
-            cands = [b for b in theme["backgrounds"] if _background_ok(settings, b)] or [bgs.DEFAULT]
-            key = _wpick(rng, [(b, (2.0 if k == 0 else 1.0) * (0.25 if current and b == current["key"] else 1.0))
-                               for k, b in enumerate(cands)])
+            key, origin = STYLE_BACKGROUND, "style"
         trans = _transition(rng, settings, sec.transition)
-        spec = bgs.resolve(key, style, scheme=scheme if by_style else None, calm=calm)
+        spec = bgs.resolve(key, style, scheme=scheme, calm=calm)
         if current is None:
             current = spec
             world.append({"t": 0.0, "dur": 0.0, "spec": current, "transition": ""})
@@ -108,8 +75,9 @@ def plan_world(sections, lines, seed, settings, style):
             current = spec
             dur = bgs.TRANSITIONS[trans]["dur"]
             world.append({"t": max(0.0, sec.start - dur / 2), "dur": dur, "spec": current, "transition": trans})
-        plans.append(model.SectionPlan(index=i, kind=sec.kind, start=sec.start, end=sec.end, theme=tk,
-                                       background=current, particles=[], palette={}, background_from=origin))
+        plans.append(model.SectionPlan(index=i, kind=sec.kind, start=sec.start, end=sec.end, background=current,
+                                       particles=[], palette={}, background_from=origin,
+                                       slots=(sec.particle, sec.particle2)))
         planned.append(current)
     # per-line background overrides start with the line and last to the end of its section (spec §6.2)
     back = {}                                     # next section -> the latest override before it
@@ -119,8 +87,7 @@ def plan_world(sections, lines, seed, settings, style):
             trans = _transition(rng, settings, ln.transition)
             k = next((j for j, sec in enumerate(sections) if sec.start <= ln.start < sec.end), len(sections) - 1) + 1
             world.append({"t": ln.start, "dur": bgs.TRANSITIONS[trans]["dur"], "transition": trans, "line": ln.index,
-                          "spec": bgs.resolve(ln.background, style, scheme=schemes[k - 1] if by_style else None,
-                                              calm=calm)})
+                          "spec": bgs.resolve(ln.background, style, scheme=schemes[k - 1], calm=calm)})
             if k < len(sections):
                 back[k] = max(back.get(k, ln.start), ln.start)
     for k, after in back.items():                # back to the next section's own background
@@ -156,15 +123,15 @@ def active_entry(world, t):
 
 
 def section_summary(sections, lines, seed, settings):
-    """What each section really uses, for the panel: [{theme, theme_set, background, background_from, line,
-    particles}]. Plans only the theme, background and particle stages (no text), so it is cheap."""
+    """What each section really uses, for the panel: [{background, background_from, line, particles,
+    particle_from}]. Plans only the background and particle stages (no text), so it is cheap."""
     secs = [s if isinstance(s, model.SectionInput) else model.SectionInput(*s) for s in sections]
     plans, world_ = plan_world(secs, lines, seed, settings, settings.style or styles.DEFAULT)
     plan_particles(plans, [], seed, settings)
     out = []
     for sec, sp in zip(secs, plans):
-        out.append({"theme": sp.theme, "theme_set": sec.theme == sp.theme, "background": sp.background["key"],
-                    "background_from": sp.background_from, "line": sp.background_line, "particles": list(sp.particles)})
+        out.append({"background": sp.background["key"], "background_from": sp.background_from,
+                    "line": sp.background_line, "particles": list(sp.particles), "particle_from": list(sp.particle_from)})
     return out
 
 
@@ -254,7 +221,7 @@ def line_particle(choice, text, impact, emphasis, lseed, settings):
 
 def line_summary(sections, lines, seed, settings):
     """What each line really gets, for the line details: [{section, background, background_from (this | line |
-    section | theme), line, added, added_auto}]. Plans only the background and particle stages."""
+    section | style), line, added, added_auto}]. Plans only the background and particle stages."""
     secs = [s if isinstance(s, model.SectionInput) else model.SectionInput(*s) for s in sections]
     plans, world_ = plan_world(secs, lines, seed, settings, settings.style or styles.DEFAULT)
     pseed = stage_seed(settings, seed, STAGE_PARTICLES)
@@ -276,21 +243,28 @@ def line_summary(sections, lines, seed, settings):
     return out
 
 
+def section_particles(slots, rng, settings):
+    """(first, second) presets of a section from its two settings (spec §5.5): a preset as set; "" chosen by the
+    planner with the mood's taste, never the other slot's; "none" (the second's default) nothing."""
+    first, second = slots
+
+    def pick(avoid):
+        return _wpick(rng, [(k, moods.favours(settings.mood, pts.PRESETS[k]["tags"])) for k in pts.AMBIENT
+                            if _ok(settings, "particle", k) and k not in avoid])
+    one = first if first in pts.PRESETS else pick({second})
+    two = second if second in pts.PRESETS else pick({one}) if second == "" else None
+    return one, two
+
+
 def plan_particles(section_plans, line_plans, seed, settings):
     pseed = stage_seed(settings, seed, STAGE_PARTICLES)
-    amount = settings.fx_value("particles")
-    n_presets = 1 if amount < 0.35 else 2 if amount < 0.75 else 3
     out = []
     for sp in section_plans:
         rng = Rng(h(pseed, STAGE_PARTICLES, sp.index + 1))
-        cands = [k for k in themes.THEMES[sp.theme]["particles"] if _ok(settings, "particle", k)]
-        chosen = []
-        for _ in range(min(n_presets, len(cands))):
-            k = _wpick(rng, [(c, moods.favours(settings.mood, pts.PRESETS[c]["tags"]) * (1.5 if j == 0 else 1.0))
-                             for j, c in enumerate(cands) if c not in chosen])
-            if k:
-                chosen.append(k)
+        sp.picks = section_particles(sp.slots, rng, settings)
+        chosen = [k for k in sp.picks if k]
         sp.particles = chosen
+        sp.particle_from = ["set" if k == slot else "auto" for k, slot in zip(sp.picks, sp.slots) if k]
         inten = _intensity(settings, sp.start, sp.end)
         for k, key in enumerate(chosen):
             out.append(emitter(key, sp.start, sp.end, h(pseed, STAGE_PARTICLES, sp.index + 1, k + 1), sp.palette,

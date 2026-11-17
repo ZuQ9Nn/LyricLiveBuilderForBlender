@@ -1,18 +1,18 @@
 # おまかせ follows JIZURA's J.omakase (src/08b_omakase.js: mood first, then a style that suits
 # it, effect strengths, frame stepping, a part subset and colours), MIT License,
-# Copyright (c) 2026 hakoniwa. Extended with themes, particles and transitions.
+# Copyright (c) 2026 hakoniwa. Extended with particles and transitions.
 """おまかせ and "change only this" (spec §6.1). A state is a JSON-friendly dict:
 {mood, style, fx, disabled, accent, seed, stage_offsets}; lines, timing and locks live elsewhere."""
 import math
 
-from . import color, model, moods, registry, styles, themes, world
+from . import color, model, moods, registry, styles, world
 from .parts import backgrounds as bgs
 from .parts import particles as pts
 
 TARGETS = ("style", "colors", "mood", "text", "particles", "background", "gimmicks")
 STAGE_OF = {"text": world.STAGE_TEXT, "particles": world.STAGE_PARTICLES, "background": world.STAGE_BACKGROUND,
             "gimmicks": world.STAGE_GIMMICK}
-MIN_ON = {"layout": 6, "enter": 5, "hold": 3, "exit": 5, "theme": 4, "particle": 5, "transition": 3}
+MIN_ON = {"layout": 6, "enter": 5, "hold": 3, "exit": 5, "particle": 5, "transition": 3}
 ALWAYS_ON = {"hold": ("still",), "enter": ("pop_sing",), "exit": ("fade",)}
 BACKDROP = "#101018"                 # the accent is fitted against a typical dark dome
 
@@ -21,8 +21,6 @@ def _items(kind):
     """(key, mood tags) of everything the effects panel can switch, per kind."""
     if kind in ("layout", "enter", "hold", "exit"):
         return [(p.key, p.tags) for p in registry.parts(kind)]
-    if kind == "theme":
-        return [(k, t["tags"]) for k, t in themes.THEMES.items()]
     if kind == "particle":
         return [(k, pts.PRESETS[k]["tags"]) for k in pts.AMBIENT]
     if kind == "transition":

@@ -44,10 +44,10 @@ def _items(table, order, auto="Planner's Choice"):
 
 
 def _world_items():
-    from .core import moods, styles, themes
+    from .core import moods, styles
     from .core.parts import backgrounds as bgs
     from .core.parts import particles as pts
-    return (_items(themes.THEMES, themes.ORDER), _items(bgs.PRESETS, bgs.ORDER),
+    return (_items(bgs.PRESETS, bgs.ORDER),
             _items(bgs.TRANSITIONS, bgs.TRANSITION_ORDER), _items(pts.PRESETS, list(pts.PRESETS)),
             _items(moods.MOODS, moods.ORDER, None), _items(styles.STYLES, styles.ORDER, None))
 
@@ -57,7 +57,20 @@ LAYOUT_ITEMS = _part_items("layout")
 ENTER_ITEMS = _part_items("enter")
 HOLD_ITEMS = _part_items("hold")
 EXIT_ITEMS = _part_items("exit")
-THEME_ITEMS, BACKGROUND_ITEMS, TRANSITION_ITEMS, PARTICLE_ITEMS, MOOD_ITEMS, STYLE_ITEMS = _world_items()
+BACKGROUND_ITEMS, TRANSITION_ITEMS, PARTICLE_ITEMS, MOOD_ITEMS, STYLE_ITEMS = _world_items()
+
+
+def _section_particle_items():
+    """The section's two particle settings (spec §5.5): the first chosen by the planner by default, the second
+    nothing by default."""
+    from .core.parts import particles as pts
+    presets = [(k, pts.PRESETS[k]["name"], "") for k in pts.AMBIENT]
+    return ([(AUTO, "Planner's Choice", "Chosen by the planner")] + presets,
+            [("none", "No Particles Set", "Nothing more in this section"),
+             (AUTO, "Planner's Choice", "Chosen by the planner, not the same as the first")] + presets)
+
+
+SECTION_PARTICLE_ITEMS, SECTION_PARTICLE2_ITEMS = _section_particle_items()
 PARTICLE_ITEMS.insert(1, ("lyrics", "From the Lyrics", "A word in the line picks the particles (none: nothing added)"))
 # a line only adds to its section (spec §6.2): the automatic items say so
 PARTICLE_ITEMS[0] = (AUTO, "Add Nothing (Section's Only)", "Only the section's particles")
@@ -79,16 +92,13 @@ PART_GROUP_ITEMS = [("all", "Every Part Group", ""), ("basic", "Basic", ""), ("e
                     ("typo", "Typography", "Make It for Me uses them with editorial and graphic moods"),
                     ("horror", "Horror", "Make It for Me uses them only with the horror mood")]
 TAP_SPEED_ITEMS = [("1", "Normal Speed", ""), ("0.75", "0.75× Speed", ""), ("0.5", "0.5× Speed", "")]
-BG_COLOR_ITEMS = [("style", "Style Colors", "The background in the style's scheme colours, changing between sections "
-                   "as in JIZURA"),
-                  ("theme", "Theme Backgrounds", "Skies and patterns picked by each section's theme")]
 SPECTRUM_ITEMS = [("off", "No Spectrum Bars", ""), ("chorus", "Bars in Choruses", ""), ("all", "Bars All Through", "")]
 GUIDE_ITEMS = [(AUTO, "Automatic Guide", "Only when the line appears away from where the audience is looking"),
                ("on", "Always Guide", ""), ("off", "No Guide", "")]
 KOMA_ITEMS = [("0", "Every Frame", "Every frame (recommended for VR)"), ("12", "12 Steps per Second", ""),
               ("8", "8 Steps per Second", "")]
 PART_KINDS = [("layout", "Layouts", ""), ("enter", "Entrances", ""), ("hold", "Hold Motions", ""), ("exit", "Exits", ""),
-              ("theme", "Themes", ""), ("particle", "Particle Presets", ""), ("background", "Backgrounds", ""),
+              ("particle", "Particle Presets", ""), ("background", "Backgrounds", ""),
               ("transition", "Transitions", ""), ("gimmick", "Stage Objects", ""), ("show", "Ways of Appearing", "")]
 REROLL_ITEMS = [("style", "Style", "Text and particle colours"), ("colors", "Accent Color", ""),
                 ("mood", "Mood", "Mood, effect strengths and the parts in use"),
@@ -179,7 +189,6 @@ class LLBFx(bpy.types.PropertyGroup):
                                     "transitions and beat pulses. Off: nothing lights or darkens the whole view")
     gimmick: FloatProperty(name="Stage Object Amount", default=0.6, min=0.0, max=1.0, subtype="FACTOR",
                            description="How often a keyword in the lyrics brings an object on stage (0 = only lines set by hand)")
-    bg_colors: EnumProperty(name="Background Colors", items=BG_COLOR_ITEMS, default="style")
     spectrum: EnumProperty(name="Spectrum Bars", items=SPECTRUM_ITEMS, default="chorus",
                            description="24 bars around the audience, moving with the song (needs a song)")
 
@@ -228,10 +237,11 @@ class LLBSection(bpy.types.PropertyGroup):
     label: StringProperty(name="Heading Text", description="Heading text from the lyrics")
     start: FloatProperty(name="Start", unit="TIME_ABSOLUTE")
     end: FloatProperty(name="End", unit="TIME_ABSOLUTE")
-    theme: EnumProperty(name="Theme", items=THEME_ITEMS, update=_trial)
+    particle: EnumProperty(name="Particles 1", items=SECTION_PARTICLE_ITEMS, update=_trial)
+    particle2: EnumProperty(name="Particles 2", items=SECTION_PARTICLE2_ITEMS, default="none", update=_trial)
     background: EnumProperty(name="Background", items=BACKGROUND_ITEMS, update=_trial)
     transition: EnumProperty(name="Transition", items=TRANSITION_ITEMS, update=_trial)
-    locked: BoolProperty(name="Lock State", description="Keep the theme, background and transition")
+    locked: BoolProperty(name="Lock State", description="Keep the particles, background and transition")
     lock_frozen: StringProperty(description="Fields the lock filled in (set back to automatic on unlock)")
 
 
@@ -333,6 +343,12 @@ class LLBProject(bpy.types.PropertyGroup):
                                   items=lambda s, c: _thumbs().enum_items("background", s),
                                   get=lambda s: _thumbs().enum_get("background", s),
                                   set=lambda s, v: _thumbs().enum_set("background", s, v))
+    pick_sec_particle: EnumProperty(name="Particles 1", items=lambda s, c: _thumbs().enum_items("sec_particle", s),
+                                    get=lambda s: _thumbs().enum_get("sec_particle", s),
+                                    set=lambda s, v: _thumbs().enum_set("sec_particle", s, v))
+    pick_sec_particle2: EnumProperty(name="Particles 2", items=lambda s, c: _thumbs().enum_items("sec_particle2", s),
+                                     get=lambda s: _thumbs().enum_get("sec_particle2", s),
+                                     set=lambda s, v: _thumbs().enum_set("sec_particle2", s, v))
     pick_style: EnumProperty(name="Style", items=lambda s, c: _thumbs().enum_items("style", s),
                              get=lambda s: _thumbs().enum_get("style", s),
                              set=lambda s, v: _thumbs().enum_set("style", s, v))

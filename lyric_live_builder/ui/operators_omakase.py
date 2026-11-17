@@ -154,7 +154,7 @@ class LLB_OT_line_paste(bpy.types.Operator):
 class LLB_OT_section_lock(_NeedsLines, bpy.types.Operator):
     bl_idname = "llb.section_lock"
     bl_label = "Lock Section"
-    bl_description = "Lock: keep this section's theme, background and transition. Unlock: back to automatic"
+    bl_description = "Lock: keep this section's particles, background and transition. Unlock: back to automatic"
     bl_options = {"REGISTER", "UNDO"}
 
     def execute(self, context):

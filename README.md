@@ -36,9 +36,9 @@ add-on already contains it.
    the song to 0.75× or 0.5× with its pitch kept; the real times are stored. **Countdown** counts 3, 2, 1 first,
    **Tap from This Line** above the line list redoes the song from a line, and Backspace undoes a tap and jumps back.
 5. **Make It for Me**: every press is a new proposal. **Change Only** re-rolls one aspect, and locked lines stay.
-   **Background Colors**: on **Style Colors** (the default) the dome takes the style's colours as in JIZURA (Pop
-   Magenta: magenta, Caution: yellow), changing to another of its colours between sections; **Theme Backgrounds**
-   picks skies and patterns instead.
+   The dome takes the style's colours as in JIZURA (Pop Magenta: magenta, Caution: yellow), changing to another of
+   its colours between sections; skies and patterns are used where a section or a line sets them. Each section has
+   two particle slots: the first is Planner's Choice by default, the second is empty unless you set it.
 6. **Song Sections** and **Lyric Lines**: fix what you want by hand. The gear button of a line opens its details on the
    left of the 3D view (layout, motion, gaze guide, stage object, particles), seen from the audience. Each layout,
    motion, added particle and background is a thumbnail dropdown: click the thumbnail for a grid of thumbnails with
@@ -133,7 +133,7 @@ to change the text size and replace stage objects, particles and backgrounds (in
 2. フォントを指定する（最低限「本文」）
 3. 曲を読み込む
 4. タップの遅延を一度測り、曲に合わせて行ごとにキーを押す（「タップの速さ」で、音程を保ったまま 0.75×・0.5× に遅くできます。記録されるのは本来の速さの時刻です。「カウントダウン」で 3、2、1 の後に始められ、行の一覧の上の「この行からタップ」で途中の行からやり直せます。Backspace で取り消すと、曲が少し戻ります）
-5. 「おまかせ」を押す（押すたびに新しい案。「ここだけ変える」で一部だけ振り直し、鍵を掛けた行は残る。「背景の色」が「スタイルの配色」〔既定〕なら、JIZURA と同じく背景がスタイルの色になり〔ポップ・マゼンタならマゼンタ、コーションなら黄色〕、セクションの境目で同じスタイルの別の色に変わる。「テーマの背景」にすると、空や模様の背景になる）
+5. 「おまかせ」を押す（押すたびに新しい案。「ここだけ変える」で一部だけ振り直し、鍵を掛けた行は残る。背景は JIZURA と同じくスタイルの色になり〔ポップ・マゼンタならマゼンタ、コーションなら黄色〕、セクションの境目で同じスタイルの別の色に変わる。空や模様の背景は、セクションや行で指定したときに使う。セクションのパーティクルは 2 つまで指定でき、1 つめは既定でおまかせ、2 つめは既定で指定なし）
 6. 「セクション」と「歌詞の行」で、気になる行を手で直す（行の歯車のボタンで、3D ビューの左に行の詳細が開き、観客の位置から見ながら設定できます。レイアウト・登場・保持・退場・足すパーティクル・背景は、サムネイル（動きとパーティクルはアニメーション）を押すと、サムネイルと名前の格子から選べます。レイアウトと動きは名前で絞り込めます。おまかせのスタイルもサムネイルで選べ、セクションの「実際に使われるもの」にも背景とパーティクルのサムネイルが出ます。「カット」で、1 行を 2〜6 回に分けて順に見せられます。おまかせのときは歌詞の `/` の区切りごとに分かれます。「演出をコピー」「演出をペースト」で、1 番と 2 番などの行を同じ演出にできます。ペーストした行は、コピー元を後で変えても変わりません。「試し見」で、変える前と後を 3D ビューの横に並べて見られます）
 7. 「Unity 出力」でプロジェクトを選んで出力する（Unity が開いていても閉じていても、自動で組み立てます）
 

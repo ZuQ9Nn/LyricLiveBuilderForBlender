@@ -65,8 +65,7 @@ class LineInput:
 
 
 FX_DEFAULTS = {"motion": 0.7, "particles": 0.6, "decor": 0.5, "density": 0.5, "world_switch": 0.6, "koma": 0,
-               "guide": 0.7, "flash": True, "gimmick": 0.6, "spectrum": "chorus",
-               "bg_colors": "style"}             # style: the dome in the style's scheme colours (JIZURA); theme: skies...
+               "guide": 0.7, "flash": True, "gimmick": 0.6, "spectrum": "chorus"}
 
 
 @dataclass
@@ -74,9 +73,10 @@ class SectionInput:
     start: float
     end: float
     kind: str = "verse"
-    theme: str = ""                  # overrides ("" = planner)
+    particle: str = ""               # the section's first particles ("" = planner, overrides below likewise)
     background: str = ""
     transition: str = ""
+    particle2: str = "none"         # the second particles ("none" = nothing, "" = planner)
 
 
 @dataclass
@@ -140,12 +140,14 @@ class SectionPlan:
     kind: str
     start: float
     end: float
-    theme: str
     background: dict                  # resolved background spec at the section start
     particles: list                   # preset keys
     palette: dict                     # role -> '#RRGGBB' for the section's backdrop
-    background_from: str = "theme"    # theme | section (set on the section) | line (a line's override, see line)
+    background_from: str = "style"    # style (its scheme colours) | section (set on the section) | line (see line)
     background_line: int = -1
+    slots: tuple = ("", "none")       # the section's two particle settings ("" = planner, "none" = nothing)
+    picks: tuple = (None, None)       # what each slot gives (None: nothing)
+    particle_from: list = field(default_factory=list)   # per key of particles: "set" | "auto"
 
 
 @dataclass

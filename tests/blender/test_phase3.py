@@ -288,7 +288,7 @@ def main():
     lp = next(x for x in plan.lines if x.index == 0)
     ln0 = proj.lines[0]
     check(got[0]["enter"] == lp.enter and got[0]["layout"] == lp.layout and len(secs_got) == len(proj.sections)
-          and secs_got[0]["theme"] == plan.section_plans[0].theme, "the planner's choices are known for the panels")
+          and secs_got[0]["particle"] == plan.section_plans[0].picks[0], "the planner's choices are known for the panels")
     check(warm < 0.02, "...and cheap while nothing changes")
     name = registry.get("enter", lp.enter).name
     check(panels.auto_text(ln0, "enter", got[0]["enter"]) == f"Planner's Choice ({name})"
@@ -336,21 +336,38 @@ def main():
           "...and off again")
     bpy.ops.llb.line_lock()
 
-    # a locked section keeps its theme and background
+    # a locked section keeps its particles and background
     proj.section_active = 2
     bpy.ops.llb.section_lock()
     sec_before = planning.make_plan(proj).section_plans[2]
     bpy.ops.llb.omakase()
     sec_after = planning.make_plan(proj).section_plans[2]
-    check((sec_before.theme, sec_before.background["key"]) == (sec_after.theme, sec_after.background["key"]),
-          "the locked section keeps its theme and background")
+    check((sec_before.particles, sec_before.background["key"]) == (sec_after.particles, sec_after.background["key"])
+          and proj.sections[2].particle == sec_before.particles[0], "the locked section keeps its particles and background")
+    bpy.ops.llb.section_lock()                                     # unlock
+    sec = proj.sections[2]
+    sec.lock_frozen, sec.locked = '["theme", "background"]', True  # a lock from before the themes were gone
+    sec.background = "night"
+    bpy.ops.llb.section_lock()
+    check(not sec.locked and sec.background == "AUTO", "an old lock naming the theme unlocks")
 
-    # the section panel shows what is really used (theme and background, spec §5)
+    # the section's two particle slots as thumbnail dropdowns (spec §5.5)
+    from lyric_live_builder.ui import thumbnails
+    items = thumbnails.enum_items("sec_particle2", proj)
+    rna = sec.bl_rna.properties["particle2"].enum_items
+    check([it[0] for it in items] == [it.identifier for it in rna] and sec.particle == "AUTO" and sec.particle2 == "none",
+          "the section slots: Planner's Choice and nothing by default, in a grid of their items")
+    proj.pick_sec_particle, proj.pick_sec_particle2 = "snow", "snow"
+    check((sec.particle, sec.particle2) == ("snow", "snow")
+          and planning.make_plan(proj).section_plans[2].particles == ["snow", "snow"], "a thumbnail sets a slot")
+    sec.particle, sec.particle2 = "AUTO", "none"
+
+    # the section panel shows what is really used (particles and background, spec §5.5)
     plan = planning.make_plan(proj)
     summary = planning.section_summary(proj)
-    check([(s["theme"], s["background"], s["particles"]) for s in summary]
-          == [(sp.theme, sp.background["key"], sp.particles) for sp in plan.section_plans],
-          "the section panel shows the planned theme, background and particles")
+    check([(s["background"], s["particles"], s["particle_from"]) for s in summary]
+          == [(sp.background["key"], sp.particles, sp.particle_from) for sp in plan.section_plans],
+          "the section panel shows the planned background and particles")
     check(planning.section_summary(proj) is summary, "the panel summary is reused while nothing changes")
     proj.sections[1].background = "evening"
     summary = planning.section_summary(proj)

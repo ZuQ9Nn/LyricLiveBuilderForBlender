@@ -1,6 +1,6 @@
 # Moods ported from JIZURA (src/08b_omakase.js J.MOODS: effect ranges, frame stepping, styles),
 # MIT License, Copyright (c) 2026 hakoniwa. Ranges for particles and world switches are new.
-"""Moods: what おまかせ rolls first; they bias styles, themes, parts and effect strengths."""
+"""Moods: what おまかせ rolls first; they bias styles, parts and effect strengths."""
 
 MOODS = {
     "glitch": {"name": "Glitchy", "fx": {"motion": (0.6, 0.9), "particles": (0.5, 0.8), "decor": (0.3, 0.6),
@@ -44,7 +44,7 @@ MOODS = {
 }
 ORDER = list(MOODS)
 STICKY = ("horror",)                  # never rolled; once the user picks it, おまかせ keeps it
-DEFAULT = "chaos"                     # no bias: every style, theme and part is equally welcome
+DEFAULT = "chaos"                     # no bias: every style and part is equally welcome
 
 
 def favours(mood, tags):

@@ -5,7 +5,7 @@ import os
 import bpy
 from bpy.app.translations import pgettext_iface as iface_
 
-from ..core import registry, styles, themes
+from ..core import registry, styles
 from ..core.parts import backgrounds as bgs
 from ..core.parts import particles as pts
 from ..props import FONT_ROLES, SECTION_KIND_ITEMS
@@ -225,7 +225,6 @@ class LLB_PT_omakase(_Panel, bpy.types.Panel):
         col.separator()
         col.prop(proj, "mood")
         thumbnails.draw(col, proj, proj, "style")
-        col.prop(proj.fx, "bg_colors")
         col.separator()
         row = col.row(align=True)
         row.prop(proj, "reroll_target", text="")
@@ -277,7 +276,7 @@ def style_colors(proj):
 
 
 def draw_in_use(layout, proj, index):
-    """What the section really uses and where it comes from (spec §5: theme and background)."""
+    """What the section really uses and where it comes from (spec §5.5: particles and background)."""
     try:
         summary = planning.section_summary(proj)
     except Exception as e:                                # the panel must always draw
@@ -286,7 +285,6 @@ def draw_in_use(layout, proj, index):
     if not 0 <= index < len(summary):
         return
     s = summary[index]
-    theme = iface_(themes.THEMES[s["theme"]]["name"])
     bg = iface_(bgs.PRESETS[s["background"]]["name"]) if s["background"] in bgs.PRESETS else s["background"]
     box = layout.box()
     box.label(text="In Use", icon="VIEWZOOM")
@@ -294,17 +292,16 @@ def draw_in_use(layout, proj, index):
         where = iface_("(set here)")
     elif s["background_from"] == "line":
         where = iface_("(from line {})").format(s["line"] + 1)
-    elif s["background_from"] == "style":
-        where = style_colors(proj)
     else:
-        where = iface_("(from theme “{}”)").format(theme)
+        where = style_colors(proj)
     col = box.column(align=True)
     thumbnails.thumb(col, "background", s["background"], iface_("Background: {}").format(bg))
     col.label(text=where, icon="BLANK1", translate=False)
     col = box.column(align=True)
-    col.label(text=iface_("Particles from theme “{}”:").format(theme), translate=False)
-    for key in s["particles"] or ():                      # with their moving thumbnails
-        thumbnails.thumb(col, "particle", key, iface_(pts.PRESETS[key]["name"]))
+    col.label(text="Particles:")
+    for key, origin in zip(s["particles"], s["particle_from"]):      # with their moving thumbnails
+        how = iface_("(Planner's Choice)") if origin == "auto" else iface_("(set)")       # short: beside a thumbnail
+        thumbnails.thumb(col, "particle", key, f"{iface_(pts.PRESETS[key]['name'])} {how}")
     if not s["particles"]:
         col.label(text=iface_("No Particles"), icon="BLANK1", translate=False)
 
@@ -349,9 +346,10 @@ def draw_sections(col, proj):
         box.enabled = not sec.locked
         got = _chosen(proj)[1]
         got = got[proj.section_active] if proj.section_active < len(got) else {}
-        auto_prop(box, sec, "theme", got.get("theme"))
-        if sec.background != "AUTO":
-            labels(box, "The theme only picks\nthe particles here", "INFO")
+        thumbnails.draw(box, proj, sec, "sec_particle")
+        thumbnails.draw(box, proj, sec, "sec_particle2")
+        if sec.particle == sec.particle2 and sec.particle not in ("AUTO", "none"):
+            labels(box, "The same particles\nare chosen twice", "ERROR")
         auto_prop(box, sec, "background", got.get("background"))
         prop_above(box, sec, "transition", got.get("transition"))
         draw_in_use(col, proj, proj.section_active)
@@ -468,18 +466,16 @@ def draw_line_in_use(layout, proj, index):
         return
     s = lines[index]
     sec = secs[s["section"]] if 0 <= s["section"] < len(secs) else None
-    theme = iface_(themes.THEMES[sec["theme"]]["name"]) if sec else ""
     box = layout.box()
     box.label(text="In Use", icon="VIEWZOOM")
     bg = iface_(bgs.PRESETS[s["background"]]["name"]) if s["background"] in bgs.PRESETS else s["background"]
     where = {"this": iface_("(changed on this line)"), "line": iface_("(from line {})").format(s["line"] + 1),
-             "section": iface_("(set in the section)"), "style": style_colors(proj)}.get(s["background_from"],
-                                                           iface_("(from theme “{}”)").format(theme))
+             "section": iface_("(set in the section)")}.get(s["background_from"], style_colors(proj))
     col = box.column(align=True)
     col.label(text=iface_("Background: {}").format(bg), translate=False)
     col.label(text=where, icon="BLANK1", translate=False)
     col = box.column(align=True)
-    col.label(text=iface_("Particles from theme “{}”:").format(theme), translate=False)
+    col.label(text="Particles from the section:")
     for key in (sec["particles"] if sec else ()):
         col.label(text=iface_(pts.PRESETS[key]["name"]), icon="BLANK1", translate=False)
     if s["added"]:

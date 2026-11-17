@@ -17,7 +17,7 @@ LINE_DEFAULTS = {"tap_time": -1.0, "use_manual": False, "manual_start": 0.0, "is
                  "gimmick_word": "", "particle": "AUTO",
                  "background": "AUTO", "transition": "AUTO", "locked": False, "lock_frozen": "", "lock_cuts": "", "seed_offset": 0,
                  "look_seed": "", "paste_cuts": ""}
-SECTION_USER_FIELDS = ("theme", "background", "transition", "locked", "lock_frozen")
+SECTION_USER_FIELDS = ("particle", "particle2", "background", "transition", "locked", "lock_frozen")
 LINE_USER_FIELDS = tuple(LINE_DEFAULTS)
 _busy = False
 _audio_cache = {}          # abs path -> (mtime, AudioInfo)
@@ -161,7 +161,7 @@ def _recompute(scene):
         ln.start, ln.end, ln.source = tm.starts[i], tm.ends[i], tm.sources[i]
         ln.section_index = sections.section_of(secs, tm.starts[i])
         ln.char_times = json.dumps([round(t, 4) for t in timing.char_times(src.text, tm.starts[i], tm.ends[i])])
-    # the kind comes from the headings or the estimate (not set by hand, spec §5.5); the theme, background and
+    # the kind comes from the headings or the estimate (not set by hand, spec §5.5); the particles, background and
     # lock set by hand stay while the section still starts at the same time
     user_sets = {round(x.start, 2): {f: getattr(x, f) for f in SECTION_USER_FIELDS} for x in proj.sections}
     proj.sections.clear()
@@ -314,7 +314,8 @@ def section_inputs(proj, snap=None):
     from ..core.model import SectionInput
     auto = lambda v: "" if v == "AUTO" else v
     secs = _saved(proj.sections, snap and snap["sections"], lambda x, s: len(snap["sections"]) == len(proj.sections))
-    return [SectionInput(s.start, s.end, s.kind, auto(s.theme), auto(s.background), auto(s.transition)) for s in secs]
+    return [SectionInput(s.start, s.end, s.kind, auto(s.particle), auto(s.background), auto(s.transition),
+                         auto(s.particle2)) for s in secs]
 
 
 def line_inputs(proj, snap=None):

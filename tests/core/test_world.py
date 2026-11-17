@@ -6,7 +6,7 @@ import unittest
 import numpy as np
 
 from lyric_live_builder.core import (atlas, audio, bake, bake_world, color, guide, meshes, model, moods, omakase,
-                                     planner, styles, themes, world)
+                                     planner, styles, world)
 from lyric_live_builder.core.parts import backgrounds as bgs
 from lyric_live_builder.core.parts import particles as pts
 from lyric_live_builder.core.rng import Rng
@@ -56,8 +56,7 @@ class TestColour(unittest.TestCase):
 
 class TestParticles(unittest.TestCase):
     def spec(self, key, strength=0.6, start=2.0, end=14.0, intensity=None):
-        sp = model.SectionPlan(0, "verse", start, end, "night_city", bgs.resolve("night"), [],
-                               styles.palette("noir", "#1B2448"))
+        sp = model.SectionPlan(0, "verse", start, end, bgs.resolve("night"), [], styles.palette("noir", "#1B2448"))
         st = model.Settings(fx={"particles": strength})
         return world.emitter(key, start, end, 99, sp.palette, st, intensity=intensity)
 
@@ -326,8 +325,6 @@ class TestWorld(unittest.TestCase):
         busy, _ = make(n_lines=40, settings=model.Settings(style="magenta", fx={"world_switch": 1.0}))
         quiet, _ = make(n_lines=40, settings=model.Settings(style="magenta", fx={"world_switch": 0.0}))
         self.assertLessEqual(len(quiet.world), len(busy.world))                # fewer changes on a quiet setting
-        theme, _ = make(n_lines=40, settings=model.Settings(style="magenta", fx={"bg_colors": "theme"}))
-        self.assertTrue(any(sp.background["key"] != world.STYLE_BACKGROUND for sp in theme.section_plans))
 
     def test_flashes_off_keeps_bright_backgrounds_down(self):
         """Flashes off: the style's bright colours are darkened to CALM_LUMINANCE, their hue kept; the text takes the
@@ -347,19 +344,50 @@ class TestWorld(unittest.TestCase):
                 self.assertEqual(sp.palette["fg"], color.fit_contrast(s["fg"], bg, 3.0))
                 self.assertGreaterEqual(color.contrast(sp.palette["fg"], bg), 3.0)
 
-    def test_sections_get_themes_backgrounds_and_particles(self):
-        p, b = make(settings=model.Settings(mood="pop", beats=np.arange(0, 120, 0.5), fx={"bg_colors": "theme"}))
+    def test_sections_get_backgrounds_and_particles(self):
+        p, b = make(settings=model.Settings(mood="pop", beats=np.arange(0, 120, 0.5), fx={"world_switch": 1.0}))
         self.assertEqual(len(p.section_plans), len(p.sections))
-        self.assertTrue(all(sp.particles for sp in p.section_plans))
-        self.assertGreater(len({w["spec"]["key"] for w in p.world}), 1)
+        self.assertTrue(all(len(sp.particles) == 1 and sp.particle_from == ["auto"] for sp in p.section_plans))
+        self.assertGreater(len({w["spec"]["horizon"] for w in p.world}), 1)
         dome = [n for n in b.nodes if n.kind == "dome"]
         self.assertEqual(len(dome), 1)
         self.assertEqual(len(b.emitters), len(p.emitters))
-        # the same kind of section reuses its theme most of the time
-        by_kind = {}
-        for sp in p.section_plans:
-            by_kind.setdefault(sp.kind, []).append(sp.theme)
-        self.assertTrue(any(len(set(v)) == 1 and len(v) > 1 for v in by_kind.values()))
+
+    def test_section_particle_slots(self):
+        """Two settings per section (spec §5.5): the first by the planner by default, the second nothing by default;
+        a planner's pick never repeats the other slot; a preset set twice comes twice."""
+        lines = inputs(30, sec_len=12.0)
+        duration = lines[-1].end + 2.0
+        spans = sections_for(duration, 12.0)
+        cases = [("", "none"), ("", ""), ("petals", ""), ("", "snow"), ("bubbles", "bubbles"), ("cubes", "none")]
+        secs = [model.SectionInput(a, c, "chorus", particle=cases[k % len(cases)][0],
+                                   particle2=cases[k % len(cases)][1]) for k, (a, c) in enumerate(spans)]
+        keep = ("motes", "petals", "snow", "stars")
+        off = {"particle": [k for k in pts.AMBIENT if k not in keep]}
+        for seed in range(5):
+            for st in (model.Settings(mood="calm"), model.Settings(mood="calm", disabled=off)):
+                p = planner.plan(lines, secs, duration, seed, settings=st)
+                for k, sp in enumerate(p.section_plans):
+                    one, two = cases[k % len(cases)]
+                    got = sp.particles
+                    if one:
+                        self.assertEqual(got[0], one)
+                    if two == "none":
+                        self.assertEqual(len(got), 1)
+                    elif two:
+                        self.assertEqual(got[1], two)
+                    else:
+                        self.assertEqual(len(got), 2)
+                    if (one, two) == ("bubbles", "bubbles"):
+                        self.assertEqual(got, ["bubbles", "bubbles"])               # set twice: as set
+                    else:
+                        self.assertEqual(len(set(got)), len(got), (seed, k, got))  # never the same twice
+                    self.assertEqual(sp.particle_from, ["set" if g == s else "auto" for g, s in zip(got, (one, two))])
+                    if st.disabled:                                 # the planner keeps to the parts left on
+                        self.assertTrue(all(g in keep or f == "set" for g, f in zip(got, sp.particle_from)), got)
+                starts = [sp.start for sp in p.section_plans]
+                self.assertEqual(sum(len(sp.particles) for sp in p.section_plans),
+                                 sum(1 for e in p.emitters if e["start"] in starts))
 
     def test_dome_shows_the_active_background_between_transitions(self):
         for seed in range(5):
@@ -394,33 +422,31 @@ class TestWorld(unittest.TestCase):
         duration = lines[-1].end + 2.0
         secs = [model.SectionInput(a, c, "verse") for a, c in sections_for(duration, 16.0)]
         self.assertGreaterEqual(len(secs), 5)
-        secs[1].theme, secs[1].background = "morning_garden", "evening"        # the case from the review
-        secs[2].theme = secs[3].theme = "under_sea"             # one background for both sections
+        secs[1].background, secs[1].particle = "evening", "petals"           # set on the section
+        secs[2].background = secs[3].background = "underwater"  # one background for both sections
+        secs[4].background = "underwater"                       # ...and 4: no change there but the line's
         last = max(ln.index for ln in lines if ln.section_index == 2)
         lines[last].background = "starry"                       # ...changed by a line: only to the end of 2
         first = min(ln.index for ln in lines if ln.section_index == 4)
         lines[first].start = secs[4].start                      # a line at a section's very start
         lines[first].background = "dawn"
-        st = model.Settings(fx={"bg_colors": "theme"})
+        st = model.Settings()
         p = planner.plan(lines, secs, duration, 5, settings=st)
         summary = world.section_summary(secs, lines, 5, st)
         for s, sp in zip(summary, p.section_plans):
-            self.assertEqual(s["theme"], sp.theme)
             self.assertEqual(s["background"], sp.background["key"])
-            self.assertEqual(s["particles"], sp.particles)
-            self.assertTrue(set(s["particles"]) <= set(themes.THEMES[s["theme"]]["particles"]))
+            self.assertEqual((s["particles"], s["particle_from"]), (sp.particles, sp.particle_from))
         self.assertEqual(summary[1]["background"], "evening")
         self.assertEqual(summary[1]["background_from"], "section")
-        self.assertEqual(summary[1]["theme"], "morning_garden")
-        self.assertTrue(summary[1]["theme_set"])
-        self.assertEqual((summary[3]["background"], summary[3]["background_from"]), ("underwater", "theme"))
+        self.assertEqual((summary[1]["particles"], summary[1]["particle_from"]), (["petals"], ["set"]))
+        self.assertEqual((summary[3]["background"], summary[3]["background_from"]), ("underwater", "section"))
         self.assertEqual((summary[4]["background"], summary[4]["background_from"], summary[4]["line"]),
                          ("dawn", "line", first))
         # the line's background is on from the line to the end of its section, then the next section's is back
         self.assertEqual(world.active_background(p.world, lines[last].start + 1.0)["key"], "starry")
         self.assertEqual(world.active_background(p.world, secs[3].start + 2.0)["key"], "underwater")
-        self.assertEqual(summary[0]["background_from"], "theme")
-        self.assertFalse(summary[0]["theme_set"])
+        self.assertEqual((summary[0]["background"], summary[0]["background_from"]), (world.STYLE_BACKGROUND, "style"))
+        self.assertEqual(summary[0]["particle_from"], ["auto"])
 
     def test_line_summary_matches_the_plan(self):
         lines = inputs(24, sec_len=16.0)

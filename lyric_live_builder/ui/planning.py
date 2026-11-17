@@ -6,7 +6,7 @@ import time
 import bpy
 
 from .. import prefs
-from ..core import audio, bake, color, gimmick_shapes, model, omakase, planner, registry, synonyms, themes, world
+from ..core import audio, bake, color, gimmick_shapes, model, omakase, planner, registry, synonyms, world
 from ..core.parts import backgrounds as bgs
 from ..core.parts import gimmicks
 from ..core.parts import particles as pts
@@ -26,7 +26,6 @@ def part_catalog():
     out = []
     for kind in ("layout", "enter", "hold", "exit"):
         out += [(kind, p.key, p.name) for p in registry.parts(kind)]
-    out += [("theme", k, themes.THEMES[k]["name"]) for k in themes.ORDER]
     out += [("particle", k, pts.PRESETS[k]["name"]) for k in pts.AMBIENT]
     out += [("background", k, bgs.PRESETS[k]["name"]) for k in bgs.ORDER]
     out += [("transition", k, bgs.TRANSITIONS[k]["name"]) for k in bgs.TRANSITION_ORDER]
@@ -62,7 +61,6 @@ def state(proj):
     fx["koma"] = int(proj.fx.koma)
     fx["flash"] = bool(proj.fx.flash)
     fx["spectrum"] = proj.fx.spectrum
-    fx["bg_colors"] = proj.fx.bg_colors
     accent = color.to_hex(*(c * 255 for c in proj.accent)) if proj.use_accent else ""
     offsets = {str(k): v for k, v in enumerate(proj.stage_offsets) if v}
     return {"mood": proj.mood, "style": proj.style, "fx": fx, "disabled": disabled(proj), "accent": accent,
@@ -77,7 +75,6 @@ def apply_state(proj, st):
     proj.fx.koma = str(int(st["fx"].get("koma", 0)))
     proj.fx.flash = bool(st["fx"].get("flash", True))
     proj.fx.spectrum = st["fx"].get("spectrum", model.FX_DEFAULTS["spectrum"])
-    proj.fx.bg_colors = st["fx"].get("bg_colors", model.FX_DEFAULTS["bg_colors"])
     proj.use_accent = bool(st["accent"])
     if st["accent"]:
         proj.accent = tuple(v / 255 for v in color.rgb(st["accent"]))
@@ -135,7 +132,7 @@ def _summaries(proj):
     """(world.section_summary, world.line_summary) for the panels, reused while their inputs stay the same
     (a draw must stay cheap)."""
     secs = project.section_inputs(proj)
-    key = json.dumps([state(proj), [list(map(str, (s.start, s.end, s.kind, s.theme, s.background, s.transition)))
+    key = json.dumps([state(proj), [list(map(str, (s.start, s.end, s.kind, s.particle, s.particle2, s.background, s.transition)))
                                     for s in secs],
                       [(ln.start, ln.end, ln.section_index, ln.background, ln.transition, ln.particle, ln.text)
                        for ln in proj.lines], project.lyrics_source(proj), proj.duration, proj.panorama_path],
@@ -251,7 +248,9 @@ def _section_chosen(plan, index):
     sp = plan.section_plans[index]
     trans = next((w["transition"] for w in plan.world if w["transition"] and abs(w["t"] + w["dur"] / 2 - sp.start) < 1.0),
                  "")
-    return {"theme": sp.theme, "background": sp.background["key"], "transition": trans or AUTO}
+    one, two = sp.picks
+    return {"particle": one or AUTO, "particle2": two or AUTO, "background": sp.background["key"],
+            "transition": trans or AUTO}
 
 
 _chosen_cache = {"key": None, "value": ({}, [])}
@@ -293,7 +292,8 @@ def paste_line(proj, index):
 
 def unlock(item):
     for f in json.loads(item.lock_frozen or "[]"):
-        setattr(item, f, AUTO)
+        if f in item.bl_rna.properties:          # a lock from an older version may name a field now gone (theme)
+            setattr(item, f, AUTO)
     item.lock_frozen = ""
     if hasattr(item, "lock_cuts"):                   # lines only, sections have no cuts
         item.lock_cuts = ""

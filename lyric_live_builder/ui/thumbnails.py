@@ -16,11 +16,23 @@ from ..core import atlas, registry
 
 DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "thumbnails")
 PARTS = ("layout", "enter", "hold", "exit")        # with the planner's choice and the filter
-KINDS = PARTS + ("particle", "background", "style")
+SECTION = {"sec_particle": "particle", "sec_particle2": "particle2"}     # the picked section's two particle slots
+KINDS = PARTS + ("particle", "background", "style") + tuple(SECTION)
 ANIMATED = ("enter", "hold", "exit", "particle")
 # no thumbnail, or one that cannot show it ("Style Color" is in the colours of the style picked now)
 STILL_ICONS = {"particle": {"AUTO": "X", "lyrics": "SYNTAX_OFF"},
-               "background": {"AUTO": "X", "panorama": "IMAGE_DATA", "style_color": "COLOR"}}
+               "background": {"AUTO": "X", "panorama": "IMAGE_DATA", "style_color": "COLOR"},
+               "sec_particle": {"AUTO": "QUESTION"}, "sec_particle2": {"AUTO": "QUESTION", "none": "X"}}
+
+
+def _prop(kind):
+    """The property a kind's field sets."""
+    return SECTION.get(kind, kind)
+
+
+def _art(kind):
+    """The thumbnails a kind shows (the section slots show the particle presets)."""
+    return "particle" if kind in SECTION else kind
 LINGER = 1.0                    # s the frames go on after an animated thumbnail was last drawn
 STEP = 0.16                     # seconds per frame
 SCALE = 5.0                     # thumbnail size in the field and in its grid (icon units)
@@ -121,14 +133,24 @@ def chosen(kind, proj):
 
 
 def _target(kind, proj):
-    """The data a kind's field sets: the project (style) or the picked line (None without one)."""
+    """The data a kind's field sets: the project (style), the picked section or line (None without one)."""
     if kind == "style":
         return proj
+    if kind in SECTION:
+        return proj.sections[proj.section_active] if 0 <= proj.section_active < len(proj.sections) else None
     return proj.lines[proj.line_active] if 0 <= proj.line_active < len(proj.lines) else None
 
 
 def _rna_items(kind):
-    return (props.LLBProject if kind == "style" else props.LLBLine).bl_rna.properties[kind].enum_items
+    owner = props.LLBProject if kind == "style" else props.LLBSection if kind in SECTION else props.LLBLine
+    return owner.bl_rna.properties[_prop(kind)].enum_items
+
+
+def section_chosen(kind, proj):
+    """What the planner gives the picked section's slot now, or None."""
+    from .panels import _chosen
+    secs, i = _chosen(proj)[1], proj.section_active
+    return secs[i].get(_prop(kind)) if 0 <= i < len(secs) else None
 
 
 def enum_items(kind, proj):
@@ -157,8 +179,12 @@ def enum_items(kind, proj):
 def _now_shown(kind, proj, data):
     """(name, thumbnail key) of the field's value as it works out now: "From the Lyrics (Petals)", or the
     section's background behind "No Change"."""
-    value = getattr(data, kind) if data is not None else "AUTO"
+    value = getattr(data, _prop(kind)) if data is not None else "AUTO"
     name = iface_(_rna_items(kind)[value].name)
+    if kind in SECTION and value == "AUTO":                # "Planner's Choice (Light Motes)"
+        got = section_chosen(kind, proj)
+        if got in index()["rows"]["particle"]:
+            return iface_("{} ({})").format(name, iface_(_rna_items(kind)[got].name)), got
     if kind == "particle" and value == "lyrics":
         got = chosen(kind, proj)
         if got in index()["rows"]["particle"]:
@@ -173,13 +199,13 @@ def _now_shown(kind, proj, data):
 
 def _other_items(kind, proj):
     data = _target(kind, proj)
-    rows = index()["rows"][kind]
-    value = getattr(data, kind) if data is not None else None
+    rows = index()["rows"][_art(kind)]
+    value = getattr(data, _prop(kind)) if data is not None else None
     items = []
     for i, it in enumerate(_rna_items(kind)):
         name, key = _now_shown(kind, proj, data) if it.identifier == value else (iface_(it.name), it.identifier)
         still = STILL_ICONS.get(kind, {})
-        ic = still[key] if key in still and key != "AUTO" else icon(kind, key) if key in rows else \
+        ic = still[key] if key in still and key != "AUTO" else icon(_art(kind), key) if key in rows else \
             still.get(it.identifier, "QUESTION")
         items.append((it.identifier, _keep(name), _keep(iface_(it.description) if it.description else name), ic, i))
     _items[kind] = items
@@ -189,7 +215,7 @@ def _other_items(kind, proj):
 def enum_get(kind, proj):
     data = _target(kind, proj)
     if kind not in PARTS:
-        return max(0, _rna_items(kind).find(getattr(data, kind))) if data is not None else 0
+        return max(0, _rna_items(kind).find(getattr(data, _prop(kind)))) if data is not None else 0
     key = getattr(data, kind) if data else "AUTO"
     keys = registry.keys(kind)
     return 1 + keys.index(key) if key in keys else 0
@@ -200,7 +226,7 @@ def enum_set(kind, proj, value):
     if data is None:
         return
     if kind not in PARTS:
-        setattr(data, kind, _rna_items(kind)[value].identifier)
+        setattr(data, _prop(kind), _rna_items(kind)[value].identifier)
         return
     keys = registry.keys(kind)
     setattr(data, kind, keys[value - 1] if 0 < value <= len(keys) else "AUTO")
@@ -209,17 +235,17 @@ def enum_set(kind, proj, value):
 def draw(layout, proj, data, kind):
     """One kind's field: its name and value, and the current thumbnail, which opens a grid of thumbnails with their
     names to pick from."""
-    if kind in ANIMATED:
+    if _art(kind) in ANIMATED:
         start()
     col = layout.column(align=True)
-    prop = data.bl_rna.properties[kind]
+    prop = data.bl_rna.properties[_prop(kind)]
     if kind in PARTS:
         from .panels import auto_text
         shown = auto_text(data, kind, chosen(kind, proj)) or iface_(prop.enum_items[getattr(data, kind)].name)
         col.label(text=f"{iface_(prop.name)}: {shown}", translate=False)
         if proj.gallery_filter.strip() and not parts(kind, proj.part_group, proj.gallery_filter):
             col.label(text="No Parts Found", icon="INFO")
-    elif kind == "style":
+    elif kind == "style" or kind in SECTION:
         col.label(text=f"{iface_(prop.name)}: {_now_shown(kind, proj, data)[0]}", translate=False)
     else:                                                # long names: the value on its own row
         col.label(text=prop.name)
