@@ -9,7 +9,7 @@ from ..core import registry, styles
 from ..core.parts import backgrounds as bgs
 from ..core.parts import particles as pts
 from ..props import FONT_ROLES, SECTION_KIND_ITEMS
-from . import details, operators_input, planning, project, tap_sync, thumbnails, trial
+from . import operators_input, planning, project, tap_sync, thumbnails, trial
 from .lists import fmt_time
 
 ROLE_LABELS = {"display": "Heading Font", "serif": "Serif Font", "body": "Body Font", "mono": "Mono Font"}
@@ -73,7 +73,7 @@ class _Panel:
 
     @classmethod
     def poll(cls, context):
-        return context.scene.llb.ui_page == cls.page and not details.is_details_area(getattr(context, "area", None))
+        return context.scene.llb.ui_page == cls.page
 
 
 class LLB_PT_pages(bpy.types.Panel):
@@ -83,10 +83,6 @@ class LLB_PT_pages(bpy.types.Panel):
     bl_category = "LyricLive"
     bl_label = "LyricLive Pages"
     bl_options = {"HIDE_HEADER"}
-
-    @classmethod
-    def poll(cls, context):
-        return not details.is_details_area(getattr(context, "area", None))
     bl_order = 0
 
     def draw(self, context):
@@ -224,7 +220,7 @@ class LLB_PT_omakase(_Panel, bpy.types.Panel):
         sub.operator("llb.history_step", text="Next Proposal", icon="TRIA_RIGHT").step = 1
         col.separator()
         col.prop(proj, "mood")
-        thumbnails.draw(col, proj, proj, "style")
+        thumb_group(col, proj, proj, "llb_thumbs_style", "Style", ("style",))
         col.separator()
         row = col.row(align=True)
         row.prop(proj, "reroll_target", text="")
@@ -262,11 +258,42 @@ class LLB_PT_sections(_Panel, bpy.types.Panel):
 
 class LLB_PT_lines(_Panel, bpy.types.Panel):
     page = "compose"
-    bl_label = "Lyric Lines"
+    bl_label = "Lyric Lines and Details"
     bl_order = 8
 
     def draw(self, context):
-        draw_lines(self.layout.column(), context.scene.llb)
+        """The line list and the picked line's details side by side, whatever the sidebar's width (spec §6.2:
+        panels only stack in a sidebar, so both are in this one)."""
+        split = self.layout.split(factor=0.5)
+        draw_lines(split.column(), context.scene.llb)
+        draw_details(split.column(), context.scene.llb)
+
+
+def thumb_group(layout, proj, data, idname, title, kinds, top=None):
+    """Thumbnail dropdowns under a heading that folds (spec §6.2); folded, each field's value in one line."""
+    header, body = layout.panel(idname, default_closed=False)
+    header.label(text=title)
+    if body is None:
+        col = layout.column(align=True)
+        for kind in kinds:
+            col.label(text=thumbnails.summary(proj, data, kind), translate=False)
+        return
+    if top:
+        top(body)
+    for kind in kinds:
+        thumbnails.draw(body, proj, data, kind)
+
+
+def draw_details(col, proj):
+    """The picked line's details (spec §6.2)."""
+    if not 0 <= proj.line_active < len(proj.lines):
+        return
+    ln = proj.lines[proj.line_active]
+    box = col.box()
+    box.label(text=iface_("Line {}").format(proj.line_active + 1) + f"  {ln.text}", icon="PREFERENCES",
+              translate=False)
+    box.prop(proj, "line_view", icon="HIDE_OFF")
+    draw_line_details(box, proj, ln)
 
 
 def style_colors(proj):
@@ -346,8 +373,7 @@ def draw_sections(col, proj):
         box.enabled = not sec.locked
         got = _chosen(proj)[1]
         got = got[proj.section_active] if proj.section_active < len(got) else {}
-        thumbnails.draw(box, proj, sec, "sec_particle")
-        thumbnails.draw(box, proj, sec, "sec_particle2")
+        thumb_group(box, proj, sec, "llb_thumbs_section", "Particles", ("sec_particle", "sec_particle2"))
         if sec.particle == sec.particle2 and sec.particle not in ("AUTO", "none"):
             labels(box, "The same particles\nare chosen twice", "ERROR")
         auto_prop(box, sec, "background", got.get("background"))
@@ -420,20 +446,19 @@ def _chosen(proj):
 
 
 def draw_line_details(col, proj, ln):
-    """Layout and below (spec §6.2): drawn in the line details area beside the 3D view."""
+    """Layout and below (spec §6.2): drawn in the line details of the Lyric Lines panel."""
     box = col
     box.prop(ln, "is_3d")
     if ln.is_3d:
         row = box.row(align=True)
         row.prop(ln, "depth")
         row.prop(ln, "bevel", text="")
-    box.prop(proj, "part_group", text="")
-    box.prop(proj, "gallery_filter", text="", icon="VIEWZOOM", placeholder=iface_("Filter the Thumbnails by Name"))
-    for field in ("layout", "enter", "hold", "exit"):     # each a thumbnail dropdown (spec §6.2)
-        thumbnails.draw(box, proj, ln, field)
-        if field == "layout" and not ln.is_3d and ln.layout != "AUTO" \
-                and getattr(registry.get("layout", ln.layout), "only_3d", False):
-            labels(box, "This layout is for 3D lines.\nIt is chosen automatically", "ERROR")
+    def filters(body):
+        body.prop(proj, "part_group", text="")
+        body.prop(proj, "gallery_filter", text="", icon="VIEWZOOM", placeholder=iface_("Filter the Thumbnails by Name"))
+    thumb_group(box, proj, ln, "llb_thumbs_motion", "Layout and Motions", ("layout", "enter", "hold", "exit"), filters)
+    if not ln.is_3d and ln.layout != "AUTO" and getattr(registry.get("layout", ln.layout), "only_3d", False):
+        labels(box, "This layout is for 3D lines.\nIt is chosen automatically", "ERROR")
     got = _chosen(proj)[0].get(proj.line_active, {})
     auto_prop(box, ln, "distance_layer", got.get("distance_layer"))
     auto_prop(box, ln, "cuts", got.get("cuts"))
@@ -447,8 +472,7 @@ def draw_line_details(col, proj, ln):
     if ln.gimmick == "emblem":
         sub.prop(ln, "gimmick_word")
     box.separator()
-    thumbnails.draw(box, proj, ln, "particle")
-    thumbnails.draw(box, proj, ln, "background")
+    thumb_group(box, proj, ln, "llb_thumbs_world", "Particles and Background", ("particle", "background"))
     prop_above(box, ln, "transition", got.get("transition")).active = ln.background != "AUTO"
     if ln.background == "panorama" and not proj.panorama_path:
         labels(box, "Set the panorama image\nin the Effects panel", "ERROR")
@@ -537,10 +561,6 @@ class LLB_PT_generate(bpy.types.Panel):
     bl_category = "LyricLive"
     bl_label = "Generate Preview"
     bl_order = 100
-
-    @classmethod
-    def poll(cls, context):
-        return not details.is_details_area(getattr(context, "area", None))
 
     def draw(self, context):
         col = self.layout.column()

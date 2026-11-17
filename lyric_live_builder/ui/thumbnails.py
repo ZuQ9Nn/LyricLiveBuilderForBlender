@@ -232,6 +232,17 @@ def enum_set(kind, proj, value):
     setattr(data, kind, keys[value - 1] if 0 < value <= len(keys) else "AUTO")
 
 
+def summary(proj, data, kind):
+    """"Name: value" of a field in one line (a folded group shows these instead of the thumbnails)."""
+    prop = data.bl_rna.properties[_prop(kind)]
+    if kind in PARTS:
+        from .panels import auto_text
+        value = auto_text(data, kind, chosen(kind, proj)) or iface_(prop.enum_items[getattr(data, kind)].name)
+    else:
+        value = _now_shown(kind, proj, data)[0]
+    return f"{iface_(prop.name)}: {value}"
+
+
 def draw(layout, proj, data, kind):
     """One kind's field: its name and value, and the current thumbnail, which opens a grid of thumbnails with their
     names to pick from."""
@@ -239,14 +250,10 @@ def draw(layout, proj, data, kind):
         start()
     col = layout.column(align=True)
     prop = data.bl_rna.properties[_prop(kind)]
-    if kind in PARTS:
-        from .panels import auto_text
-        shown = auto_text(data, kind, chosen(kind, proj)) or iface_(prop.enum_items[getattr(data, kind)].name)
-        col.label(text=f"{iface_(prop.name)}: {shown}", translate=False)
-        if proj.gallery_filter.strip() and not parts(kind, proj.part_group, proj.gallery_filter):
+    if kind in PARTS or kind == "style" or kind in SECTION:
+        col.label(text=summary(proj, data, kind), translate=False)
+        if kind in PARTS and proj.gallery_filter.strip() and not parts(kind, proj.part_group, proj.gallery_filter):
             col.label(text="No Parts Found", icon="INFO")
-    elif kind == "style" or kind in SECTION:
-        col.label(text=f"{iface_(prop.name)}: {_now_shown(kind, proj, data)[0]}", translate=False)
     else:                                                # long names: the value on its own row
         col.label(text=prop.name)
         col.label(text=_now_shown(kind, proj, data)[0], translate=False)

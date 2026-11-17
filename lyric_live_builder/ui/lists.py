@@ -47,7 +47,6 @@ class LLB_UL_lines(bpy.types.UIList):
             row.label(text="", icon="PARTICLES")
         if item.background != "AUTO":
             row.label(text="", icon="WORLD")
-        row.operator("llb.line_details", text="", icon="PREFERENCES", emboss=False).index = index     # spec §6.2
 
 
 class LLB_UL_parts(bpy.types.UIList):

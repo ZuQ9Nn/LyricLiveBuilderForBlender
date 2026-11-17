@@ -36,10 +36,14 @@ def text_objects():
 
 
 class _Layout:
-    """Takes any layout call, so a panel's draw can run without a window (it still reads the real data)."""
+    """Takes any layout call, so a panel's draw can run without a window (it still reads the real data).
+    folded: layout.panel() gives no body, as a folded heading does."""
+    def __init__(self, folded=False):
+        self.folded = folded
+
     def __getattr__(self, name):
         if name == "panel":                               # layout.panel() gives (header, body)
-            return lambda *a, **k: (self, self)
+            return lambda *a, **k: (self, None if self.folded else self)
         return lambda *a, **k: self
 
 
@@ -49,16 +53,17 @@ def draw_panels():
     from lyric_live_builder import ui
     proj = bpy.context.scene.llb
     page, errors, drawn = proj.ui_page, [], 0
-    for p in ("setup", "compose", "output"):
-        proj.ui_page = p
-        for cls in ui.CLASSES:
-            if not issubclass(cls, bpy.types.Panel) or (hasattr(cls, "poll") and not cls.poll(bpy.context)):
-                continue
-            try:
-                cls.draw(SimpleNamespace(layout=_Layout()), bpy.context)
-                drawn += 1
-            except Exception as e:
-                errors.append(f"{p}/{cls.__name__}: {e!r}")
+    for folded in (False, True):                          # the folds open and closed
+        for p in ("setup", "compose", "output"):
+            proj.ui_page = p
+            for cls in ui.CLASSES:
+                if not issubclass(cls, bpy.types.Panel) or (hasattr(cls, "poll") and not cls.poll(bpy.context)):
+                    continue
+                try:
+                    cls.draw(SimpleNamespace(layout=_Layout(folded)), bpy.context)
+                    drawn += 1
+                except Exception as e:
+                    errors.append(f"{p}/{cls.__name__}{' folded' if folded else ''}: {e!r}")
     proj.ui_page = page
     check(drawn > 10 and not errors, f"{drawn} panels draw {errors}")
 
