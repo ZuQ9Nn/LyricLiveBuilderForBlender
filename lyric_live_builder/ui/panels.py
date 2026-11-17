@@ -520,11 +520,6 @@ class LLB_PT_preview(_Panel, bpy.types.Panel):
     def draw(self, context):
         proj = context.scene.llb
         col = self.layout.column()
-        row = col.row(align=True)
-        row.scale_y = 1.4
-        row.operator("llb.preview_build", icon="PLAY")
-        row.operator("llb.preview_clear", text="", icon="TRASH")
-        col.operator("llb.view_audience", icon="CAMERA_DATA")
         col.prop(proj, "seed")
         col.separator()
         col.operator("llb.check_budget", icon="VIEWZOOM")
@@ -532,6 +527,28 @@ class LLB_PT_preview(_Panel, bpy.types.Panel):
         if context.scene.view_settings.view_transform != "Standard":
             labels(col, "Colors differ from Unity\n(view transform is not Standard)", "ERROR")
             col.operator("llb.view_standard", icon="COLOR")
+
+
+class LLB_PT_generate(bpy.types.Panel):
+    """Generate on every page, at the bottom (spec §11): no switching to the output page to see a change. It has a
+    header: Blender puts header-less panels first."""
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "LyricLive"
+    bl_label = "Generate Preview"
+    bl_order = 100
+
+    @classmethod
+    def poll(cls, context):
+        return not details.is_details_area(getattr(context, "area", None))
+
+    def draw(self, context):
+        col = self.layout.column()
+        row = col.row(align=True)
+        row.scale_y = 1.4
+        row.operator("llb.preview_build", icon="PLAY")
+        row.operator("llb.preview_clear", text="", icon="TRASH")
+        col.operator("llb.view_audience", icon="CAMERA_DATA")
 
 
 BUDGET_LABELS = {"letter_flat": "Triangles per Flat Letter", "letter_solid": "Triangles per 3D Letter",
@@ -594,4 +611,4 @@ class LLB_PT_export(_Panel, bpy.types.Panel):
 
 
 CLASSES = (LLB_PT_pages, LLB_PT_lyrics, LLB_PT_lyrics_notation, LLB_PT_fonts, LLB_PT_song, LLB_PT_sync, LLB_PT_omakase,
-           LLB_PT_trial, LLB_PT_sections, LLB_PT_lines, LLB_PT_effects, LLB_PT_preview, LLB_PT_export)
+           LLB_PT_trial, LLB_PT_sections, LLB_PT_lines, LLB_PT_effects, LLB_PT_preview, LLB_PT_export, LLB_PT_generate)

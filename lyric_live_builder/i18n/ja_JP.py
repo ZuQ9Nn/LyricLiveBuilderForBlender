@@ -830,6 +830,7 @@ MESSAGES = {
     'Particles from the section:': 'パーティクル（セクションから）：',
     "(Planner's Choice)": '（おまかせ）',
     '(set)': '（指定）',
+    'Generate Preview': 'プレビューの生成',
     'Particles 1': 'パーティクル 1',
     'Particles 2': 'パーティクル 2',
     'No Particles Set': 'パーティクル指定なし',

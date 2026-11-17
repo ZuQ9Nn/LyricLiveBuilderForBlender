@@ -157,9 +157,10 @@ def main():
         shown[page] = {c.__name__ for c in panels.CLASSES
                        if issubclass(c, bpy.types.Panel) and (not hasattr(c, "poll") or c.poll(ctx))
                        and not getattr(c, "bl_parent_id", "")}
-    check(shown["setup"] == {"LLB_PT_pages", "LLB_PT_lyrics", "LLB_PT_fonts", "LLB_PT_song", "LLB_PT_sync"}
-          and shown["compose"] == {"LLB_PT_pages", "LLB_PT_omakase", "LLB_PT_trial", "LLB_PT_sections", "LLB_PT_lines"}
-          and shown["output"] == {"LLB_PT_pages", "LLB_PT_effects", "LLB_PT_preview", "LLB_PT_export"}, f"pages {shown}")
+    every = {"LLB_PT_pages", "LLB_PT_generate"}                      # Generate is on every page (spec §11)
+    check(shown["setup"] == every | {"LLB_PT_lyrics", "LLB_PT_fonts", "LLB_PT_song", "LLB_PT_sync"}
+          and shown["compose"] == every | {"LLB_PT_omakase", "LLB_PT_trial", "LLB_PT_sections", "LLB_PT_lines"}
+          and shown["output"] == every | {"LLB_PT_effects", "LLB_PT_preview", "LLB_PT_export"}, f"pages {shown}")
 
     llb.unregister()
     check(not hasattr(bpy.types.Scene, "llb"), "unregister")
