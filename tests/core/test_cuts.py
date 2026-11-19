@@ -1,11 +1,12 @@
 """A line shown in several cuts (design §5.5.1)."""
 import unittest
+from contextlib import contextmanager
 
 import numpy as np
 
 from lyric_live_builder.core import bake, lyrics, model, planner
 
-from .test_text_parts import inputs, make, metrics, sections_for
+from .test_text_parts import LYRICS, inputs, make, metrics, sections_for
 
 
 def plan_of(lines, seed=7):
@@ -19,6 +20,16 @@ def with_cuts(cuts, line=4, n=12, **over):
     for key, value in over.items():
         setattr(lines[line], key, value)
     return lines
+
+
+@contextmanager
+def text_scale(scale):
+    keep = model.TEXT_SCALE
+    model.TEXT_SCALE = scale
+    try:
+        yield
+    finally:
+        model.TEXT_SCALE = keep
 
 
 def whole(plan):
@@ -53,9 +64,51 @@ class SplitLine(unittest.TestCase):
 
 class Plan(unittest.TestCase):
     def test_auto_and_one_change_nothing(self):
-        base = plan_of(inputs(12))
+        """A line that keeps the text size whole is not cut on Planner's Choice."""
+        from lyric_live_builder.core import registry
+        cap = registry.capacity(registry.get("layout", "front"))
+        short = inputs(12, cuts=0)
+        for ln in short:
+            ln.text, ln.char_times = ln.text[:cap], ln.char_times[:cap]
+        base = plan_of(short)
         self.assertTrue(all(x.cuts is None for x in base.lines))
-        self.assertEqual(whole(plan_of(with_cuts(1))), whole(base))
+        for ln in short:
+            ln.cuts = 1
+        self.assertEqual(whole(plan_of(short)), whole(base))
+
+    def test_long_lines_are_cut_to_keep_the_text_size(self):
+        """Planner's Choice cuts a line too wide for the front into parts that fit, each in a layout that keeps
+        them at SIZE_KEEP of the text size or more, whatever the size setting (design §7.3)."""
+        from lyric_live_builder.core import registry
+        keep = model.TEXT_SCALE
+        try:
+            for scale in (1.0, 0.5, 1.5, 2.0):
+                model.TEXT_SCALE = keep * scale
+                if model.text_angle("mid") > model.MAX_LINE_ANGLE:
+                    continue                                # one letter wider than a line: beyond the setting's range
+                cap = registry.capacity(registry.get("layout", "front"))
+                self.assertGreaterEqual(cap, 1, scale)
+                p = plan_of(inputs(len(LYRICS), cuts=0))
+                for x in p.lines:
+                    if registry.text_width(x.text) <= cap:
+                        continue
+                    self.assertTrue(x.cuts, (scale, x.text))
+                    self.assertEqual("".join(c.text for c in x.cuts).replace(" ", ""), x.text.replace(" ", ""))
+                    for c in x.cuts:
+                        w = registry.text_width(c.text)
+                        self.assertLessEqual(w, cap, (scale, c.text))
+                        self.assertLessEqual(w, registry.capacity(registry.get("layout", c.layout)), (scale, c.layout))
+                bake.bake(p, metrics)
+        finally:
+            model.TEXT_SCALE = keep
+
+    def test_hand_settings_are_not_cut_for_size(self):
+        lines = inputs(12, cuts=0)
+        lines[4].cuts, lines[5].persist = 1, "section"
+        p = plan_of(lines)
+        self.assertIsNone(p.lines[4].cuts)                                  # "1": whole, even when too wide
+        self.assertIsNone(p.lines[5].cuts)                                  # kept to the section end by hand
+        self.assertTrue(p.lines[6].cuts)                                    # Planner's Choice: cut
 
     def test_slashes_cut_a_planners_choice_line(self):
         def slashed(n_parts, cuts=0, **over):
@@ -63,7 +116,8 @@ class Plan(unittest.TestCase):
             text = lines[4].text
             step = max(1, len(text) // n_parts)
             lines[4].chunks = [text[i * step:(i + 1) * step if i < n_parts - 1 else len(text)] for i in range(n_parts)]
-            return lines, plan_of(lines)
+            with text_scale(0.05):                      # letters so small that only the '/' cut the line
+                return lines, plan_of(lines)
         lines, p = slashed(3)
         cuts = p.lines[4].cuts
         self.assertEqual([c.text for c in cuts], lines[4].chunks)          # one cut per '/' chunk, as written

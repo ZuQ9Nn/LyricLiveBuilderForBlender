@@ -42,6 +42,54 @@ def parts(kind):
     return list(_parts[kind].values())
 
 
+def _adv(c):
+    from .lyrics import is_latin
+    return 0.3 if c.isspace() else 0.55 if is_latin(c) else 1.0
+
+
+def text_width(text):
+    """Width of a line in em, estimated without the font (as the planner runs before baking)."""
+    return sum(_adv(c) for c in text)
+
+
+def size_ratio(part, text, chunks=None, params=None, rng=None):
+    """Placed em / set em of `text` in the layout (mid layer, estimated advances): below model.SIZE_KEEP, the
+    layout shrinks the text too much (design §7.3). params: the line's own, else drawn from rng."""
+    from . import model
+    from .lyrics import chunk_text
+    em = model.text_em("mid")
+    ctx = LayoutCtx(text=text, adv=[_adv(c) for c in text], vadv=[1.0] * len(text), em=em,
+                    distance=model.DISTANCE["mid"], eye=model.EYE_HEIGHT, is_3d=part.only_3d, depth=0.15,
+                    chunks=chunks or chunk_text(text), char_times=[0.2 * k for k in range(len(text))],
+                    anchor=(0.0, 0.0), span=(0.0, 4.0))
+    return part.place(ctx, part.plan(rng, ctx) if params is None else params).em / em
+
+
+_capacity = {}
+PROBES = 4                                    # draws of a layout's details tried per width
+
+
+def capacity(part):
+    """Widest line (em of full-width letters) the layout shows at SIZE_KEEP of the text size or more, found by
+    placing 1, 2, ... letters once (per text size setting). A quick filter: the planner then checks the line's
+    own text and details with size_ratio (design §7.3)."""
+    from . import model
+    from .rng import Rng
+    key = (part.key, model.TEXT_SCALE, tuple(model.TEXT_ANGLE.values()), model.MAX_LINE_ANGLE, model.SIZE_KEEP)
+    if key not in _capacity:
+        best = 0
+        for n in range(1, 25):
+            if not part.fits(n):
+                continue
+            # the layout's own details are drawn per line: a few draws stand in for them
+            if all(size_ratio(part, "あ" * n, rng=Rng(n + 100 * k)) >= model.SIZE_KEEP - 1e-9 for k in range(PROBES)):
+                best = n
+            elif best:
+                break
+        _capacity[key] = best
+    return _capacity[key]
+
+
 def _load():
     # importing the part modules runs their @register decorators
     from .parts import layouts_3d, layouts_basic, motions_enter, motions_enter_jz, motions_exit, motions_exit_jz, motions_hold, motions_hold_jz, layouts_jz  # noqa: F401

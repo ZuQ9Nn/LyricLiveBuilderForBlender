@@ -26,6 +26,9 @@ LYRICS = ["夜明けの色を覚えてる", "ほどけた声が遠くで鳴っ�
 
 
 def inputs(n_lines=24, gap=4.0, is_3d=False, sec_len=32.0, **over):
+    # whole lines (cuts=1) unless a test asks: at the text size these lines would be cut into parts, which
+    # tests/core/test_cuts.py checks on its own
+    over.setdefault("cuts", 1)
     out = []
     for i in range(n_lines):
         text = LYRICS[i % len(LYRICS)]
@@ -228,7 +231,7 @@ class TestLayouts(unittest.TestCase):
                             self.assertGreater(np.linalg.norm(loc[a] - loc[b]), 0.45 * min(size[a], size[b]), msg)
 
     def test_front_size_is_the_visual_angle(self):
-        c = self.ctx(text="あい", distance=3.5)
+        c = self.ctx(text="あ", distance=3.5)                # one letter: never wider than MAX_LINE_ANGLE (docs)
         pl = registry.get("layout", "front").place(c, {})
         self.assertAlmostEqual(pl.em, model.text_em("mid"))
         self.assertAlmostEqual(math.degrees(2 * math.atan(pl.em / 2 / 3.5)), model.TEXT_ANGLE["mid"] * model.TEXT_SCALE)
@@ -240,9 +243,9 @@ class TestLayouts(unittest.TestCase):
         keep = model.TEXT_SCALE
         try:
             base = {d: model.text_em(d) for d in model.DISTANCE}
-            model.TEXT_SCALE = 1.25
+            model.TEXT_SCALE = keep * 1.25                   # relative: holds whatever the setting is
             for d in model.DISTANCE:                         # the one knob scales the angle of every layer
-                self.assertAlmostEqual(model.text_angle(d), 1.25 * model.TEXT_ANGLE[d])
+                self.assertAlmostEqual(model.text_angle(d), keep * 1.25 * model.TEXT_ANGLE[d])
                 self.assertGreater(model.text_em(d), base[d])
             self.assertAlmostEqual(model.text_angle("mid", True), model.text_angle("mid") * model.EMPH_FACTOR)
         finally:

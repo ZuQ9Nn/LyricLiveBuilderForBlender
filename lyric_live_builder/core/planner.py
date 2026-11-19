@@ -70,12 +70,17 @@ def _compose(ln, rng, history, keep, stage_busy, settings, look):
     """Layout, motions and distance of one line, drawn from rng in a fixed order; the layout's details come from
     the line's look seed (its own stream: fixing the parts by hand or by paste leaves them as they were)."""
     n = len(ln.text.replace(" ", ""))
+    width = registry.text_width(ln.text)
+    # a line as wide as the front holds keeps its size; a wider one (left whole by hand) shrinks anyway
+    sized_line = width <= registry.capacity(registry.get("layout", "front"))
     emphasis = ln.impact or bool(ln.emph_words)
 
-    def layout_ok(part):
+    def layout_ok(part, sized=True):
         if part.only_3d and not ln.is_3d:
             return False
         if not part.fits(n):
+            return False
+        if sized and sized_line and width > registry.capacity(part):     # would shrink it below SIZE_KEEP
             return False
         if (keep or stage_busy) and (part.big or not part.anchored):
             return False
@@ -85,7 +90,20 @@ def _compose(ln, rng, history, keep, stage_busy, settings, look):
     if chosen and (ln.is_3d or not chosen.only_3d):
         layout = ln.layout                     # a 3D-only layout asked for on a flat line is ignored
     else:
-        layout = _pick(rng, "layout", history, layout_ok, emphasis, ln.is_3d, settings)
+        # the line's own text and details placed once: a layout that still shrinks it too much is dropped
+        dropped = set()
+        while True:
+            layout = _pick(rng, "layout", history, lambda p: p.key not in dropped and layout_ok(p), emphasis,
+                           ln.is_3d, settings)
+            if layout is None or not sized_line:
+                break
+            part = registry.get("layout", layout)
+            params = part.plan(Rng(h(look, 11)), _Ctx(ln.text, ln.chunks))
+            if registry.size_ratio(part, ln.text, ln.chunks, params) >= model.SIZE_KEEP - 1e-9:
+                break
+            dropped.add(layout)
+        # none keeps the size (a line cut by hand, one long word): any that fits, with smaller letters
+        layout = layout or _pick(rng, "layout", history, lambda p: layout_ok(p, False), emphasis, ln.is_3d, settings)
     lp = registry.get("layout", layout)
     if (keep or stage_busy) and (lp.big or not lp.anchored) or not lp.keepable:
         keep = False                           # a hand-picked layout that cannot share the stage
@@ -126,10 +144,21 @@ def _line_plan(ln, c, style, end, mask, seed, colors, anchor=(0.0, 0.0), glide=N
 
 
 def _cut_count(ln):
-    """Cuts of a line: as set; on Planner's Choice (0) one per '/' chunk of the lyrics (JIZURA), else whole."""
-    if ln.cuts == 0 and ln.chunks and len(ln.chunks) > 1:
-        return min(MAX_CUTS, len(ln.chunks))
-    return ln.cuts
+    """Cuts of a line: as set; on Planner's Choice (0) one per '/' chunk of the lyrics (JIZURA), and more when a
+    part is still too wide to keep the text size in its layout (the hand-picked one, else the front; design §7.3).
+    A line kept to the section end by hand is not cut for size (it could not stay)."""
+    if ln.cuts:
+        return ln.cuts
+    n = min(MAX_CUTS, len(ln.chunks)) if ln.chunks and len(ln.chunks) > 1 else 1
+    if ln.persist == "section":
+        return n
+    part = registry.get("layout", ln.layout)
+    cap = registry.capacity(part) if part and (ln.is_3d or not part.only_3d) else 0
+    cap = cap or registry.capacity(registry.get("layout", "front"))
+    chunks = ln.chunks or lyrics.chunk_text(ln.text)
+    while n < len(ln.text) and any(registry.text_width(p) > cap for _, p in lyrics.split_line(ln.text, chunks, n)):
+        n += 1
+    return n
 
 
 def _cut_lines(ln, end):

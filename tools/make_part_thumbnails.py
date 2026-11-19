@@ -41,17 +41,20 @@ PROBE = 16                                       # trial shots to find when an e
 SETTLED = 0.002                                  # mean difference (0..1) below which two shots are the same
 FOV = {"layout": 95.0, "motion": 56.0, "particle": 90.0, "background": 100.0}   # degrees (a 4-letter line: ~48)
 MOTION_LINE, LAYOUT_LINE = 0, 1                  # "あいうえ", "あいうえおかきく"
+THUMB_ANGLE = 12.0                               # letters at this visual angle, whole lines: the thumbnails show a
+                                                 # part's shape, framed by FOV, whatever the text size setting
 TMP = os.path.join(bpy.app.tempdir, "llb_thumb.png")
 
 
 def stage():
     llb.register()
+    model.TEXT_SCALE = THUMB_ANGLE / model.TEXT_ANGLE["mid"]
     for ob in list(bpy.data.objects):                    # the start-up cube, light and camera stay out
         bpy.data.objects.remove(ob)
     scene, proj = setup("あいうえ\nあいうえおかきく\nおわり\n", font_arg())
     for ln, t in zip(proj.lines, (1.0, 8.0, 15.0)):
         ln.tap_time = t
-        ln.guide, ln.gimmick, ln.distance_layer, ln.persist = "off", "none", "mid", "next"
+        ln.guide, ln.gimmick, ln.distance_layer, ln.persist, ln.cuts = "off", "none", "mid", "next", "1"
     proj.fx.spectrum = "off"
     project.recompute(scene)
     cam = bpy.data.objects.new("LLB_Thumb", bpy.data.cameras.new("LLB_Thumb"))

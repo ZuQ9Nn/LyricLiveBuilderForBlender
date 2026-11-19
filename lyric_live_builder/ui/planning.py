@@ -285,6 +285,8 @@ def paste_line(proj, index):
     if ln.locked:
         raise ValueError("Unlock the line first")
     for f, v in data["fields"].items():
+        if f == "cuts" and v not in ln.bl_rna.properties[f].enum_items:
+            v = AUTO                    # more parts than the menu (a long line cut for size): the same lyrics cut alike
         setattr(ln, f, v)
     ln.look_seed = data["look_seed"]
     ln.paste_cuts = json.dumps(data["cuts"]) if data["cuts"] else ""

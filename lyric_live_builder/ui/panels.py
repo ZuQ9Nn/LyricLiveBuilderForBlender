@@ -46,9 +46,10 @@ def auto_text(data, name, chosen):
     if not chosen:                                        # also every non-enum field (paths, names)
         return None
     items = data.bl_rna.properties[name].enum_items
-    if getattr(data, name) != "AUTO" or not chosen or chosen == "AUTO" or chosen not in items:
+    if getattr(data, name) != "AUTO" or not chosen or chosen == "AUTO" or (chosen not in items and not str(chosen).isdigit()):
         return None
-    return iface_("{} ({})").format(iface_(items["AUTO"].name), iface_(items[chosen].name))
+    shown = items[chosen].name if chosen in items else chosen      # a count past the menu (cuts of a long line)
+    return iface_("{} ({})").format(iface_(items["AUTO"].name), iface_(shown))
 
 
 def auto_prop(layout, data, name, chosen, text=None):

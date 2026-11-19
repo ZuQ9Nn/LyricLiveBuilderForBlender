@@ -212,9 +212,12 @@ def main():
     bpy.ops.llb.line_lock()
     check(not proj.lines[3].lock_cuts and proj.lines[3].cuts == "3", "unlocking forgets the cuts' parts, not their number")
     proj.lines[3].cuts = "AUTO"
-    check(planning.make_plan(proj).lines[3].cuts is None, "Planner's Choice shows the line whole")
+    cap = registry.capacity(registry.get("layout", "front"))
+    auto = planning.make_plan(proj).lines[3]                     # "透明なままじゃ終われない": wider than the front holds
+    check(auto.cuts and all(registry.text_width(c.text) <= cap for c in auto.cuts),
+          "Planner's Choice cuts a long line into parts that keep the text size")
     first = planning.make_plan(proj).lines[0]                    # "夜明けの色を/覚えてる" on Planner's Choice
-    check([c.text for c in first.cuts or ()] == ["夜明けの色を", "覚えてる"], "a '/' in the lyrics makes a cut there")
+    check(any(c.text == "覚えてる" for c in first.cuts or ()), "a '/' in the lyrics makes a cut there")
     proj.lines[0].cuts = "1"
     check(planning.make_plan(proj).lines[0].cuts is None, "...unless the line is set to 1 cut")
     proj.lines[0].cuts = "AUTO"
@@ -236,6 +239,14 @@ def main():
     bpy.ops.llb.line_lock()
     check(not bpy.ops.llb.line_paste.poll(), "no paste on a locked line")
     bpy.ops.llb.line_lock()
+    # a long line cut for size into more parts than the "Cuts" menu has: pasted as Planner's Choice
+    clip = json.loads(proj.line_clipboard)
+    clip["fields"]["cuts"] = "8"
+    proj.line_clipboard = json.dumps(clip)
+    check(bpy.ops.llb.line_paste() == {"FINISHED"} and proj.lines[6].cuts == "AUTO",
+          "a cut count past the menu pastes as Planner's Choice")
+    from lyric_live_builder.ui import panels
+    check(panels.auto_text(proj.lines[6], "cuts", "8") == "Planner's Choice (8)", "...and reads Planner's Choice (8)")
 
     # thumbnail dropdowns of the parts in the line details: frames, filter, pick
     from lyric_live_builder.ui import thumbnails

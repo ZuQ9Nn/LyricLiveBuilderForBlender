@@ -63,6 +63,7 @@ def main():
     for i, ln in enumerate(proj.lines):
         ln.tap_time = 2.0 + i * 2.4
         ln.hold = "still"                                  # every line qualifies for a line mesh
+        ln.cuts = "1"                                      # ...whole: the parts of a cut line stand too briefly
     project.recompute(scene)
     bpy.ops.llb.omakase()
     for ln in proj.lines:
