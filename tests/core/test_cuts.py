@@ -104,6 +104,9 @@ class Plan(unittest.TestCase):
 
     def test_hand_settings_are_not_cut_for_size(self):
         lines = inputs(12, cuts=0)
+        long = "あ" * 30                                                    # wider than the front at any size
+        for k in (4, 5, 6):
+            lines[k].text, lines[k].char_times = long, [lines[k].start + 0.1 * i for i in range(len(long))]
         lines[4].cuts, lines[5].persist = 1, "section"
         p = plan_of(lines)
         self.assertIsNone(p.lines[4].cuts)                                  # "1": whole, even when too wide

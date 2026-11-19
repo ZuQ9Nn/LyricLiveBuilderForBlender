@@ -12,7 +12,8 @@ MIN_EYE_DISTANCE = 0.6            # nothing comes closer to the eye (design §7.
 # ---------------- text size: a developer setting, not on the panels (internal-docs/text_size.md) ----------------
 # Visual angle of one character (1 em), degrees, per distance layer. ParticleLive's mid lines are about 12°; 12°
 # still read small in VR once long lines shrank to fit, so lines too wide are cut into parts instead (design §7.3).
-TEXT_ANGLE = {"near": 28.0, "mid": 28.0, "far": 28.0}
+# 28° cut long Japanese lines too often: 21° (about 3 times the earlier real size, 5 letters a part).
+TEXT_ANGLE = {"near": 21.0, "mid": 21.0, "far": 21.0}
 EMPH_FACTOR = 5.5 / 3.5           # emphasized lines are this much bigger
 TEXT_SCALE = 1.0                  # multiplies every text size (1.2 = 20 % bigger)
 MAX_LINE_ANGLE = 70.0             # widest horizontal extent of a flat line, degrees: longer lines get smaller letters

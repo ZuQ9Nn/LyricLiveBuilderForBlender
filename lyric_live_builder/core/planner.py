@@ -231,7 +231,9 @@ def plan(lines, sections, duration, seed, bpm=0.0, settings=None):
         keep = keep and ln.cuts < 2            # the parts follow each other: nothing can stand aside
         stage_busy = bool(slots)               # earlier lines of this section are still standing
         look = ln.look_seed or h(text_seed, STAGE_TEXT, ln.index + 1, 7, ln.seed_offset)
-        c = _compose(ln, rng, history, keep, stage_busy, settings, look)
+        # the first draw as before any re-roll (its size check places the line with the look seed)
+        c = _compose(ln, rng, history, keep, stage_busy, settings,
+                     ln.look_seed or h(text_seed, STAGE_TEXT, ln.index + 1, 7, 0))
         keep = c["keep"]
         # a re-rolled line draws again with its own stream; the others still see the first draw
         # (novelty history, slots), so re-rolling one line changes only that line

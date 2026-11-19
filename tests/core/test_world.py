@@ -536,15 +536,22 @@ class TestWorld(unittest.TestCase):
                             [(w["spec"]["key"], w["transition"]) for w in p2.world])
 
     def test_rerolling_one_line_changes_only_that_line(self):
-        lines = inputs(24, sec_len=16.0)
-        duration = lines[-1].end + 2.0
-        secs = sections_for(duration, 16.0)
-        a = planner.plan(lines, secs, duration, 4)
-        lines[6].seed_offset = 1
-        b = planner.plan(lines, secs, duration, 4)
-        diff = [i for i, (x, y) in enumerate(zip(a.lines, b.lines))
-                if (x.layout, x.enter, x.hold, x.exit, x.distance, x.anchor) != (y.layout, y.enter, y.hold, y.exit, y.distance, y.anchor)]
-        self.assertEqual(diff, [6])
+        keep = model.TEXT_SCALE
+        try:
+            for scale in (1.0, 0.5, 1.5):                   # the size check must not see the re-roll either
+                model.TEXT_SCALE = keep * scale
+                lines = inputs(24, sec_len=16.0)
+                duration = lines[-1].end + 2.0
+                secs = sections_for(duration, 16.0)
+                a = planner.plan(lines, secs, duration, 4)
+                lines[6].seed_offset = 1
+                b = planner.plan(lines, secs, duration, 4)
+                diff = [i for i, (x, y) in enumerate(zip(a.lines, b.lines))
+                        if (x.layout, x.enter, x.hold, x.exit, x.distance, x.anchor)
+                        != (y.layout, y.enter, y.hold, y.exit, y.distance, y.anchor)]
+                self.assertEqual(diff, [6], scale)
+        finally:
+            model.TEXT_SCALE = keep
 
     def test_koma_steps_the_text(self):
         p, b = make(n_lines=4, settings=model.Settings(fx={"koma": 8}))
