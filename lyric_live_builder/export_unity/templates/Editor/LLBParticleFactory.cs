@@ -241,9 +241,9 @@ namespace LyricLive.Editor
                                          position = new float[3], rotation = new float[3] },
                 velocity = new LLBPSVelocity(), renderer = d.renderer,
             };
+            // keep playOnAwake as Apply set it: Unity shares it across the hierarchy, so turning it off here turns the
+            // parent's off too (its bursts would never play). A sub-emitter only emits when its parent triggers it.
             var ps = Apply(child, sd, mat, mesh);
-            var main = ps.main;
-            main.playOnAwake = false;
             var subs = parent.subEmitters;
             subs.enabled = true;
             subs.AddSubEmitter(ps, ParticleSystemSubEmitterType.Death, ParticleSystemSubEmitterProperties.InheritColor);
