@@ -35,7 +35,7 @@ def icosphere(subdiv=1, radius=1.0):
     return np.array(verts) * radius, f
 
 
-def dome(radius=60.0, subdiv=3):
+def dome(radius=48.0, subdiv=3):
     """Inward-facing icosphere (design §8.2)."""
     v, f = icosphere(subdiv, radius)
     return v, [(a, c, b) for a, b, c in f]
@@ -59,11 +59,11 @@ def ring_band(profile, radius):
     return np.concatenate([bottom, top]), f
 
 
-def mountains(radius=48.0, seed=3, n=180):
+def mountains(radius=38.4, seed=3, n=180):
     """Jagged ridge line: the sum of a few octaves of hashed bumps."""
     k = np.arange(n)
     hgt = np.zeros(n)
-    for octave, (period, amp) in enumerate(((30, 6.0), (12, 2.6), (5, 1.0))):
+    for octave, (period, amp) in enumerate(((30, 4.8), (12, 2.08), (5, 0.8))):
         ph = h_np(seed, octave, k // period) / 4294967296.0
         nx = h_np(seed, octave, k // period + 1) / 4294967296.0
         u = (k % period) / period
@@ -72,15 +72,15 @@ def mountains(radius=48.0, seed=3, n=180):
     return ring_band(1.5 + hgt, radius)
 
 
-def city(radius=40.0, seed=5, n=120):
+def city(radius=32.0, seed=5, n=120):
     """Skyline of flat facades: stepped heights per block."""
     k = np.arange(n)
     block = k // 3
-    hgt = 2.0 + 10.0 * (h_np(seed, block) / 4294967296.0) ** 2
+    hgt = 1.9 + 8.0 * (h_np(seed, block) / 4294967296.0) ** 2
     return ring_band(hgt, radius)
 
 
-def water(radius=55.0, segments=64, z=-0.6):
+def water(radius=44.0, segments=64, z=-0.6):
     """Horizontal disc below the audience (the sea / horizon), facing up."""
     a = np.linspace(0, 2 * math.pi, segments, endpoint=False)
     v = np.concatenate([[[0.0, 0.0, z]], np.stack([np.cos(a) * radius, np.sin(a) * radius, np.full(segments, z)], axis=1)])

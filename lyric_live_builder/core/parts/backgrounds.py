@@ -7,20 +7,20 @@ from .. import color, styles
 MODE = {"solid": 0, "gradient": 1, "bands": 2, "pattern": 3, "image": 4}
 PATTERN = {"rings": 0, "grid": 1, "dots": 2}
 
-# far objects: (kind, azimuth°, elevation°, size, colour); sizes are radii in metres at their distance
+# far objects: (kind, azimuth°, elevation°, size, colour); sizes are radii in metres at their distance (40 m)
 PRESETS = {
     "morning": {"name": "Morning Sky", "kind": "gradient", "top": "#4A7FC1", "horizon": "#F6D8B8", "bottom": "#6E7F91",
-                "far": [("sun", 40, 8, 3.0, "#FFE6B0"), ("mountains", 0, 0, 1.0, "#7D8FA6")]},
+                "far": [("sun", 40, 8, 2.4, "#FFE6B0"), ("mountains", 0, 0, 1.0, "#7D8FA6")]},
     "day": {"name": "Daytime Sky", "kind": "gradient", "top": "#2F6FD0", "horizon": "#BFE0F7", "bottom": "#7C8C70",
-            "far": [("sun", -30, 50, 2.5, "#FFF6D8"), ("mountains", 0, 0, 1.0, "#7E95A8")]},
+            "far": [("sun", -30, 50, 2.0, "#FFF6D8"), ("mountains", 0, 0, 1.0, "#7E95A8")]},
     "evening": {"name": "Sunset Sky", "kind": "gradient", "top": "#2B2D6E", "horizon": "#F2894B", "bottom": "#3A2232",
-                "far": [("sun", -70, 4, 3.5, "#FFB070"), ("city", 0, 0, 1.0, "#1B1426")]},
+                "far": [("sun", -70, 4, 2.8, "#FFB070"), ("city", 0, 0, 1.0, "#1B1426")]},
     "night": {"name": "Night Sky", "kind": "gradient", "top": "#03050F", "horizon": "#1B2448", "bottom": "#05060A",
-              "far": [("moon", 35, 30, 2.2, "#F2F0E0"), ("city", 0, 0, 1.0, "#0A0C16")]},
+              "far": [("moon", 35, 30, 1.76, "#F2F0E0"), ("city", 0, 0, 1.0, "#0A0C16")]},
     "dawn": {"name": "Dawn Sky", "kind": "gradient", "top": "#1F2A55", "horizon": "#C98FA0", "bottom": "#2A2433",
              "far": [("mountains", 0, 0, 1.0, "#2E2C45")]},
     "starry": {"name": "Starry Sky", "kind": "gradient", "top": "#000006", "horizon": "#0B1030", "bottom": "#020205",
-               "far": [("moon", -40, 45, 1.8, "#E8ECF8"), ("water", 0, 0, 1.0, "#070B1E")]},
+               "far": [("moon", -40, 45, 1.44, "#E8ECF8"), ("water", 0, 0, 1.0, "#070B1E")]},
     "underwater": {"name": "Under the Sea", "kind": "gradient", "top": "#3FA9C9", "horizon": "#0E4F73", "bottom": "#031A2B",
                    "far": []},
     "deep_space": {"name": "Deep Space", "kind": "solid", "top": "#02020A", "horizon": "#02020A", "bottom": "#02020A",

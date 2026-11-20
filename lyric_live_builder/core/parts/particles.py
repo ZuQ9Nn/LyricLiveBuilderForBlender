@@ -138,6 +138,45 @@ PRESETS = {
                           max=120),
 }
 AMBIENT = [k for k in PRESETS if k != "sparkle_burst"]          # the section presets
+
+# Spread (spec §8.1): the section presets above are multiplied by SPREAD in every length and speed, so they fill
+# more of the dome and look the same size from the eye. Sky particles (and where shooting stars fly to) stay within
+# SKY_MAX, inside the 48 m dome. A tunnel from the default far start (40 m) keeps its speed: faster streaks would
+# leave the dome behind. 3D shapes are SOLID times bigger again: they read as objects, like the stage gimmicks.
+SPREAD = 1.5
+SKY_MAX = 44.0
+SOLID = 2.0
+_LENGTHS = ("radius", "height", "speed", "size", "size3d", "levels", "gravity", "noise", "rise", "radial")
+_SUB_LENGTHS = {"burst": ("speed",), "steps": ("speed",), "tail": ("width",), "tunnel": ("ahead", "axis"),
+                "cones": ("x", "y", "z"), "beam": ("length", "width"),
+                "lines": ("radius", "box", "link", "amp", "width", "dot")}      # a horizon keeps its height
+
+
+def _mul(v, s):
+    return tuple(_mul(x, s) for x in v) if isinstance(v, tuple) else v * s
+
+
+def _spread(p):
+    reach = p["radius"][1] + p["speed"][1] * p["life"][1] if p["emitter"] == "sky_shell" else 0.0
+    s = min(SPREAD, SKY_MAX / reach) if reach else SPREAD
+    q = {k: _mul(v, s) if k in _LENGTHS else v for k, v in p.items()}
+    if p["emitter"] == "tunnel" and "tunnel" not in p:
+        q["speed"] = p["speed"]
+    for k, keys in _SUB_LENGTHS.items():
+        if q.get(k):
+            q[k] = {x: _mul(v, s) if x in keys else v for x, v in q[k].items()}
+    if (q.get("burst") or {}).get("sub"):
+        q["burst"]["sub"] = dict(q["burst"]["sub"], speed=q["burst"]["sub"]["speed"] * s)
+    if "layers" in (q.get("lines") or {}):                 # (width, alpha, soft, colour)
+        q["lines"]["layers"] = tuple((x[0] * s,) + tuple(x[1:]) for x in q["lines"]["layers"])
+    if p["shape"] in SHAPES_3D:                            # size3d alone sizes a slab in Unity: the preview multiplies
+        q["size3d" if "size3d" in q else "size"] = _mul(q["size3d" if "size3d" in q else "size"], SOLID)
+    if "size3d" in q:
+        q["size"] = p["size"]
+    return q
+
+
+PRESETS.update({k: _spread(PRESETS[k]) for k in AMBIENT})
 POP_CURVE = ((0.0, 0.12, 0.22, 0.8, 1.0), (0.0, 1.2, 1.0, 1.0, 0.0))      # size over the life of "pop"
 STEP_AXES = ("xyz", "yzx", "zxy")          # stepped motion: the axis order of the 3 systems (particle i: i % 3)
 TAIL_POINTS = 8                            # preview tail: earlier positions per particle

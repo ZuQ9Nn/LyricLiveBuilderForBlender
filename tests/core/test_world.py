@@ -193,7 +193,7 @@ class TestParticles(unittest.TestCase):
         self.assertLessEqual(a["alpha"].max(), spec["preset"]["opacity"] + 1e-9)
         live = (a["alpha"] > 0) & (b["alpha"] > 0)
         rise = (b["pos"][live] - a["pos"][live])[:, 2]
-        self.assertTrue(live.any() and np.allclose(rise[np.abs(rise) < 0.2], 0.05, atol=1e-6))
+        self.assertTrue(live.any() and np.allclose(rise[np.abs(rise) < 0.2], spec["preset"]["speed"][0] * 0.5, atol=1e-6))
         # pops start and end at nothing; slabs take their per-axis sizes
         self.assertEqual(pts.POP_CURVE[1][0], 0.0)
         self.assertEqual(pts.POP_CURVE[1][-1], 0.0)

@@ -66,7 +66,7 @@ def build(baked, collections, font_paths, resolution=6, panorama="", dome=materi
         ob.color = n.color
         ob["llb_node"] = n.id
         if n.kind == "dome":
-            ob.hide_select = True                # a 60 m sphere around everything: keep clicks for the rest
+            ob.hide_select = True                # a 48 m sphere around everything: keep clicks for the rest
         coll.objects.link(ob)
         if n.parent and n.parent in obs:
             ob.parent = obs[n.parent]

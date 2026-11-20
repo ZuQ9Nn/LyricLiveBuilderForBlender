@@ -6,7 +6,7 @@ from .. import synonyms
 from ..rng import Rng, h
 
 DEG = math.pi / 180
-ANGLE = 20.0                         # visual angle of a standard object, degrees (a 1.4 m object at 4 m)
+ANGLE = 40.0                         # visual angle of a standard object, degrees (a 2.9 m object at 4 m)
 RADIUS = 4.0                         # where objects stand, metres from the audience
 AIR = 2.3                            # base height of floating objects
 SIDE = (38.0, 58.0)                  # degrees beside the line: objects stay out of the text
@@ -21,10 +21,10 @@ SHOWS = {"floor": {"name": "Rise from the Floor", "dur": 0.7}, "sky": {"name": "
 SHOW_ORDER = tuple(SHOWS)
 EXIT = 0.35                          # shrink away (Melt Away uses its own duration)
 BARS = 24
-BAR_RADIUS = 4.2
-BAR_WIDTH = 0.22
-BAR_MIN = 0.04
-BAR_HEIGHT = 1.2
+BAR_RADIUS = 8.4                     # outside the objects (RADIUS); the bars are as big to the eye as at 4.2 m
+BAR_WIDTH = 0.44
+BAR_MIN = 0.08
+BAR_HEIGHT = 2.4
 BAR_RATE = 20.0                      # keys per second before decimation
 
 

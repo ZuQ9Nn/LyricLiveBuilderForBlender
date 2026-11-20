@@ -12,7 +12,7 @@ from .parts import backgrounds as bgs
 from .parts import lines, particles as pts
 
 DOME = "dome"
-FAR_DISTANCE = 50.0
+FAR_DISTANCE = 40.0                  # inside the 48 m dome
 SLOT_PARAMS = ("mode", "top", "horizon", "bottom", "ink", "bands", "pattern", "pscale", "image")
 
 

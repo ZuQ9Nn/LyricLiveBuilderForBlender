@@ -170,7 +170,7 @@ def _bursts(rng, preset, start, end):
     b = preset["burst"]
     out, t = [], start + 0.5
     while b.get("interval") and t < end - 0.5:
-        az, el, r = math.radians(rng.range(-60, 60)), math.radians(rng.range(12, 32)), rng.range(15, 24)
+        az, el, r = math.radians(rng.range(-60, 60)), math.radians(rng.range(12, 32)), rng.range(15, 24) * pts.SPREAD
         out.append({"t": round(t, 3), "origin": [float(x) for x in pts.EYE + r * xform.direction(az, el)]})
         t += rng.range(*b["interval"])
     return out
