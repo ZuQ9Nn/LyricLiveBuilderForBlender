@@ -202,48 +202,55 @@ def steps():
         with bpy.context.temp_override(window=win0, area=area):
             bpy.ops.screen.area_close()
 
-    # the line details are in the Lyric Lines panel; "View the Line from the Audience" turns the main 3D view to the
-    # picked line and back (spec §6.2)
+    # line details beside the 3D view (spec §6.2)
     from mathutils import Vector
-    from lyric_live_builder.ui import details
+    from lyric_live_builder.ui import details, panels
     if win0.screen.is_animation_playing:
         with bpy.context.temp_override(window=win0):
             bpy.ops.screen.animation_cancel(restore_frame=False)
     proj.ui_page = "compose"
     n0 = len(win0.screen.areas)
+    user = view3d(win0)[0]
+    with bpy.context.temp_override(window=win0, area=user):
+        check(bpy.ops.llb.line_details(index=5) == {"FINISHED"}, "Details opens")
+    yield 2.0                                   # the new area is laid out, then aimed
     _, area = details.area()
-    space = area.spaces.active
-    r3d = space.region_3d
-    before = (r3d.view_location.copy(), r3d.view_rotation.copy(), r3d.view_distance, space.lens)
-    proj.line_active = 5
-    proj.line_view = True
-    yield 1.0
-    check(len(win0.screen.areas) == n0 and details.area()[1] == area, "no area is added: the main 3D view turns")
-    ui = next(r for r in area.regions if r.type == "UI")
-    region = next(r for r in area.regions if r.type == "WINDOW")
+    rest = [a for a in view3d(win0) if a != area]
+    check(area is not None and len(win0.screen.areas) == n0 + 1 and proj.line_active == 5,
+          "a details area is added and the line is picked")
+    if area is not None and rest:
+        check(area.x < rest[0].x and area.width < rest[0].width, f"narrow, on the left ({area.width} / {rest[0].width})")
+        ctx = lambda a: type("Ctx", (), {"scene": main, "area": a})()
+        check(details.LLB_PT_line_details.poll(ctx(area)) and not panels.LLB_PT_lines.poll(ctx(area))
+              and not panels.LLB_PT_pages.poll(ctx(area)), "the details area shows the line details only")
+        ui = next(r for r in area.regions if r.type == "UI")
+        check(area.spaces.active.show_region_ui and ui.active_panel_category == "LyricLive",
+              f"its sidebar opens on the LyricLive tab ({ui.active_panel_category})")
+        check(not details.LLB_PT_line_details.poll(ctx(rest[0])) and panels.LLB_PT_lines.poll(ctx(rest[0]))
+              and panels.LLB_PT_sections.poll(ctx(rest[0])), "the main sidebar keeps sections and lines, no details")
 
-    def looks_at_line():
-        from bpy_extras.view3d_utils import location_3d_to_region_2d
-        d, dist, t = details.target(proj)
-        fwd = r3d.view_rotation @ Vector((0.0, 0.0, -1.0))
-        eye = r3d.view_location - fwd * r3d.view_distance
-        covered = ui.width if space.show_region_ui and region.width >= area.width - 2 else 0
-        seen = region.width - covered                                 # left of the sidebar
-        p = location_3d_to_region_2d(region, r3d, eye + d * dist)
-        now = (main.frame_current - main.frame_start) / (main.render.fps / main.render.fps_base)
-        return ((eye - Vector((0.0, 0.0, 1.5))).length < 1e-3 and p is not None and abs(p.x - seen / 2) < 0.1 * seen
-                and 0 <= p.y <= region.height and abs(now - t) < 0.05), p, seen
-    ok, p, seen = looks_at_line()
-    check(ok, f"the view looks at the line from the eye, beside the sidebar, at the line's time ({p} / {seen})")
-    proj.line_active = 9
-    yield 1.0
-    ok, p, seen = looks_at_line()
-    check(ok, f"picking another line turns the view to it ({p} / {seen})")
-    proj.line_view = False
+        def looks_at_line():
+            from bpy_extras.view3d_utils import location_3d_to_region_2d
+            d, dist, t = details.target(proj)
+            r3d = area.spaces.active.region_3d
+            fwd = r3d.view_rotation @ Vector((0.0, 0.0, -1.0))
+            eye = r3d.view_location - fwd * r3d.view_distance
+            region = next(r for r in area.regions if r.type == "WINDOW")
+            seen = region.width - (ui.width if region.width >= area.width - 2 else 0)        # left of the sidebar
+            p = location_3d_to_region_2d(region, r3d, eye + d * dist)
+            now = (main.frame_current - main.frame_start) / (main.render.fps / main.render.fps_base)
+            return ((eye - Vector((0.0, 0.0, 1.5))).length < 1e-3 and p is not None and abs(p.x - seen / 2) < 0.1 * seen
+                    and 0 <= p.y <= region.height and abs(now - t) < 0.05), p, seen
+        ok, p, seen = looks_at_line()
+        check(ok, f"its view looks at the line from the eye, beside the sidebar, at the line's time ({p} / {seen})")
+        proj.line_active = 9
+        yield 1.0
+        ok, p, seen = looks_at_line()
+        check(ok, f"picking another line turns the view to it ({p} / {seen})")
+    with bpy.context.temp_override(window=win0):
+        bpy.ops.llb.line_details_close()
     yield 0.4
-    check((r3d.view_location - before[0]).length < 1e-4 and r3d.view_rotation.rotation_difference(before[1]).angle < 1e-4
-          and abs(r3d.view_distance - before[2]) < 1e-4 and abs(space.lens - before[3]) < 1e-4,
-          "off: the view is back as it was")
+    check(len(win0.screen.areas) == n0 and not details.is_open(), "Close removes the details area")
 
     # a file saved with the trial open
     open_trial()

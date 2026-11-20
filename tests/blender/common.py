@@ -57,7 +57,9 @@ def draw_panels():
         for p in ("setup", "compose", "output"):
             proj.ui_page = p
             for cls in ui.CLASSES:
-                if not issubclass(cls, bpy.types.Panel) or (hasattr(cls, "poll") and not cls.poll(bpy.context)):
+                # the line details only show in their own area: drawn here without it
+                if not issubclass(cls, bpy.types.Panel) or (hasattr(cls, "poll") and not cls.poll(bpy.context)
+                                                            and cls.__name__ != "LLB_PT_line_details"):
                     continue
                 try:
                     cls.draw(SimpleNamespace(layout=_Layout(folded)), bpy.context)

@@ -149,11 +149,6 @@ def _pick_line(self, context):
     details.picked()
 
 
-def _line_view(self, context):
-    from .ui import details
-    details.toggle(self)
-
-
 def _thumbs():
     from .ui import thumbnails
     return thumbnails
@@ -323,9 +318,6 @@ class LLBProject(bpy.types.PropertyGroup):
     section_active: IntProperty(update=_pick_section)
     line_active: IntProperty(update=_pick_line)
     line_clipboard: StringProperty(description="JSON of the line effects copied with Copy Effects")
-    line_view: BoolProperty(name="View the Line from the Audience", update=_line_view,
-                            description="Turn the 3D view to the picked line, seen from the audience's eye; "
-                                        "off: back to the view before")
     all_3d: BoolProperty(name="All Lines in 3D", get=_get_all_3d, set=_set_all_3d,
                          description="Turn 3D text on or off for every line at once (locked lines stay as they are)")
     part_group: EnumProperty(name="Part Group", items=PART_GROUP_ITEMS,
