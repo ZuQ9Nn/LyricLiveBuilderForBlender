@@ -114,7 +114,8 @@ def settings(proj, st=None):
     return omakase.settings(st or state(proj), energy=info.energy if info else None,
                             energy_rate=info.energy_rate if info else 50.0, beats=beats, panorama=pano,
                             spectrum=info.spectrum if info else None, user_assets=gimmick_assets.assets(),
-                            user_words=synonyms.parse_user(p.gimmick_words) if p else {})
+                            user_words=synonyms.parse_user(p.gimmick_words) if p else {},
+                            **project.song_card(proj))
 
 
 def make_plan(proj, snap=None):

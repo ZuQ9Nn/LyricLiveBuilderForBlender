@@ -156,6 +156,12 @@ def main():
     colls = {c.name: len(c.objects) for c in bpy.data.collections[preview_scene.ROOT].children}
     check(colls.get(preview_scene.TEXT, 0) > 100, f"text built {colls}")
     check(any(ob.get("llb_node") == "dome" for ob in bpy.data.collections["LLB_Background"].objects), "dome built")
+    title = [ob for ob in bpy.data.collections[preview_scene.TEXT].all_objects if ob.get("llb_node", "").startswith("title")]
+    check(plan1.title is not None and plan1.title.text == "Sample" and plan1.title.end < plan1.lines[0].start
+          and len(title) > len("Sample"), f"[ti:] makes a title card before the first line ({len(title)} objects)")
+    artist = [ob for ob in bpy.data.collections[preview_scene.TEXT].all_objects if ob.get("llb_node", "").startswith("artist")]
+    check(plan1.artist is not None and plan1.artist.text == "LyricLive" and len(artist) > len("LyricLive"),
+          f"[ar:] puts the artist under the title ({len(artist)} objects)")
     check(colls.get("LLB_Particles", 0) == len(baked1.emitters) > 0, f"one object per particle emitter ({len(baked1.emitters)})")
     check(colls.get("LLB_Guide", 0) == sum(1 + g["motes"] + ("glow" in g["kinds"]) for g in baked1.guides),
           f"guide objects ({len(baked1.guides)} guides, each a pivot with motes and glow)")

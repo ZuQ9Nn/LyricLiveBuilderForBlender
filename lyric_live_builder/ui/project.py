@@ -94,9 +94,15 @@ def resolved_font_role(proj, role):
 
 
 def lyric_chars(proj):
-    """All characters shown on stage (line text and annotations)."""
+    """All characters shown on stage (line text, annotations and the title)."""
     p = lyrics.parse(lyrics_source(proj))
-    return "".join(ln.text + (ln.note or "") for ln in p.lines)
+    return "".join(ln.text + (ln.note or "") for ln in p.lines) + p.meta.get("ti", "") + p.meta.get("ar", "")
+
+
+def song_card(proj):
+    """[ti:] and [ar:] of the lyrics: the title card in the intro, the artist under it (spec §5.2)."""
+    meta = lyrics.parse(lyrics_source(proj)).meta
+    return {"title": meta.get("ti", ""), "artist": meta.get("ar", "")}
 
 
 def missing_chars(proj, role):

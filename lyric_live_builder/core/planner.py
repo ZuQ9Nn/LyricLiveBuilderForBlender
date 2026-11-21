@@ -21,6 +21,13 @@ END_GAP = 0.25                       # seconds: every line has left before the s
 KEEP_EXITS = ("fade", "dust", "fly_away", "shrink", "blur", "blur_stagger", "wipe", "crumble", "lamp_off")
 MIN_CUT = 0.22                       # seconds between the cuts of a line (JIZURA)
 MAX_CUTS = 6                         # as the line's "Cuts" menu
+# title card ([ti:] in the lyrics), JIZURA's plan(): from 0.1 s until just before the first line, if that is late enough
+TITLE_START, TITLE_GAP, TITLE_MIN_LEAD = 0.1, 0.04, 1.1
+TITLE_ENTERS = ("blur", "type", "wipe", "assemble")
+TITLE_EXITS = ("blur", "fade", "wipe")      # JIZURA's drift exit has no counterpart here: fade
+# the artist ([ar:]) under the title, JIZURA's title layout: small (a share of the title's letters as baked; JIZURA
+# about 0.2-0.25, a little bigger to read in VR), in the body font, below by 0.95 title sizes, fading in 0.3 s later
+ARTIST_SIZE, ARTIST_BELOW, ARTIST_DELAY = 0.4, 0.95, 0.3
 
 
 def novelty(history, key, value):
@@ -270,7 +277,40 @@ def plan(lines, sections, duration, seed, bpm=0.0, settings=None):
     return model.Plan(seed=seed, duration=duration, bpm=bpm, lines=out, sections=[(s.start, s.end) for s in secs],
                       mood=settings.mood, style=style, fx=fx, section_plans=section_plans, world=world_,
                       emitters=emitters, events=events, gimmicks=gim,
-                      spectrum=gimmicks.plan_spectrum(section_plans, fx, settings.spectrum, settings.energy_rate))
+                      spectrum=gimmicks.plan_spectrum(section_plans, fx, settings.spectrum, settings.energy_rate),
+                      **_title(settings, lines, duration, text_seed, style, world_))
+
+
+def _title(settings, lines, duration, text_seed, style, world_):
+    """The title card: the song title in the heading font, in front, until just before the first line, and the
+    artist small under it. {"title": LinePlan or None, "artist": LinePlan or None}"""
+    text = (settings.title or "").strip()
+    first = lines[0].start if lines else duration
+    if not text or first < TITLE_MIN_LEAD:
+        return {}
+    rng = Rng(h(text_seed, 999))
+    end = first - TITLE_GAP
+    enter, exit_ = rng.pick(list(TITLE_ENTERS)), rng.pick(list(TITLE_EXITS))
+    colors = world.line_colors(world_, style, settings.accent, TITLE_START)
+
+    def card(index, words, start, role, enter, exit_, anchor, size, seed):
+        span = end - start
+        return model.LinePlan(
+            index=index, text=words, start=start, end=end, section_index=0,
+            char_times=[start + 0.05 * i for i in range(len(words))], emph_mask=[False] * len(words),
+            is_3d=False, depth=0.0, bevel=0.0, font_role=role, layout="front", layout_params={},
+            enter=enter, hold="still", exit=exit_, enter_dur=min(registry.get("enter", enter).duration, span * 0.4),
+            exit_dur=min(registry.get("exit", exit_).duration, span * 0.3), distance="mid", persist=False,
+            anchor=anchor, emphasis=True, seed=seed, colors=colors, size=size)
+    out = {"title": card(-1, text, TITLE_START, "display", enter, exit_, (0.0, 0.0), 1.0, h(text_seed, 999, 1))}
+    artist = (settings.artist or "").strip()
+    if artist and end - TITLE_START - ARTIST_DELAY > 0.5:
+        # the title's letter size as baked (a long title shrinks to the widest line), roughly in angles
+        full = model.text_angle("mid", True)
+        size = min(full, model.MAX_LINE_ANGLE / max(registry.text_width(text), 1e-6))
+        out["artist"] = card(-2, artist, TITLE_START + ARTIST_DELAY, styles.STYLES[style]["body"], "fade", "fade",
+                             (0.0, -ARTIST_BELOW * size * DEG), ARTIST_SIZE * size / full, h(text_seed, 999, 2))
+    return out
 
 
 class _Ctx:
@@ -284,6 +324,8 @@ class _Ctx:
 def subset(plan, t0, t1, line=None):
     """What the trial view shows from t0 to t1: one line (or none) with its stage object, and the world around it."""
     return replace(plan, lines=[x for x in plan.lines if x.index == line],
+                   title=plan.title if plan.title and plan.title.start < t1 and plan.title.end > t0 else None,
+                   artist=plan.artist if plan.artist and plan.artist.start < t1 and plan.artist.end > t0 else None,
                    gimmicks=[g for g in plan.gimmicks if g["line"] == line],
                    emitters=[e for e in plan.emitters if e["start"] < t1 and e["end"] > t0],
                    events=[e for e in plan.events if t0 <= e["t"] <= t1])

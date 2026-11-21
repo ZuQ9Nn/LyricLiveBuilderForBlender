@@ -387,3 +387,63 @@ class TestPlanBake(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestTitle(unittest.TestCase):
+    """[ti:] in the lyrics: a title card in the heading font until just before the first line (JIZURA's plan())."""
+
+    def plan(self, first=2.0, title="夜明けのうた", artist=""):
+        lines = inputs(4)
+        for ln in lines:
+            ln.start += first - 2.0
+            ln.char_times = [t + first - 2.0 for t in ln.char_times]
+        duration = lines[-1].end + 2.0
+        return planner.plan(lines, sections_for(duration), duration, 7, bpm=120,
+                            settings=model.Settings(title=title, artist=artist))
+
+    def test_title_card(self):
+        p = self.plan()
+        t = p.title
+        self.assertIsNotNone(t)
+        self.assertEqual((t.text, t.index, t.font_role, t.layout, t.hold), ("夜明けのうた", -1, "display", "front", "still"))
+        self.assertAlmostEqual(t.start, planner.TITLE_START)
+        self.assertAlmostEqual(t.end, p.lines[0].start - planner.TITLE_GAP)
+        self.assertIn(t.enter, planner.TITLE_ENTERS)
+        self.assertIn(t.exit, planner.TITLE_EXITS)
+        self.assertNotIn(-1, [ln.index for ln in p.lines])            # not a lyric line (gimmicks, guides, UI)
+        b = bake.bake(p, metrics)
+        glyphs = [n for n in b.nodes if n.parent == "title" and n.kind == "glyph" and not bake.is_band_copy(n.id)]
+        self.assertEqual(len(glyphs), len("夜明けのうた"))
+        self.assertTrue(all("|display|" in n.mesh for n in glyphs))
+        on = {t.node: t for t in b.tracks if t.prop == "active"}[glyphs[0].id]
+        self.assertLessEqual(float(on.times[-1]), p.lines[0].start)    # gone before the first line
+        # the trial view of a later line leaves the title out
+        self.assertIsNone(planner.subset(p, 10.0, 14.0, 2).title)
+        self.assertIsNotNone(planner.subset(p, 0.0, 4.0, 0).title)
+
+    def test_artist(self):
+        self.assertIsNone(self.plan().artist)
+        p = self.plan(artist="Sample Singer")
+        t, a = p.title, p.artist
+        self.assertEqual((a.text, a.index, a.font_role, a.enter, a.exit, a.end), ("Sample Singer", -2, "body", "fade", "fade",
+                                                                                  t.end))
+        self.assertAlmostEqual(a.start, t.start + planner.ARTIST_DELAY)
+        self.assertLess(a.size, 1.0)
+        b = bake.bake(p, metrics)
+        by = {n.id: n for n in b.nodes}
+        letters = lambda g: [n for n in b.nodes if n.parent == g and n.kind == "glyph" and not bake.is_band_copy(n.id)]
+        art, tit = letters("artist"), letters("title")
+        self.assertEqual(len(art), len("SampleSinger"))
+        # below the title, smaller
+        self.assertLess(by["artist"].loc[2], by["title"].loc[2] - 0.3)
+        gap = lambda ns: abs(ns[1].loc[0] - ns[0].loc[0])
+        self.assertLess(gap(art), gap(tit))
+        self.assertIsNone(self.plan(title="", artist="Sample Singer").artist)      # only with a title (JIZURA)
+
+    def test_no_title(self):
+        self.assertIsNone(self.plan(title="").title)
+        self.assertIsNone(self.plan(first=1.0).title)                   # no room before the first line
+        # the title does not change the lines
+        a, b = self.plan(title=""), self.plan()
+        self.assertEqual([(x.layout, x.enter, x.hold, x.exit) for x in a.lines],
+                         [(x.layout, x.enter, x.hold, x.exit) for x in b.lines])

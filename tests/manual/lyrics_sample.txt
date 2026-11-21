@@ -1,5 +1,6 @@
 # LyricLive sample lyrics (the first four lines are JIZURA's sample lyrics, MIT)
 [ti:Sample]
+[ar:LyricLive]
 [イントロ]
 [A]
 夜明けの色を/覚えてる

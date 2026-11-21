@@ -97,6 +97,8 @@ class Settings:
     spectrum: object = None          # band levels (frames, bands) 0..1 at energy_rate, or None
     user_assets: dict = field(default_factory=dict)  # tag -> {"file", "name"} (the user's asset library)
     user_words: dict = field(default_factory=dict)   # tag -> extra words (preferences)
+    title: str = ""                  # the song title ([ti:] in the lyrics): a title card in the intro
+    artist: str = ""                 # [ar:]: small under the title
 
     def fx_value(self, key):
         return self.fx.get(key, FX_DEFAULTS[key])
@@ -134,6 +136,7 @@ class LinePlan:
     impact: bool = False
     cut: int = 0                      # number of this cut within the line
     cuts: list = None                 # a split line: a LinePlan per cut; these are baked instead of the line
+    size: float = 1.0                 # text size factor (the artist under the title card)
 
 
 @dataclass
@@ -169,6 +172,8 @@ class Plan:
     events: list = field(default_factory=list)      # {type: flash|pulse, t, amp, dur, color}
     gimmicks: list = field(default_factory=list)    # core/parts/gimmicks.py
     spectrum: dict = None                           # {levels, rate, windows [(start, end, rgb)]}
+    title: object = None                            # LinePlan of the title card (index -1), or None
+    artist: object = None                           # LinePlan of the artist under it (index -2), or None
 
 
 @dataclass

@@ -254,11 +254,12 @@ def bake(plan, metrics, eye=model.EYE_HEIGHT, rate=RATE, mobile=False, tmp=False
     rate = koma or rate
     motion = fx.get("motion", model.FX_DEFAULTS["motion"])
     k_motion = 0.55 + 0.65 * motion                       # 0.7 -> about 1 (the parts' own amplitude)
-    for ln in (cut for line in plan.lines for cut in line.cuts or [line]):
+    cards = [x for x in (plan.title, plan.artist) if x]
+    for ln in (cut for line in plan.lines + cards for cut in line.cuts or [line]):
         lp = registry.get("layout", ln.layout)
         m = metrics(ln.font_role)
         dist = model.DISTANCE[ln.distance]
-        em = model.text_em(ln.distance, ln.emphasis)
+        em = model.text_em(ln.distance, ln.emphasis) * ln.size
         if ln.glide:                                      # kept in a side slot: no wider than KEPT_LINE_ANGLE
             width = sum(m.advance_em(c) for c in ln.text)
             em = min(em, 2 * dist * math.tan(math.radians(model.KEPT_LINE_ANGLE) / 2) / max(width, 1e-6))
@@ -269,8 +270,9 @@ def bake(plan, metrics, eye=model.EYE_HEIGHT, rate=RATE, mobile=False, tmp=False
         params = dict(ln.layout_params)
         pl = lp.place(ctx, params)
         # "line003_" finds the letters of all cuts of a line (the gaze estimate relies on it)
-        gid = f"line{ln.index:03d}_c{ln.cut}" if ln.cut else f"line{ln.index:03d}"
-        name = f"L{ln.index + 1:03d}-{ln.cut + 1}" if ln.cut else f"L{ln.index + 1:03d}"
+        card = {-1: "title", -2: "artist"}.get(ln.index)
+        gid = card or (f"line{ln.index:03d}_c{ln.cut}" if ln.cut else f"line{ln.index:03d}")
+        name = card.title() if card else f"L{ln.index + 1:03d}-{ln.cut + 1}" if ln.cut else f"L{ln.index + 1:03d}"
         nodes.append(Node(gid, f"{name}_{ln.text[:12]}", "", "text", "group",
                           loc=tuple(pl.loc), rot=tuple(pl.rot)))
         if not pl.glyphs:
