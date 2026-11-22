@@ -9,7 +9,7 @@ from ..core import registry, styles
 from ..core.parts import backgrounds as bgs
 from ..core.parts import particles as pts
 from ..props import FONT_ROLES, SECTION_KIND_ITEMS
-from . import details, operators_input, planning, project, tap_sync, thumbnails, trial
+from . import details, operators_input, planning, project, section_window, tap_sync, thumbnails, trial
 from .lists import fmt_time
 
 ROLE_LABELS = {"display": "Heading Font", "serif": "Serif Font", "body": "Body Font", "mono": "Mono Font"}
@@ -65,6 +65,12 @@ def auto_prop(layout, data, name, chosen, text=None):
         split.prop_menu_enum(data, name, text=shown, translate=False)
 
 
+def _elsewhere(context):
+    """The line details area and the section window show their own panel only."""
+    return details.is_details_area(getattr(context, "area", None)) or \
+        section_window.is_section_screen(getattr(context, "screen", None))
+
+
 class _Panel:
     """One of the pages switched at the top of the LyricLive tab (design §13)."""
     bl_space_type = "VIEW_3D"
@@ -74,7 +80,7 @@ class _Panel:
 
     @classmethod
     def poll(cls, context):
-        return context.scene.llb.ui_page == cls.page and not details.is_details_area(getattr(context, "area", None))
+        return context.scene.llb.ui_page == cls.page and not _elsewhere(context)
 
 
 class LLB_PT_pages(bpy.types.Panel):
@@ -87,7 +93,7 @@ class LLB_PT_pages(bpy.types.Panel):
 
     @classmethod
     def poll(cls, context):
-        return not details.is_details_area(getattr(context, "area", None))
+        return not _elsewhere(context)
     bl_order = 0
 
     def draw(self, context):
@@ -304,6 +310,14 @@ def draw_in_use(layout, proj, index):
     bg = iface_(bgs.PRESETS[s["background"]]["name"]) if s["background"] in bgs.PRESETS else s["background"]
     box = layout.box()
     box.label(text="In Use", icon="VIEWZOOM")
+    # particles first, then the background: in the order of the settings beside it
+    col = box.column(align=True)
+    col.label(text="Particles:")
+    for key, origin in zip(s["particles"], s["particle_from"]):      # with their moving thumbnails
+        how = iface_("(Planner's Choice)") if origin == "auto" else iface_("(set)")       # short: beside a thumbnail
+        thumbnails.thumb(col, "particle", key, f"{iface_(pts.PRESETS[key]['name'])} {how}")
+    if not s["particles"]:
+        col.label(text=iface_("No Particles"), icon="BLANK1", translate=False)
     if s["background_from"] == "section":
         where = iface_("(set here)")
     elif s["background_from"] == "line":
@@ -313,13 +327,6 @@ def draw_in_use(layout, proj, index):
     col = box.column(align=True)
     thumbnails.thumb(col, "background", s["background"], iface_("Background: {}").format(bg))
     col.label(text=where, icon="BLANK1", translate=False)
-    col = box.column(align=True)
-    col.label(text="Particles:")
-    for key, origin in zip(s["particles"], s["particle_from"]):      # with their moving thumbnails
-        how = iface_("(Planner's Choice)") if origin == "auto" else iface_("(set)")       # short: beside a thumbnail
-        thumbnails.thumb(col, "particle", key, f"{iface_(pts.PRESETS[key]['name'])} {how}")
-    if not s["particles"]:
-        col.label(text=iface_("No Particles"), icon="BLANK1", translate=False)
 
 
 SECTION_PREVIEW = 1                                       # lines of a section always shown
@@ -338,7 +345,7 @@ def draw_section_lyrics(layout, proj, index):
     if len(lines) <= SECTION_PREVIEW:
         return
     col.label(text=iface_("… {} more").format(len(lines) - SECTION_PREVIEW), translate=False)
-    header, body = box.panel("LLB_section_lyrics", default_closed=True)
+    header, body = box.panel(f"LLB_section_lyrics_{index}", default_closed=True)
     header.label(text=iface_("All Lyrics of the Section ({} Lines)").format(len(lines)), translate=False)
     if body:
         col = body.column(align=True)
@@ -347,29 +354,40 @@ def draw_section_lyrics(layout, proj, index):
 
 
 def draw_sections(col, proj):
-    """The section list and the picked section's settings."""
+    """The Song Sections panel: one button; the sections are set in their own window (spec §6.2)."""
     labels(col, "Sections from headings" if proj.sections_from_headings else "Sections estimated\n(no headings)", "INFO")
-    col.template_list("LLB_UL_sections", "", proj, "sections", proj, "section_active", rows=4)
-    if 0 <= proj.section_active < len(proj.sections):
-        sec = proj.sections[proj.section_active]
+    col.operator("llb.section_window", icon="WINDOW")
+
+
+def draw_section_window(col, proj):
+    """Every section in the section window: name and span, kind, lock, lyrics; then the settings on the right and
+    what the section really uses on the left."""
+    if not proj.sections:
+        col.label(text="No Lyrics", icon="INFO")
+        return
+    got_all = _chosen(proj)[1]
+    for i, sec in enumerate(proj.sections):
+        box = col.box()
+        row = box.row()
+        row.label(text=f"{i + 1}. {sec.label or iface_(KIND_LABELS[sec.kind])}   {fmt_time(sec.start)} – "
+                       f"{fmt_time(sec.end)}", translate=False)
+        op = row.operator("llb.section_lock", text="", icon="LOCKED" if sec.locked else "UNLOCKED", depress=sec.locked)
+        op.index = i
         # the kind is shown, not set (spec §5.5): the headings or the estimate decide it
         where = iface_("set by hand") if sec.user_kind else \
             iface_("from the headings") if proj.sections_from_headings else iface_("estimated")
-        col.label(text=iface_("Kind: {} ({})").format(iface_(KIND_LABELS[sec.kind]), where), translate=False)
-        col.label(text=f"{fmt_time(sec.start)} – {fmt_time(sec.end)}", translate=False)
-        draw_section_lyrics(col, proj, proj.section_active)
-        box = col.box()
-        box.enabled = not sec.locked
-        got = _chosen(proj)[1]
-        got = got[proj.section_active] if proj.section_active < len(got) else {}
-        thumb_group(box, proj, sec, "llb_thumbs_section", "Particles", ("sec_particle", "sec_particle2"))
+        box.label(text=iface_("Kind: {} ({})").format(iface_(KIND_LABELS[sec.kind]), where), translate=False)
+        draw_section_lyrics(box, proj, i)
+        split = box.split(factor=0.4)
+        left, right = split.column(), split.column()
+        right.enabled = not sec.locked
+        got = got_all[i] if i < len(got_all) else {}
+        thumb_group(right, proj, sec, f"llb_thumbs_section_{i}", "Particles", ("sec_particle", "sec_particle2"))
         if sec.particle == sec.particle2 and sec.particle not in ("AUTO", "none"):
-            labels(box, "The same particles\nare chosen twice", "ERROR")
-        auto_prop(box, sec, "background", got.get("background"))
-        prop_above(box, sec, "transition", got.get("transition"))
-        draw_in_use(col, proj, proj.section_active)
-        col.operator("llb.section_lock", text="Unlock Section" if sec.locked else "Lock Section",
-                     icon="UNLOCKED" if sec.locked else "LOCKED", depress=sec.locked)
+            labels(right, "The same particles\nare chosen twice", "ERROR")
+        prop_above(right, sec, "background", got.get("background"))
+        prop_above(right, sec, "transition", got.get("transition"))
+        draw_in_use(left, proj, i)
 
 
 def draw_lines(col, proj):
@@ -554,7 +572,7 @@ class LLB_PT_generate(bpy.types.Panel):
 
     @classmethod
     def poll(cls, context):
-        return not details.is_details_area(getattr(context, "area", None))
+        return not _elsewhere(context)
 
     def draw(self, context):
         col = self.layout.column()

@@ -156,10 +156,11 @@ class LLB_OT_section_lock(_NeedsLines, bpy.types.Operator):
     bl_label = "Lock Section"
     bl_description = "Lock: keep this section's particles, background and transition. Unlock: back to automatic"
     bl_options = {"REGISTER", "UNDO"}
+    index: bpy.props.IntProperty(default=-1, options={"SKIP_SAVE"})       # -1: the picked section
 
     def execute(self, context):
         proj = context.scene.llb
-        i = proj.section_active
+        i = self.index if self.index >= 0 else proj.section_active
         if not 0 <= i < len(proj.sections):
             return {"CANCELLED"}
         if proj.sections[i].locked:

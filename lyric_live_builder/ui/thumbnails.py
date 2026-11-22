@@ -16,7 +16,7 @@ from ..core import atlas, registry
 
 DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "thumbnails")
 PARTS = ("layout", "enter", "hold", "exit")        # with the planner's choice and the filter
-SECTION = {"sec_particle": "particle", "sec_particle2": "particle2"}     # the picked section's two particle slots
+SECTION = {"sec_particle": "particle", "sec_particle2": "particle2"}     # a section's two particle slots (per section)
 KINDS = PARTS + ("particle", "background", "style") + tuple(SECTION)
 ANIMATED = ("enter", "hold", "exit", "particle")
 # no thumbnail, or one that cannot show it ("Style Color" is in the colours of the style picked now)
@@ -133,12 +133,23 @@ def chosen(kind, proj):
 
 
 def _target(kind, proj):
-    """The data a kind's field sets: the project (style), the picked section or line (None without one)."""
+    """The data a kind's field sets: the project (style) or the picked line (None without one). A section's slots
+    are properties of the section itself (owner below)."""
     if kind == "style":
         return proj
-    if kind in SECTION:
-        return proj.sections[proj.section_active] if 0 <= proj.section_active < len(proj.sections) else None
     return proj.lines[proj.line_active] if 0 <= proj.line_active < len(proj.lines) else None
+
+
+def _owner(kind, owner):
+    """(project, data) of a pick_<kind> property: the section slots live on the section, the others on the project."""
+    if kind in SECTION:
+        return owner.id_data.llb, owner
+    return owner, _target(kind, owner)
+
+
+def section_index(proj, sec):
+    p = sec.as_pointer()
+    return next((i for i, s in enumerate(proj.sections) if s.as_pointer() == p), -1)
 
 
 def _rna_items(kind):
@@ -146,19 +157,20 @@ def _rna_items(kind):
     return owner.bl_rna.properties[_prop(kind)].enum_items
 
 
-def section_chosen(kind, proj):
-    """What the planner gives the picked section's slot now, or None."""
+def section_chosen(kind, proj, sec):
+    """What the planner gives the section's slot now, or None."""
     from .panels import _chosen
-    secs, i = _chosen(proj)[1], proj.section_active
+    secs, i = _chosen(proj)[1], section_index(proj, sec)
     return secs[i].get(_prop(kind)) if 0 <= i < len(secs) else None
 
 
-def enum_items(kind, proj):
-    """Items of proj.pick_<kind>. Parts: Planner's Choice, then the shown parts (the line's current part always
+def enum_items(kind, owner):
+    """Items of pick_<kind> (on the project, or on the section for its slots). Parts: Planner's Choice, then the shown parts (the line's current part always
     included), numbered by their place in the registry + 1. The others: the items of the field itself in its order,
     with thumbnails as icons."""
+    proj, data = _owner(kind, owner)
     if kind not in PARTS:
-        return _other_items(kind, proj)
+        return _other_items(kind, proj, data)
     keys = registry.keys(kind)
     ln = _target(kind, proj)
     current = getattr(ln, kind) if ln else "AUTO"
@@ -182,7 +194,7 @@ def _now_shown(kind, proj, data):
     value = getattr(data, _prop(kind)) if data is not None else "AUTO"
     name = iface_(_rna_items(kind)[value].name)
     if kind in SECTION and value == "AUTO":                # "Planner's Choice (Light Motes)"
-        got = section_chosen(kind, proj)
+        got = section_chosen(kind, proj, data)
         if got in index()["rows"]["particle"]:
             return iface_("{} ({})").format(name, iface_(_rna_items(kind)[got].name)), got
     if kind == "particle" and value == "lyrics":
@@ -197,8 +209,7 @@ def _now_shown(kind, proj, data):
     return name, value
 
 
-def _other_items(kind, proj):
-    data = _target(kind, proj)
+def _other_items(kind, proj, data):
     rows = index()["rows"][_art(kind)]
     value = getattr(data, _prop(kind)) if data is not None else None
     items = []
@@ -212,8 +223,8 @@ def _other_items(kind, proj):
     return items
 
 
-def enum_get(kind, proj):
-    data = _target(kind, proj)
+def enum_get(kind, owner):
+    data = _owner(kind, owner)[1]
     if kind not in PARTS:
         return max(0, _rna_items(kind).find(getattr(data, _prop(kind)))) if data is not None else 0
     key = getattr(data, kind) if data else "AUTO"
@@ -221,8 +232,8 @@ def enum_get(kind, proj):
     return 1 + keys.index(key) if key in keys else 0
 
 
-def enum_set(kind, proj, value):
-    data = _target(kind, proj)
+def enum_set(kind, owner, value):
+    data = _owner(kind, owner)[1]
     if data is None:
         return
     if kind not in PARTS:
@@ -257,7 +268,8 @@ def draw(layout, proj, data, kind):
     else:                                                # long names: the value on its own row
         col.label(text=prop.name)
         col.label(text=_now_shown(kind, proj, data)[0], translate=False)
-    col.template_icon_view(proj, f"pick_{kind}", show_labels=True, scale=SCALE, scale_popup=SCALE)
+    col.template_icon_view(data if kind in SECTION else proj, f"pick_{kind}", show_labels=True, scale=SCALE,
+                           scale_popup=SCALE)
 
 
 def thumb(layout, kind, key, name, scale=2.5):

@@ -368,16 +368,26 @@ def main():
     bpy.ops.llb.section_lock()
     check(not sec.locked and sec.background == "AUTO", "an old lock naming the theme unlocks")
 
-    # the section's two particle slots as thumbnail dropdowns (spec §5.5)
+    # the section's two particle slots as thumbnail dropdowns, one pair per section (spec §5.5, §6.2)
     from lyric_live_builder.ui import thumbnails
-    items = thumbnails.enum_items("sec_particle2", proj)
+    items = thumbnails.enum_items("sec_particle2", sec)
     rna = sec.bl_rna.properties["particle2"].enum_items
     check([it[0] for it in items] == [it.identifier for it in rna] and sec.particle == "AUTO" and sec.particle2 == "none",
           "the section slots: Planner's Choice and nothing by default, in a grid of their items")
-    proj.pick_sec_particle, proj.pick_sec_particle2 = "snow", "snow"
-    check((sec.particle, sec.particle2) == ("snow", "snow")
-          and planning.make_plan(proj).section_plans[2].particles == ["snow", "snow"], "a thumbnail sets a slot")
+    proj.section_active = 0
+    sec.pick_sec_particle, sec.pick_sec_particle2 = "snow", "snow"
+    check((sec.particle, sec.particle2) == ("snow", "snow") and proj.sections[0].particle == "AUTO"
+          and planning.make_plan(proj).section_plans[2].particles == ["snow", "snow"],
+          "a section's thumbnail sets its own slot (not the picked section's)")
+    check(proj.section_active == 2 and proj.trial_focus == "section", "changing a section picks it for the trial")
     sec.particle, sec.particle2 = "AUTO", "none"
+    proj.sections[0].pick_sec_particle = "stars"
+    check(proj.sections[0].particle == "stars" and sec.particle == "AUTO", "...and another section's its own")
+    proj.sections[0].particle = "AUTO"
+    proj.section_active = 0
+    bpy.ops.llb.section_lock(index=3)
+    check(proj.sections[3].locked and not proj.sections[0].locked, "a section's lock button locks that section")
+    bpy.ops.llb.section_lock(index=3)
 
     # the section panel shows what is really used (particles and background, spec §5.5)
     plan = planning.make_plan(proj)

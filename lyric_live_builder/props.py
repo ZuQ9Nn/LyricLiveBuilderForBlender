@@ -165,6 +165,16 @@ def _set_all_3d(self, value):
             ln.is_3d = value
 
 
+def _section_changed(self, context):
+    """A section setting changed (in the section window, spec §6.2): the trial follows that section."""
+    proj = context.scene.llb
+    i = next((k for k, s in enumerate(proj.sections) if s.as_pointer() == self.as_pointer()), -1)
+    if i >= 0 and (proj.section_active != i or proj.trial_focus != "section"):
+        proj.section_active = i                       # its update makes the trial show this section
+    else:
+        _trial(self, context)
+
+
 def _pick_section(self, context):
     from .ui import trial
     self.trial_focus = "section"
@@ -236,10 +246,17 @@ class LLBSection(bpy.types.PropertyGroup):
     label: StringProperty(name="Heading Text", description="Heading text from the lyrics")
     start: FloatProperty(name="Start", unit="TIME_ABSOLUTE")
     end: FloatProperty(name="End", unit="TIME_ABSOLUTE")
-    particle: EnumProperty(name="Particles 1", items=SECTION_PARTICLE_ITEMS, update=_trial)
-    particle2: EnumProperty(name="Particles 2", items=SECTION_PARTICLE2_ITEMS, default="none", update=_trial)
-    background: EnumProperty(name="Background", items=BACKGROUND_ITEMS, update=_trial)
-    transition: EnumProperty(name="Transition", items=TRANSITION_ITEMS, update=_trial)
+    particle: EnumProperty(name="Particles 1", items=SECTION_PARTICLE_ITEMS, update=_section_changed)
+    particle2: EnumProperty(name="Particles 2", items=SECTION_PARTICLE2_ITEMS, default="none", update=_section_changed)
+    background: EnumProperty(name="Background", items=BACKGROUND_ITEMS, update=_section_changed)
+    transition: EnumProperty(name="Transition", items=TRANSITION_ITEMS, update=_section_changed)
+    # the thumbnails of the two particle slots (ui/thumbnails.py): one per section, all shown in the section window
+    pick_sec_particle: EnumProperty(name="Particles 1", items=lambda s, c: _thumbs().enum_items("sec_particle", s),
+                                    get=lambda s: _thumbs().enum_get("sec_particle", s),
+                                    set=lambda s, v: _thumbs().enum_set("sec_particle", s, v))
+    pick_sec_particle2: EnumProperty(name="Particles 2", items=lambda s, c: _thumbs().enum_items("sec_particle2", s),
+                                     get=lambda s: _thumbs().enum_get("sec_particle2", s),
+                                     set=lambda s, v: _thumbs().enum_set("sec_particle2", s, v))
     locked: BoolProperty(name="Lock State", description="Keep the particles, background and transition")
     lock_frozen: StringProperty(description="Fields the lock filled in (set back to automatic on unlock)")
 
@@ -341,12 +358,6 @@ class LLBProject(bpy.types.PropertyGroup):
                                   items=lambda s, c: _thumbs().enum_items("background", s),
                                   get=lambda s: _thumbs().enum_get("background", s),
                                   set=lambda s, v: _thumbs().enum_set("background", s, v))
-    pick_sec_particle: EnumProperty(name="Particles 1", items=lambda s, c: _thumbs().enum_items("sec_particle", s),
-                                    get=lambda s: _thumbs().enum_get("sec_particle", s),
-                                    set=lambda s, v: _thumbs().enum_set("sec_particle", s, v))
-    pick_sec_particle2: EnumProperty(name="Particles 2", items=lambda s, c: _thumbs().enum_items("sec_particle2", s),
-                                     get=lambda s: _thumbs().enum_get("sec_particle2", s),
-                                     set=lambda s, v: _thumbs().enum_set("sec_particle2", s, v))
     pick_style: EnumProperty(name="Style", items=lambda s, c: _thumbs().enum_items("style", s),
                              get=lambda s: _thumbs().enum_get("style", s),
                              set=lambda s, v: _thumbs().enum_set("style", s, v))

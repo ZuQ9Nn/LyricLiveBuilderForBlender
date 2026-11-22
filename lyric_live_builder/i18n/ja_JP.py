@@ -814,6 +814,8 @@ MESSAGES = {
     'Try Out': '試し見',
     'Line Details': '行の詳細',
     'Close Line Details': '行の詳細を閉じる',
+    'Section Settings': 'セクションの設定',
+    'Open a window that lists every section with its particles, background and transition': 'すべてのセクションのパーティクル・背景・トランジションを一覧にしたウィンドウを開きます',
     'Layout and Motions': 'レイアウトと動き',
     'Particles and Background': 'パーティクルと背景',
     'Set this line\'s layout and motions beside the 3D view, seen from the audience': 'この行のレイアウトや動きを、3D ビューの横で設定します（観客の位置から見た視点）',

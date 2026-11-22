@@ -11,16 +11,6 @@ def fmt_time(t):
     return f"{int(t // 60)}:{t % 60:05.2f}"
 
 
-class LLB_UL_sections(bpy.types.UIList):
-    def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
-        row = layout.row()
-        row.label(text=f"{index + 1}. {item.label or iface_(KIND_LABELS[item.kind])}", translate=False,
-                  icon="LOCKED" if item.locked else "NONE")
-        sub = row.row()
-        sub.alignment = "RIGHT"
-        sub.label(text=fmt_time(item.start), translate=False)
-
-
 def section_tag(proj, k):
     """Short name of section k for the line list: "4.Chorus"."""
     if not 0 <= k < len(proj.sections):
@@ -62,4 +52,4 @@ class LLB_UL_parts(bpy.types.UIList):
         return flags, []
 
 
-CLASSES = (LLB_UL_sections, LLB_UL_lines, LLB_UL_parts)
+CLASSES = (LLB_UL_lines, LLB_UL_parts)

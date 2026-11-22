@@ -47,6 +47,9 @@ class _Layout:
         return lambda *a, **k: self
 
 
+OWN_PLACE = ("LLB_PT_line_details", "LLB_PT_section_window")
+
+
 def draw_panels():
     """Every LyricLive panel of every page draws without an error (a failing draw leaves the panel empty)."""
     from types import SimpleNamespace
@@ -57,9 +60,9 @@ def draw_panels():
         for p in ("setup", "compose", "output"):
             proj.ui_page = p
             for cls in ui.CLASSES:
-                # the line details only show in their own area: drawn here without it
+                # the line details and the section settings only show in their own area / window: drawn here
                 if not issubclass(cls, bpy.types.Panel) or (hasattr(cls, "poll") and not cls.poll(bpy.context)
-                                                            and cls.__name__ != "LLB_PT_line_details"):
+                                                            and cls.__name__ not in OWN_PLACE):
                     continue
                 try:
                     cls.draw(SimpleNamespace(layout=_Layout(folded)), bpy.context)

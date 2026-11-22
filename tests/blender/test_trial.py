@@ -252,6 +252,33 @@ def steps():
     yield 0.4
     check(len(win0.screen.areas) == n0 and not details.is_open(), "Close removes the details area")
 
+    # the section settings in a window of their own (spec §6.2)
+    from lyric_live_builder.ui import panels, section_window
+    wm = bpy.context.window_manager
+    n_win = len(wm.windows)
+    with bpy.context.temp_override(window=win0, area=view3d(win0)[0]):
+        check(bpy.ops.llb.section_window() == {"FINISHED"}, "Section Settings opens")
+    yield 1.0
+    sw = section_window.windows()
+    check(len(wm.windows) == n_win + 1 and len(sw) == 1, "a new window is added")
+    if sw:
+        ctx = lambda scr: type("Ctx", (), {"scene": main, "screen": scr, "area": None})()
+        check(section_window.LLB_PT_section_window.poll(ctx(sw[0].screen))
+              and not panels.LLB_PT_lines.poll(ctx(sw[0].screen)) and not panels.LLB_PT_pages.poll(ctx(sw[0].screen))
+              and not section_window.LLB_PT_section_window.poll(ctx(win0.screen)), "it shows the section settings only")
+        areas = sw[0].screen.areas
+        check(len(areas) == 1 and areas[0].type == "VIEW_3D" and areas[0].spaces.active.show_region_ui,
+              "one view with its sidebar open")
+    with bpy.context.temp_override(window=win0, area=view3d(win0)[0]):
+        bpy.ops.llb.section_window()                                    # again: the open one is replaced
+    yield 1.0
+    check(len(wm.windows) == n_win + 1 and len(section_window.windows()) == 1, "opening again keeps one window")
+    for w in section_window.windows():
+        with bpy.context.temp_override(window=w):
+            bpy.ops.wm.window_close()
+    yield 0.5
+    check(len(wm.windows) == n_win, "closing the window")
+
     # a file saved with the trial open
     open_trial()
     yield from settle()
