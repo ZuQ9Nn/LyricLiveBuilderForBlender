@@ -54,7 +54,7 @@ def stage():
     scene, proj = setup("あいうえ\nあいうえおかきく\nおわり\n", font_arg())
     for ln, t in zip(proj.lines, (1.0, 8.0, 15.0)):
         ln.tap_time = t
-        ln.guide, ln.gimmick, ln.distance_layer, ln.persist, ln.cuts = "off", "none", "mid", "next", "1"
+        ln.guide, ln.gimmick, ln.persist, ln.cuts = "off", "none", "next", "1"
     proj.fx.spectrum = "off"
     project.recompute(scene)
     cam = bpy.data.objects.new("LLB_Thumb", bpy.data.cameras.new("LLB_Thumb"))

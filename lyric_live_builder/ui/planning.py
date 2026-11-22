@@ -183,7 +183,7 @@ def build_preview(context):
 
 # ---------------- locks ----------------
 
-LINE_LOCK_FIELDS = ("layout", "enter", "hold", "exit", "distance_layer", "persist", "gimmick", "gimmick_show")
+LINE_LOCK_FIELDS = ("layout", "enter", "hold", "exit", "persist", "gimmick", "gimmick_show")
 
 
 def lock_line(proj, index, plan=None):
@@ -192,7 +192,7 @@ def lock_line(proj, index, plan=None):
     plan = plan or make_plan(proj)
     lp = next(x for x in plan.lines if x.index == index)
     chosen = {"layout": lp.layout, "enter": lp.enter, "hold": lp.hold, "exit": lp.exit,
-              "distance_layer": lp.distance, "persist": "section" if lp.persist else "next"}
+              "persist": "section" if lp.persist else "next"}
     g = next((x for x in plan.gimmicks if x["line"] == index), None)
     if g is None:
         chosen.update(gimmick="none", gimmick_show=AUTO)
@@ -210,12 +210,12 @@ def lock_line(proj, index, plan=None):
 
 def _cut_specs(lp):
     """Each cut's parts and look seed, as LineInput.cut_specs takes them."""
-    return [{"layout": c.layout, "enter": c.enter, "hold": c.hold, "exit": c.exit, "distance": c.distance,
-             "seed": int(c.seed)} for c in lp.cuts or ()]
+    return [{"layout": c.layout, "enter": c.enter, "hold": c.hold, "exit": c.exit, "seed": int(c.seed)}
+            for c in lp.cuts or ()]
 
 
 # copy / paste of a line's effects (spec §6.2): what the planner chose, as fixed values
-COPY_FIELDS = ("is_3d", "depth", "bevel", "layout", "enter", "hold", "exit", "distance_layer", "cuts", "persist",
+COPY_FIELDS = ("is_3d", "depth", "bevel", "layout", "enter", "hold", "exit", "cuts", "persist",
                "guide", "gimmick", "gimmick_show", "gimmick_word", "particle", "background", "transition")
 
 
@@ -223,7 +223,7 @@ def _chosen(proj, ln, lp, plan, st):
     """The line's effects with every automatic choice filled in with what the planner picks now."""
     index = lp.index
     fields = {f: getattr(ln, f) for f in COPY_FIELDS}
-    fields.update(layout=lp.layout, enter=lp.enter, hold=lp.hold, exit=lp.exit, distance_layer=lp.distance,
+    fields.update(layout=lp.layout, enter=lp.enter, hold=lp.hold, exit=lp.exit,
                   persist="section" if lp.persist else "next", cuts=str(len(lp.cuts)) if lp.cuts else "1")
     g = next((x for x in plan.gimmicks if x["line"] == index), None)
     if g is None:
@@ -286,6 +286,8 @@ def paste_line(proj, index):
     if ln.locked:
         raise ValueError("Unlock the line first")
     for f, v in data["fields"].items():
+        if f not in ln.bl_rna.properties:
+            continue                    # copied by an older version: a field now gone (distance layer)
         if f == "cuts" and v not in ln.bl_rna.properties[f].enum_items:
             v = AUTO                    # more parts than the menu (a long line cut for size): the same lyrics cut alike
         setattr(ln, f, v)

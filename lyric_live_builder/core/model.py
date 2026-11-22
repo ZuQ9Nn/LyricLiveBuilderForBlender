@@ -51,10 +51,9 @@ class LineInput:
     enter: str = ""
     hold: str = ""
     exit: str = ""
-    distance: str = ""
     persist: str = ""                # "" | "next" | "section"
     cuts: int = 0                    # shown in this many parts in turn (0 / 1 = whole, design §5.5.1)
-    cut_specs: list = None           # locked line: layout / motions / distance of each cut
+    cut_specs: list = None           # locked line: layout and motions of each cut
     particle: str = ""               # particle preset added while the line is on stage
     background: str = ""             # background preset from this line on
     transition: str = ""             # transition into that background

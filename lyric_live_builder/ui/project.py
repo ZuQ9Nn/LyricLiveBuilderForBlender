@@ -13,7 +13,7 @@ SONG_STRIP = "LLB_Song"
 # per-line settings made by the user; they follow their line when the lyrics are edited
 LINE_DEFAULTS = {"tap_time": -1.0, "use_manual": False, "manual_start": 0.0, "is_3d": False, "depth": 0.15,
                  "bevel": "0.015", "layout": "AUTO", "enter": "AUTO", "hold": "AUTO", "exit": "AUTO",
-                 "distance_layer": "AUTO", "cuts": "AUTO", "persist": "AUTO", "guide": "AUTO", "gimmick": "AUTO", "gimmick_show": "AUTO",
+                 "cuts": "AUTO", "persist": "AUTO", "guide": "AUTO", "gimmick": "AUTO", "gimmick_show": "AUTO",
                  "gimmick_word": "", "particle": "AUTO",
                  "background": "AUTO", "transition": "AUTO", "locked": False, "lock_frozen": "", "lock_cuts": "", "seed_offset": 0,
                  "look_seed": "", "paste_cuts": ""}
@@ -339,7 +339,7 @@ def line_inputs(proj, snap=None):
             emph_words=list(src.emph) if src else [], impact=bool(src and src.impact),
             chunks=list(src.manual) if src and src.manual else None,
             is_3d=ln.is_3d, depth=ln.depth, bevel=float(ln.bevel), layout=auto(ln.layout), enter=auto(ln.enter),
-            hold=auto(ln.hold), exit=auto(ln.exit), distance=auto(ln.distance_layer), persist=auto(ln.persist),
+            hold=auto(ln.hold), exit=auto(ln.exit), persist=auto(ln.persist),
             particle=auto(ln.particle), background=auto(ln.background), transition=auto(ln.transition),
             guide=auto(ln.guide), gimmick=auto(ln.gimmick), gimmick_show=auto(ln.gimmick_show),
             gimmick_word=ln.gimmick_word, seed_offset=ln.seed_offset,

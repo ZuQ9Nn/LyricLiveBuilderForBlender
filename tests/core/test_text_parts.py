@@ -316,10 +316,18 @@ class TestPlanBake(unittest.TestCase):
         c, _ = make(seed=12)
         self.assertNotEqual([x.layout for x in a.lines], [x.layout for x in c.lines])
 
+    def test_every_line_in_the_middle_layer(self):
+        # the distance layer is no longer chosen (spec §7.1): only layouts with their own place stand nearer
+        for seed in range(6):
+            p, _ = make(seed=seed, is_3d=seed % 2 == 1)
+            for ln in (c for x in p.lines for c in x.cuts or [x]):
+                want = registry.get("layout", ln.layout).fixed_distance or "mid"
+                self.assertEqual(ln.distance, want, (seed, ln.layout))
+
     def test_overrides_are_kept(self):
-        p, _ = make(n_lines=6, is_3d=True, layout="slanted_wall", enter="fade", hold="float", exit="topple", distance="far")
+        p, _ = make(n_lines=6, is_3d=True, layout="slanted_wall", enter="fade", hold="float", exit="topple")
         for ln in p.lines:
-            self.assertEqual((ln.layout, ln.enter, ln.hold, ln.exit, ln.distance), ("slanted_wall", "fade", "float", "topple", "far"))
+            self.assertEqual((ln.layout, ln.enter, ln.hold, ln.exit, ln.distance), ("slanted_wall", "fade", "float", "topple", "mid"))
         p, _ = make(n_lines=6, persist="section")
         self.assertTrue(all(ln.persist for ln in p.lines))
         self.assertEqual(len({ln.anchor for ln in p.lines if ln.section_index == 0}),

@@ -169,10 +169,6 @@ MESSAGES = {
     "Entrance": "登場",
     "Hold": "保持",
     "Exit Motion": "退場",
-    "Distance Layer": "距離の層",
-    "Near Layer": "近景",
-    "Middle Layer": "中景",
-    "Far Layer": "遠景",
     "Leaves": "消え方",
     "Line Cuts": "カット",
     "Show this line in parts one after the other, as they are sung. Planner's Choice keeps it whole":

@@ -445,7 +445,6 @@ def draw_line_details(col, proj, ln):
     split = col.split(factor=0.4)
     left, right = split.column(), split.column()
     got = _chosen(proj)[0].get(proj.line_active, {})
-    prop_above(left, ln, "distance_layer", got.get("distance_layer"))
     prop_above(left, ln, "cuts", got.get("cuts"))
     prop_above(left, ln, "persist", got.get("persist")).active = ln.cuts in ("AUTO", "1")   # a split line leaves
     prop_above(left, ln, "guide")

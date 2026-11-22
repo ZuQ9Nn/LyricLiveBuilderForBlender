@@ -20,7 +20,7 @@ from .overlay import Overlay
 BEFORE, AFTER = preview_scene.ROOT + "_Before", preview_scene.ROOT + "_After"
 RESTORE = "llb_trial_restore"          # scene custom property: range and sound to put back on close
 # what Before keeps; the same fields' update rebuilds After
-LINE_FIELDS = ("is_3d", "depth", "bevel", "layout", "enter", "hold", "exit", "distance_layer", "cuts", "persist",
+LINE_FIELDS = ("is_3d", "depth", "bevel", "layout", "enter", "hold", "exit", "cuts", "persist",
                "guide", "gimmick", "gimmick_show", "gimmick_word", "particle", "background", "transition",
                "seed_offset", "lock_cuts", "look_seed", "paste_cuts")
 SECTION_FIELDS = ("kind", "particle", "particle2", "background", "transition")

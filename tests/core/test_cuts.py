@@ -201,7 +201,8 @@ class Plan(unittest.TestCase):
 
     def test_locked_specs_win_over_the_seed(self):
         first = plan_of(with_cuts(3)).lines[4].cuts
-        specs = [dict(layout=c.layout, enter=c.enter, hold=c.hold, exit=c.exit, distance=c.distance) for c in first]
+        # "distance" as an older version saved it: ignored now
+        specs = [dict(layout=c.layout, enter=c.enter, hold=c.hold, exit=c.exit, distance="far") for c in first]
         other = plan_of(with_cuts(3, cut_specs=specs), seed=99).lines[4].cuts
         self.assertEqual([(c.layout, c.enter, c.hold, c.exit, c.distance) for c in other],
                          [(c.layout, c.enter, c.hold, c.exit, c.distance) for c in first])

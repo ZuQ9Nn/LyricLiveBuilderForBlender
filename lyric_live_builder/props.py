@@ -21,7 +21,6 @@ SOURCE_ITEMS = [
 ]
 FONT_ROLES = ("display", "serif", "body", "mono")
 AUTO = "AUTO"
-DISTANCE_ITEMS = [(AUTO, "Planner's Choice", ""), ("near", "Near Layer", "1.2 m"), ("mid", "Middle Layer", "3.5 m"), ("far", "Far Layer", "8 m")]
 PERSIST_ITEMS = [(AUTO, "Planner's Choice", ""), ("next", "Until the Next Line", ""),
                  ("section", "Until the Section Ends", "Stays on stage and leaves with the rest of the section")]
 BEVEL_ITEMS = [("0.0", "No Bevel", ""), ("0.015", "Small Bevel", ""), ("0.04", "Large Bevel", "")]
@@ -267,7 +266,6 @@ class LLBLine(bpy.types.PropertyGroup):
     enter: EnumProperty(name="Entrance", items=ENTER_ITEMS, update=_trial)
     hold: EnumProperty(name="Hold", items=HOLD_ITEMS, update=_trial)
     exit: EnumProperty(name="Exit Motion", items=EXIT_ITEMS, update=_trial)
-    distance_layer: EnumProperty(name="Distance Layer", items=DISTANCE_ITEMS, update=_trial)
     cuts: EnumProperty(name="Line Cuts", items=CUT_ITEMS,
                        description="Show this line in parts one after the other, as they are sung. Planner's Choice keeps it whole", update=_trial)
     persist: EnumProperty(name="Leaves", items=PERSIST_ITEMS, update=_trial)

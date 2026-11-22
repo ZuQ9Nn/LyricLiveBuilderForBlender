@@ -123,14 +123,8 @@ def _compose(ln, rng, history, keep, stage_busy, settings, look):
     hold = ln.hold if registry.get("hold", ln.hold) else _pick(rng, "hold", history, lambda p: True, settings=settings)
     exit_ = ln.exit if registry.get("exit", ln.exit) else \
         _pick(rng, "exit", history, motion_ok(lp.exit_ok, KEEP_EXITS if keep else ()), emphasis, settings=settings)
-    if ln.distance in model.DISTANCE:
-        distance = ln.distance
-    elif lp.fixed_distance:
-        distance = lp.fixed_distance
-    elif keep:
-        distance = "mid"
-    else:
-        distance = rng.wpick([("near", 0.5 if emphasis else 0.25), ("mid", 0.6), ("far", 0.05 if emphasis else 0.15)])
+    # every line stands in the middle layer (spec §7.1); layouts on the floor / around the audience bring their own
+    distance = lp.fixed_distance or "mid"
     params = lp.plan(Rng(h(look, 11)), _Ctx(ln.text, ln.chunks))
     return {"layout": layout, "lp": lp, "keep": keep, "enter": enter, "hold": hold, "exit": exit_,
             "distance": distance, "params": params}
@@ -180,7 +174,8 @@ def _cut_lines(ln, end):
         bounds[k] = max(bounds[k], bounds[k - 1] + MIN_CUT)
     for k in range(len(pieces) - 1, 0, -1):
         bounds[k] = min(bounds[k], bounds[k + 1] - MIN_CUT)
-    specs = [{f: v for f, v in s.items() if f != "seed"} for s in ln.cut_specs or []]      # "seed": _cut_seed
+    # "seed": _cut_seed; "distance": saved by an older version (the layer is no longer chosen)
+    specs = [{f: v for f, v in s.items() if f not in ("seed", "distance")} for s in ln.cut_specs or []]
     return [(off, replace(ln, text=piece, start=bounds[k], end=bounds[k + 1], char_times=times[off:off + len(piece)],
                           chunks=None, emph_words=[w for w in ln.emph_words if w in piece], impact=ln.impact and k == 0,
                           **(specs[k] if k < len(specs) else {})))

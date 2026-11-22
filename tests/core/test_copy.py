@@ -19,11 +19,11 @@ def plan_of(lines, seed=7):
 def paste(lines, plan, src, dst):
     """What ui.planning.copy_line / paste_line write, on the planner's inputs."""
     lp = plan.lines[src]
-    lines[dst] = replace(lines[dst], layout=lp.layout, enter=lp.enter, hold=lp.hold, exit=lp.exit, distance=lp.distance,
+    lines[dst] = replace(lines[dst], layout=lp.layout, enter=lp.enter, hold=lp.hold, exit=lp.exit,
                          persist="section" if lp.persist else "next", cuts=len(lp.cuts) if lp.cuts else 1,
                          look_seed=lp.seed,
                          cut_specs=[{"layout": c.layout, "enter": c.enter, "hold": c.hold, "exit": c.exit,
-                                     "distance": c.distance, "seed": c.seed} for c in lp.cuts or ()])
+                                     "seed": c.seed} for c in lp.cuts or ()])
     return lines
 
 
