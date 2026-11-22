@@ -6,7 +6,7 @@ from .. import synonyms
 from ..rng import Rng, h
 
 DEG = math.pi / 180
-ANGLE = 40.0                         # visual angle of a standard object, degrees (a 2.9 m object at 4 m)
+ANGLE = 20.0                         # visual angle of a standard object, degrees (a 1.4 m object at 4 m; 40° was too big)
 RADIUS = 4.0                         # where objects stand, metres from the audience
 AIR = 2.3                            # base height of floating objects
 SIDE = (38.0, 58.0)                  # degrees beside the line: objects stay out of the text
