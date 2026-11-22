@@ -1,4 +1,5 @@
 """Part registry: layouts and motions register themselves by kind and key (design §5.6)."""
+import math
 from dataclasses import dataclass
 
 import numpy as np
@@ -90,6 +91,86 @@ def capacity(part):
     return _capacity[key]
 
 
+def even_size(lp, pl, params, eye, angle):
+    """Scale a placed line as a whole (letters and their spacing, about the letters' middle) so that its biggest
+    letter is `angle` degrees seen from the eye (model.EVEN_ANGLE). The motions follow: they work in its em."""
+    if not pl.glyphs or lp.own_size:
+        return pl
+    loc = np.array([g.loc for g in pl.glyphs], dtype=np.float64)
+    size = np.array([g.size for g in pl.glyphs], dtype=np.float64)
+    mid = loc.mean(axis=0)
+    rot = np.broadcast_to(np.asarray(pl.rot, dtype=np.float64), (len(loc), 4))
+    want = math.tan(math.radians(angle) / 2)
+    k = 1.0
+    for _ in range(12):                                   # the distances change as the line grows: until it settles
+        d = np.linalg.norm(pl.loc + xform.rotate(rot, mid + k * (loc - mid)) - eye, axis=1)
+        step = want / max(float(np.max(k * pl.em * size / 2 / np.maximum(d, 1e-6))), 1e-9)
+        k *= step
+        if abs(step - 1) < 1e-3:
+            break
+    for g, p in zip(pl.glyphs, loc):
+        g.loc = mid + k * (p - mid)
+    if "_em" in params:                                   # the panels' own motion is in board em
+        params["_em"] *= k
+    pl.em *= k
+    return pl
+
+
+_top = {}
+
+
+def top(part):
+    """Highest point (degrees above the eye) of a line in the layout at the evened size (model.EVEN_ANGLE, or its
+    own without it), over probe lines of 2, 4 and 6 letters and two draws of its details. A line kept above the front
+    (model.KEEP_ABOVE) is clear of layouts that stay low (design §7.2)."""
+    from . import model
+    from .lyrics import chunk_text
+    from .rng import Rng
+    key = (part.key, model.TEXT_SCALE, tuple(model.TEXT_ANGLE.values()), model.EVEN_ANGLE)
+    if key not in _top:
+        eye = np.array([0.0, 0.0, model.EYE_HEIGHT])
+        best = -90.0
+        for n in (2, 4, 6):
+            if not part.fits(n):
+                continue
+            text = "あ" * n
+            dist = part.fixed_distance or "mid"
+            for k in range(2):
+                ctx = LayoutCtx(text=text, adv=[1.0] * n, vadv=[1.0] * n, em=model.text_em(dist),
+                                distance=model.DISTANCE[dist], eye=model.EYE_HEIGHT, is_3d=part.only_3d, depth=0.15,
+                                chunks=chunk_text(text), char_times=[0.2 * i for i in range(n)], anchor=(0.0, 0.0),
+                                span=(0.0, 4.0))
+                params = part.plan(Rng(n + 100 * k), ctx)
+                pl = part.place(ctx, params)
+                if model.EVEN_ANGLE:
+                    pl = even_size(part, pl, params, eye, model.EVEN_ANGLE * model.TEXT_SCALE)
+                if not pl.glyphs:
+                    continue
+                rot = np.broadcast_to(np.asarray(pl.rot, dtype=np.float64), (len(pl.glyphs), 4))
+                v = pl.loc + xform.rotate(rot, np.array([g.loc for g in pl.glyphs])) - eye
+                d = np.linalg.norm(v, axis=1)
+                el = np.degrees(np.arcsin(np.clip(v[:, 2] / np.maximum(d, 1e-9), -1, 1)))
+                half = np.degrees(np.arctan(pl.em * np.array([g.size for g in pl.glyphs]) / 2 / np.maximum(d, 1e-9)))
+                best = max(best, float((el + half).max()))
+        _top[key] = best
+    return _top[key]
+
+
+_above = {}
+
+
+def from_above(part):
+    """An entrance whose letters come down from more than a letter above their place (falling, dropping)."""
+    if part.key not in _above:
+        n = 4
+        ctx = MotionCtx(n=n, rest=np.zeros((n, 3)), em=1.0, start=0.0, end=4.0, char_times=np.linspace(0, 0.3, n),
+                        bpm=120.0, seed=3, strength=1.0, words=np.zeros(n, dtype=int), chars=tuple("あいうえ"))
+        p = np.broadcast_to(np.linspace(0.0, 1.0, 25), (n, 25))
+        d = part.evaluate(ctx, p)
+        _above[part.key] = bool(np.asarray(d.loc)[..., 2].max() > 1.0)
+    return _above[part.key]
+
+
 def _load():
     # importing the part modules runs their @register decorators
     from .parts import layouts_3d, layouts_basic, motions_enter, motions_enter_jz, motions_exit, motions_exit_jz, motions_hold, motions_hold_jz, layouts_jz  # noqa: F401
@@ -142,6 +223,7 @@ class LayoutPart:
     anchored = True                   # honours the planner's anchor
     keepable = True                   # may stay in a side slot until the section ends
     fixed_distance = None             # distance layer forced by the layout
+    own_size = False                  # its size is part of the effect: not evened out (model.EVEN_ANGLE)
     enter_ok = None                   # allowed entrances (None = any)
     exit_ok = None
     vertical = False

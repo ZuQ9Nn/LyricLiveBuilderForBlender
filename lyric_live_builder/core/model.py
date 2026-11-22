@@ -17,8 +17,16 @@ TEXT_ANGLE = {"near": 21.0, "mid": 21.0, "far": 21.0}
 EMPH_FACTOR = 5.5 / 3.5           # emphasized lines are this much bigger
 TEXT_SCALE = 1.0                  # multiplies every text size (1.2 = 20 % bigger)
 MAX_LINE_ANGLE = 70.0             # widest horizontal extent of a flat line, degrees: longer lines get smaller letters
-KEPT_LINE_ANGLE = 38.0            # lines kept in the side slots (±62°, ±105°) stay this narrow: clear of each other
+KEPT_LINE_ANGLE = 38.0            # lines kept in the side slots (±110°, ±155°) stay this narrow: clear of each other
+# A line kept until the section ends first moves up above the front, at full size, as the next line comes in; when
+# the next kept line comes up, it moves on to a side slot and shrinks to KEPT_LINE_ANGLE (design §7.2)
+KEEP_ABOVE = 50.0                 # degrees above the front
+ABOVE_CLEAR = 33.0                # while a line is above, the planner picks layouts that stay below this
 SIZE_KEEP = 0.7                   # a line (or part) may shrink to this share of the size; wider ones are cut into parts
+# Every placed line is then scaled as a whole so its biggest letter is this angle from the eye, whatever the layout
+# ("Bursting Past the View" of an ordinary line is about 30°; design §7.1). Emphasis does not change it; a line may
+# grow past the view. None: off (the layouts' own sizes, as above).
+EVEN_ANGLE = 30.0
 
 
 def text_angle(distance, emphasis=False):
@@ -128,7 +136,8 @@ class LinePlan:
     anchor: tuple                     # (azimuth, elevation) in radians chosen by the planner
     emphasis: bool
     seed: int
-    glide: tuple = None               # (start, end): a kept line appears in front and moves to its slot
+    glide: tuple = None               # (start, end): a kept line appears in front and moves up above the front
+    aside: tuple = None               # (start, end): then from above to its side slot (anchor), shrinking
     colors: dict = None               # {"fg": linear rgb, "accent": linear rgb}; None = white / gold
     guide: str = ""
     particle: str = ""

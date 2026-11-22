@@ -333,16 +333,34 @@ class TestPlanBake(unittest.TestCase):
         self.assertEqual(len({ln.anchor for ln in p.lines if ln.section_index == 0}),
                          len([ln for ln in p.lines if ln.section_index == 0]))
 
-    def test_kept_line_appears_in_front_then_glides_to_its_slot(self):
+    def test_kept_line_goes_up_then_aside(self):
+        # a kept line appears in front, moves up above the front as the next line comes in, and on to its side slot
+        # (shrunk to KEPT_LINE_ANGLE wide) when the next kept line comes up (design §7.2)
         p, b = make(n_lines=6, persist="section")
         eye = np.array([0, 0, model.EYE_HEIGHT])
+
+        def where(ln, t):
+            pos = np.array([v for k, v in bake.world_positions(b, t).items() if k.startswith(f"line{ln.index:03d}_")])
+            c = pos.mean(axis=0) - eye
+            u = (pos - eye) / np.linalg.norm(pos - eye, axis=1)[:, None]
+            widest = math.degrees(max(math.acos(min(1.0, float(a @ c_))) for a in u for c_ in u))
+            return math.atan2(c[0], c[1]), math.atan2(c[2], math.hypot(c[0], c[1])), widest
         for ln in p.lines[:-1]:
             self.assertIsNotNone(ln.glide, ln.index)
-            for t, want in ((ln.glide[0] - 0.02, 0.0), (ln.glide[1] + 0.05, ln.anchor[0])):
-                pos = [v for k, v in bake.world_positions(b, t).items() if k.startswith(f"line{ln.index:03d}_")]
-                c = np.mean(pos, axis=0) - eye
-                self.assertAlmostEqual(math.atan2(c[0], c[1]), want, delta=0.05, msg=(ln.index, t))
+            az, el, _ = where(ln, ln.glide[0] - 0.02)
+            self.assertAlmostEqual(az, 0.0, delta=0.05, msg=ln.index)
+            self.assertAlmostEqual(el, 0.0, delta=0.12, msg=ln.index)
+            az, el, _ = where(ln, ln.glide[1] + 0.05)
+            self.assertAlmostEqual(az, 0.0, delta=0.05, msg=ln.index)
+            self.assertAlmostEqual(el, math.radians(model.KEEP_ABOVE), delta=0.12, msg=ln.index)
+        aside = [ln for ln in p.lines if ln.aside]
+        self.assertEqual(len(aside), len(p.lines) - 2)            # all but the last one above and the one in front
+        for ln in aside:
+            az, el, width = where(ln, ln.aside[1] + 0.05)
+            self.assertAlmostEqual(az, ln.anchor[0], delta=0.05, msg=ln.index)
+            self.assertLessEqual(width, model.KEPT_LINE_ANGLE + 2.0, ln.index)
         self.assertIsNone(p.lines[-1].glide)              # nothing comes after it in its section
+        self.assertIsNone(p.lines[-2].aside)              # the last one kept waits above until the section ends
 
     def test_2d_lines_never_get_3d_layouts(self):
         for seed in range(5):
@@ -350,20 +368,58 @@ class TestPlanBake(unittest.TestCase):
             self.assertFalse(any(registry.get("layout", ln.layout).only_3d for ln in p.lines))
 
     def test_no_overlap_and_eye_distance(self):
+        # the layouts and slots keep lines apart at their own sizes; evened out (model.EVEN_ANGLE) lines may grow
+        # past the view and meet (the reviewer's choice), but never come closer to the eye than MIN_EYE_DISTANCE
+        for even in (None, model.EVEN_ANGLE):
+            saved, model.EVEN_ANGLE = model.EVEN_ANGLE, even
+            try:
+                self._no_overlap_and_eye_distance(overlap=even is None)
+            finally:
+                model.EVEN_ANGLE = saved
+
+    def _no_overlap_and_eye_distance(self, overlap):
         for seed, is_3d, persist in [(s, d, k) for s in range(4) for d in (False, True) for k in ("", "section")]:
             p, b = make(seed=seed, is_3d=is_3d, n_lines=16, gap=3.0, sec_len=24.0, persist=persist)
             em = {n.id: n.scale[0] for n in b.nodes if n.kind == "glyph"}
+            parent = {n.id: n.parent for n in b.nodes}
+            shrink = {x.node: x for x in b.tracks if x.prop == "scale" and x.node.startswith("line")
+                      and "_g" not in x.node}                    # kept lines shrinking as they move aside
             for t in np.arange(0, b.duration, 0.2):
                 pos = bake.world_positions(b, t)
+                size = {a: em[a] * (np.interp(t, shrink[parent[a]].times, shrink[parent[a]].values[:, 0])
+                                    if parent[a] in shrink else 1.0) for a in pos}
                 ids = list(pos)
                 for k, a in enumerate(ids):
                     d = np.linalg.norm(pos[a] - np.array([0, 0, 1.5]))
                     self.assertGreaterEqual(d, model.MIN_EYE_DISTANCE - 1e-6, (seed, a, t))
-                    for c in ids[k + 1:]:
+                    for c in ids[k + 1:] if overlap else ():
                         if a.split("_")[0] == c.split("_")[0]:
                             continue                    # same line
                         gap = np.linalg.norm(pos[a] - pos[c])
-                        self.assertGreater(gap, 0.45 * (em[a] + em[c]), (seed, is_3d, a, c, round(t, 2)))
+                        self.assertGreater(gap, 0.45 * (size[a] + size[c]), (seed, is_3d, a, c, round(t, 2)))
+
+    def test_even_letter_size(self):
+        # every layout's biggest letter is model.EVEN_ANGLE from the eye, whatever its own size ("Approaching"
+        # keeps its own: huge far away, passing by); emphasis does not change it
+        eye = np.array([0.0, 0.0, model.EYE_HEIGHT])
+        for text in ("太陽が", "太陽がよんでる"):
+            for lp in registry.parts("layout"):
+                if not lp.fits(len(text)) or lp.own_size:
+                    continue
+                for emph in (False, True):
+                    dist = lp.fixed_distance or "mid"
+                    ctx = registry.LayoutCtx(text=text, adv=[1.0] * len(text), vadv=[1.0] * len(text),
+                                             em=model.text_em(dist, emph), distance=model.DISTANCE[dist], eye=1.5,
+                                             is_3d=True, depth=0.15, chunks=lyrics.chunk_text(text),
+                                             char_times=[0.05 * i for i in range(len(text))], anchor=(0.0, 0.0),
+                                             span=(0.0, 4.0))
+                    params = lp.plan(Rng(5), ctx)
+                    pl = registry.even_size(lp, lp.place(ctx, params), params, eye, model.EVEN_ANGLE)
+                    rot = np.broadcast_to(pl.rot, (len(pl.glyphs), 4))
+                    world = pl.loc + xform.rotate(rot, np.array([g.loc for g in pl.glyphs]))
+                    biggest = max(math.degrees(2 * math.atan(pl.em * g.size / 2 / np.linalg.norm(w - eye)))
+                                  for g, w in zip(pl.glyphs, world))
+                    self.assertAlmostEqual(biggest, model.EVEN_ANGLE, delta=0.6, msg=(lp.key, text, emph))
 
     def test_decimation_tolerance(self):
         times = np.linspace(0, 4, 121)

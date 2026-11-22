@@ -107,6 +107,7 @@ class Approach(_Layout3D):
     anchored = False
     enter_ok = ("fade", "pop_sing", "zoom")
     exit_ok = ("fade", "shrink")
+    own_size = True                    # huge far away, passing beside the viewer: evened out it would pass through
 
     def plan(self, rng, ctx):
         return {"side": rng.pick([1, -1]), "far": rng.range(22, 30)}

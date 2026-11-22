@@ -78,13 +78,29 @@ def _push_out(world, eye):
     return eye + v / np.maximum(d, 1e-9) * far
 
 
-def _glide(anchor, window, times):
-    """(T, 4) rotation about the eye that carries a line from straight ahead to its slot.
-    Elevation settles early so a line bound for a far slot passes between the nearer slots."""
-    az, el = anchor
-    u = (times - window[0]) / (window[1] - window[0])
-    now = xform.facing(az * in_out_sine(u), el * out_cubic(u / 0.5))
-    return xform.mul(now, xform.facing(az, el) * np.array([1, -1, -1, -1]))
+def _glide(ln, times):
+    """(T, 4) rotation about the eye that carries a kept line (placed at its anchor) from straight ahead up above the
+    front (ln.glide), then on to its side slot (ln.aside)."""
+    above = math.radians(model.KEEP_ABOVE)
+    u = (times - ln.glide[0]) / (ln.glide[1] - ln.glide[0])
+    az, el = np.zeros(len(times)), above * in_out_sine(u)
+    if ln.aside:                                         # round at the height above first, then down to the slot:
+        v = (times - ln.aside[0]) / (ln.aside[1] - ln.aside[0])     # it passes over the slots already taken
+        az = ln.anchor[0] * in_out_sine(v / 0.6)
+        el = el + (ln.anchor[1] - above) * in_out_sine((v - 0.5) / 0.5)
+    now = xform.facing(az, el)
+    return xform.mul(now, xform.facing(*ln.anchor) * np.array([1, -1, -1, -1]))
+
+
+def _aside_scale(ln, pl, dist, times):
+    """(T,) size of a kept line: whole above the front, shrinking to KEPT_LINE_ANGLE wide as it moves aside."""
+    if not ln.aside or not pl.glyphs:
+        return None
+    x = np.array([g.loc[0] for g in pl.glyphs])
+    width = float(x.max() - x.min() + pl.em * max(g.size for g in pl.glyphs))
+    small = min(1.0, 2 * dist * math.tan(math.radians(model.KEPT_LINE_ANGLE) / 2) / max(width, 1e-6))
+    v = in_out_sine((times - ln.aside[0]) / (ln.aside[1] - ln.aside[0]) / 0.6)    # small before it goes down
+    return 1.0 + (small - 1.0) * v
 
 
 def mesh_key(line, ch):
@@ -260,15 +276,14 @@ def bake(plan, metrics, eye=model.EYE_HEIGHT, rate=RATE, mobile=False, tmp=False
         m = metrics(ln.font_role)
         dist = model.DISTANCE[ln.distance]
         em = model.text_em(ln.distance, ln.emphasis) * ln.size
-        if ln.glide:                                      # kept in a side slot: no wider than KEPT_LINE_ANGLE
-            width = sum(m.advance_em(c) for c in ln.text)
-            em = min(em, 2 * dist * math.tan(math.radians(model.KEPT_LINE_ANGLE) / 2) / max(width, 1e-6))
         ctx = registry.LayoutCtx(
             text=ln.text, adv=[m.advance_em(c) for c in ln.text], vadv=[m.vadvance_em(c) for c in ln.text],
             em=em, distance=dist, eye=eye, is_3d=ln.is_3d, depth=ln.depth,
             chunks=chunk_text(ln.text), char_times=ln.char_times, anchor=ln.anchor, span=(ln.start, ln.end))
         params = dict(ln.layout_params)
         pl = lp.place(ctx, params)
+        if model.EVEN_ANGLE and ln.index >= 0:            # the title card keeps its own sizes
+            pl = registry.even_size(lp, pl, params, eye_pt, model.EVEN_ANGLE * model.TEXT_SCALE)
         # "line003_" finds the letters of all cuts of a line (the gaze estimate relies on it)
         card = {-1: "title", -2: "artist"}.get(ln.index)
         gid = card or (f"line{ln.index:03d}_c{ln.cut}" if ln.cut else f"line{ln.index:03d}")
@@ -319,19 +334,24 @@ def bake(plan, metrics, eye=model.EYE_HEIGHT, rate=RATE, mobile=False, tmp=False
             g_rot = np.broadcast_to(np.asarray(pl.rot, dtype=np.float64), (len(times), 4))
         else:
             g_loc, g_rot = np.asarray(gm[0], dtype=np.float64), xform.continuous(np.asarray(gm[1]))
+        g_scale = np.ones(len(times))
         if ln.glide:
-            q = _glide(ln.anchor, ln.glide, times)
+            q = _glide(ln, times)
             g_loc = eye_pt + xform.rotate(q, g_loc - eye_pt)
             g_rot = xform.continuous(xform.mul(q, g_rot))
-        for prop, vals, rest in (("location", g_loc, pl.loc), ("rotation", g_rot, pl.rot)):
+            shrink = _aside_scale(ln, pl, dist, times)
+            if shrink is not None:
+                g_scale = shrink
+        for prop, vals, rest in (("location", g_loc, pl.loc), ("rotation", g_rot, pl.rot),
+                                 ("scale", np.repeat(g_scale[:, None], 3, axis=1), (1.0, 1.0, 1.0))):
             tr = _track(gid, prop, times, vals, rest, interp)
             if tr:
                 tracks.append(tr)
-        world = g_loc[None] + xform.rotate(g_rot[None], loc)
+        world = g_loc[None] + xform.rotate(g_rot[None], loc * g_scale[None, :, None])
         pushed = _push_out(world, eye_pt)
         if not np.allclose(pushed, world):
             inv = g_rot * np.array([1, -1, -1, -1])
-            loc = xform.rotate(inv[None], pushed - g_loc[None])
+            loc = xform.rotate(inv[None], pushed - g_loc[None]) / g_scale[None, :, None]
 
         # parts that cut the glyphs with a mask: their shapes in order (entrance, exit), design §5.6
         masked = [(part.uses_mask, part.mask_shape(mctx)) for part in (enter, exit_)]
@@ -442,5 +462,6 @@ def world_positions(baked, t):
         p = by_id[n.parent]
         g_loc = value(p.id, "location", p.loc)
         g_rot = xform.normalize(value(p.id, "rotation", p.rot))
-        out[n.id] = g_loc + xform.rotate(g_rot, value(n.id, "location", n.loc))
+        g_scale = value(p.id, "scale", p.scale)
+        out[n.id] = g_loc + xform.rotate(g_rot, g_scale * value(n.id, "location", n.loc))
     return out

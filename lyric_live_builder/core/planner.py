@@ -10,10 +10,13 @@ from .rng import Rng, h
 
 STAGE_TEXT = world.STAGE_TEXT        # seed stage of the text composition ("change only this" re-rolls stages)
 DEG = math.pi / 180
-# side slots for lines kept until the section ends: (azimuth, elevation); the front stays free
-KEEP_SLOTS = [(-62, 0), (62, 0), (-62, 22), (62, 22), (-105, 8), (105, 8)]   # clear of "look up" (front, 22-34°)
+# side slots for lines kept until the section ends: (azimuth, elevation); the front stays free. The newest kept line
+# waits above the front (model.KEEP_ABOVE) and moves to the next free side slot when another one comes up
+# out past the front lines (evened letters reach about ±90°) and the line above; the rows of ±110° and ±155° stay
+# about 7° apart once the lines shrink to KEPT_LINE_ANGLE
+KEEP_SLOTS = [(-110, 0), (110, 0), (-110, 22), (110, 22), (-155, 8), (155, 8)]
 KEEP_CHANCE = 0.22
-# a kept line first appears in front, then glides to its slot as the next line comes in
+# a kept line first appears in front, then glides up above the front as the next line comes in
 GLIDE_LEAD = 0.9                     # seconds before the next line starts
 GLIDE_DUR = 1.0
 END_GAP = 0.25                       # seconds: every line has left before the song ends (Unity holds the last frame)
@@ -73,9 +76,10 @@ def _section_input(s):
     return model.SectionInput(s[0], s[1], *s[2:])
 
 
-def _compose(ln, rng, history, keep, stage_busy, settings, look):
+def _compose(ln, rng, history, keep, stage_busy, settings, look, above=False):
     """Layout, motions and distance of one line, drawn from rng in a fixed order; the layout's details come from
-    the line's look seed (its own stream: fixing the parts by hand or by paste leaves them as they were)."""
+    the line's look seed (its own stream: fixing the parts by hand or by paste leaves them as they were).
+    above: a kept line waits above the front: no layout reaching up to it, no entrance coming down through it."""
     n = len(ln.text.replace(" ", ""))
     width = registry.text_width(ln.text)
     # a line as wide as the front holds keeps its size; a wider one (left whole by hand) shrinks anyway
@@ -90,6 +94,8 @@ def _compose(ln, rng, history, keep, stage_busy, settings, look):
         if sized and sized_line and width > registry.capacity(part):     # would shrink it below SIZE_KEEP
             return False
         if (keep or stage_busy) and (part.big or not part.anchored):
+            return False
+        if above and registry.top(part) > model.ABOVE_CLEAR:
             return False
         return not keep or part.keepable
 
@@ -118,8 +124,9 @@ def _compose(ln, rng, history, keep, stage_busy, settings, look):
     def motion_ok(allow, keep_only=()):
         return lambda part: (allow is None or part.key in allow) and (not keep_only or part.key in keep_only)
 
+    low = (lambda part: not registry.from_above(part)) if above else (lambda part: True)
     enter = ln.enter if registry.get("enter", ln.enter) else \
-        _pick(rng, "enter", history, motion_ok(lp.enter_ok), emphasis, settings=settings)
+        _pick(rng, "enter", history, lambda p: motion_ok(lp.enter_ok)(p) and low(p), emphasis, settings=settings)
     hold = ln.hold if registry.get("hold", ln.hold) else _pick(rng, "hold", history, lambda p: True, settings=settings)
     exit_ = ln.exit if registry.get("exit", ln.exit) else \
         _pick(rng, "exit", history, motion_ok(lp.exit_ok, KEEP_EXITS if keep else ()), emphasis, settings=settings)
@@ -189,7 +196,7 @@ def _cut_look(ln, k, cut_seed):
     return int(seed) if seed else h(cut_seed, 7)
 
 
-def _compose_cuts(ln, end, history, settings, text_seed, style, world_):
+def _compose_cuts(ln, end, history, settings, text_seed, style, world_, above=False):
     """LinePlans of the cuts. Their draws stay inside the line, so other lines are left as they are."""
     recent, out = list(history), []
     mask = emph_mask(ln.text, ln.emph_words)
@@ -197,7 +204,7 @@ def _compose_cuts(ln, end, history, settings, text_seed, style, world_):
         # in front only: no gaze guide leads to a later cut
         cut_seed = h(text_seed, STAGE_TEXT, ln.index + 1, 100 + k, ln.seed_offset)
         look = _cut_look(ln, k, cut_seed)
-        c = _compose(cut, Rng(cut_seed), recent, False, True, settings, look)
+        c = _compose(cut, Rng(cut_seed), recent, False, True, settings, look, above)
         recent.append({key: c[key] for key in ("layout", "enter", "hold", "exit")})
         out.append(_line_plan(cut, c, style, cut.end, mask[off:off + len(cut.text)], look,
                               world.line_colors(world_, style, settings.accent, cut.start), cut=k))
@@ -224,44 +231,47 @@ def plan(lines, sections, duration, seed, bpm=0.0, settings=None):
 
         # keep the line on stage until the section ends?
         slots = kept.setdefault(ln.section_index, [])
+        room = len(slots) < len(KEEP_SLOTS) + 1               # the side slots and the place above
         if ln.persist == "section":
-            keep = len(slots) < len(KEEP_SLOTS)
+            keep = room
         elif ln.persist == "next":
             keep = False
         else:
-            keep = len(slots) < len(KEEP_SLOTS) and sec_end - ln.start > 4.0 and rng.chance(keep_chance)
+            keep = room and sec_end - ln.start > 4.0 and rng.chance(keep_chance)
         keep = keep and ln.cuts < 2            # the parts follow each other: nothing can stand aside
-        stage_busy = bool(slots)               # earlier lines of this section are still standing
+        stage_busy = bool(slots)               # earlier lines of this section are still standing (one above)
         look = ln.look_seed or h(text_seed, STAGE_TEXT, ln.index + 1, 7, ln.seed_offset)
         # the first draw as before any re-roll (its size check places the line with the look seed)
         c = _compose(ln, rng, history, keep, stage_busy, settings,
-                     ln.look_seed or h(text_seed, STAGE_TEXT, ln.index + 1, 7, 0))
+                     ln.look_seed or h(text_seed, STAGE_TEXT, ln.index + 1, 7, 0), stage_busy)
         keep = c["keep"]
         # a re-rolled line draws again with its own stream; the others still see the first draw
         # (novelty history, slots), so re-rolling one line changes only that line
         history.append({key: c[key] for key in ("layout", "enter", "hold", "exit")})
         if ln.seed_offset:
             c = _compose(ln, Rng(h(text_seed, STAGE_TEXT, ln.index + 1, ln.seed_offset)), history[:-1], keep,
-                         stage_busy, settings, look)
+                         stage_busy, settings, look, stage_busy)
             c["keep"] = keep = keep and c["keep"]
         anchor = (0.0, 0.0)
+        gs = max(ln.start, nxt - GLIDE_LEAD)
         if keep and nxt < sec_end:             # the last kept line of a section simply stays in front
-            az, el = KEEP_SLOTS[len(slots)]
-            anchor = (az * DEG, el * DEG)
-            slots.append(ln.index)
+            anchor = (0.0, model.KEEP_ABOVE * DEG)
+            if slots:                          # the line above makes room: on to the next free side slot
+                prev = out[slots[-1]]
+                az, el = KEEP_SLOTS[len(slots) - 1]
+                a0 = max(gs - GLIDE_DUR / 2, prev.glide[1])     # it leaves as this one comes up
+                prev.anchor, prev.aside = (az * DEG, el * DEG), (a0, a0 + GLIDE_DUR)
+            slots.append(len(out))
 
         # visible until the next line (or the section end when kept), JIZURA's visEnd rule
         end = sec_end if keep else min(nxt, ln.start + max(3.6, n * 0.5 + 1.2))
         end = max(end, ln.start + 0.5)
         end = max(min(end, duration - END_GAP), ln.start + 0.1)     # gone before the song ends (spec §6.2)
-        glide = None
-        if keep and anchor != (0.0, 0.0):
-            gs = max(ln.start, nxt - GLIDE_LEAD)
-            glide = (gs, gs + GLIDE_DUR)
+        glide = (gs, gs + GLIDE_DUR) if keep and anchor != (0.0, 0.0) else None
         line = _line_plan(ln, c, style, end, emph_mask(text, ln.emph_words), look,
                           world.line_colors(world_, style, settings.accent, ln.start), anchor, glide)
         if ln.cuts > 1:
-            line.cuts = _compose_cuts(ln, end, history[:-1], settings, text_seed, style, world_) or None
+            line.cuts = _compose_cuts(ln, end, history[:-1], settings, text_seed, style, world_, stage_busy) or None
         out.append(line)
     emitters = [world.fit_to_song(e, duration - END_GAP)                 # gone before the song ends (spec §6.2)
                 for e in world.plan_particles(section_plans, out, seed, settings)]

@@ -10,6 +10,7 @@ ANGLE = 20.0                         # visual angle of a standard object, degree
 RADIUS = 4.0                         # where objects stand, metres from the audience
 AIR = 2.3                            # base height of floating objects
 SIDE = (38.0, 58.0)                  # degrees beside the line: objects stay out of the text
+MAX_SIDE = 140.0                     # a very wide line: the object still stands in front of the shoulder, not behind
 MIN_TIME, MAX_TIME = 2.5, 6.0        # stay on stage, seconds (a line kept for a whole section does not hold it)
 PER_SECTION = 3
 MIN_CHANCE = 0.35                    # a matching line gets an object with this chance at strength 0...
@@ -95,10 +96,14 @@ def plan(lines, inputs, duration, seed, fx, stage, disabled=None, user_assets=No
 
 
 def _side(ln, rel):
-    """Degrees beside the line's anchor: SIDE, or further out when the line is wide (big letters)."""
-    n = sum(1 for c in ln.text if not c.isspace())
-    limit = model.KEPT_LINE_ANGLE if ln.glide else model.MAX_LINE_ANGLE
-    half = min(limit, n * model.text_angle(ln.distance, ln.emphasis)) / 2
+    """Degrees beside the line's anchor: SIDE, or further out when the line is wide (big letters). With the letters
+    evened out (model.EVEN_ANGLE) a line is not narrowed to fit: its widest part is counted at that size."""
+    n = max(sum(1 for c in part.text if not c.isspace()) for part in ln.cuts or [ln])
+    if model.EVEN_ANGLE:
+        half = min(n * model.EVEN_ANGLE * model.TEXT_SCALE / 2, MAX_SIDE)
+    else:
+        limit = model.KEPT_LINE_ANGLE if ln.glide else model.MAX_LINE_ANGLE
+        half = min(limit, n * model.text_angle(ln.distance, ln.emphasis)) / 2
     lo = max(SIDE[0], half + ANGLE * rel / 2 + 4.0)
     return lo, max(SIDE[1], lo + 20.0)
 
