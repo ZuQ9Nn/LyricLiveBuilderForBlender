@@ -112,27 +112,28 @@ def steps():
     proj.line_active = 3
     check(open_trial() == {"FINISHED"}, "Try Out opens")
     yield from settle()
+    win, sides = trial.views()
     for _ in range(25):                         # the split areas get their places on a later redraw
-        if all(a.width > 1 and (a.x > 0 or a == min(view3d(win0), key=lambda b: b.x)) for a in view3d(win0)):
+        if len(sides) == 2 and all(a.width > 1 for a in sides) and sides[0].x != sides[1].x:
             break
         yield 0.2
-    win, sides = trial.views()
-    others = [a for a in view3d(win0) if a not in sides]
-    check(win == win0 and len(sides) == 2 and len(others) == 1 and len(wm.windows) == 1,
-          "two views beside the user's 3D view, in the same window")
+        win, sides = trial.views()
+    check(win is not None and win != win0 and len(sides) == 2 and len(wm.windows) == 2
+          and len(win.screen.areas) == 2 and len(win0.screen.areas) == n_areas,
+          "two views in a new window; the user's window stays as it was")
     if len(sides) == 2:
-        check(sides[0].x < sides[1].x < others[0].x,
-              f"Before, After, then the user's view with the sidebar {[sides[0].x, sides[1].x, others[0].x]}")
+        user = view3d(win0)[0]
+        check(sides[0].x < sides[1].x, f"Before on the left, After on the right {[sides[0].x, sides[1].x]}")
         check(visible(win, sides[0], trial.BEFORE) and not visible(win, sides[0], trial.AFTER), "the left view shows Before")
         check(visible(win, sides[1], trial.AFTER) and not visible(win, sides[1], trial.BEFORE), "the next view shows After")
-        check(not visible(win, others[0], trial.BEFORE) and not visible(win, others[0], trial.AFTER)
-              and visible(win, others[0], "LyricLive"), "the user's view shows neither, but the main preview")
+        check(not visible(win0, user, trial.BEFORE) and not visible(win0, user, trial.AFTER)
+              and visible(win0, user, "LyricLive"), "the user's view shows neither, but the main preview")
     check(bpy.data.collections[trial.AFTER].hide_render and bpy.data.collections[trial.BEFORE].hide_render,
           "the trial objects stay out of renders")
     check(text_nodes(trial.BEFORE) == text_nodes(trial.AFTER) == ["line003"],
           f"both show line 4 only ({text_nodes(trial.BEFORE)} / {text_nodes(trial.AFTER)})")
     check(sig(trial.BEFORE) == sig(trial.AFTER), "with nothing changed, Before and After are the same")
-    check(win0.screen.is_animation_playing and main.use_preview_range
+    check(win is not None and win.screen.is_animation_playing and main.use_preview_range
           and main.frame_preview_end > main.frame_preview_start, "it loops over the line")
 
     # a change rebuilds After only
@@ -181,26 +182,24 @@ def steps():
     with bpy.context.temp_override(window=win0):
         bpy.ops.llb.trial_close()
     yield 0.6
-    check(len(win0.screen.areas) == n_areas and not trial.is_open(), "Close puts the layout back")
+    check(len(wm.windows) == 1 and len(win0.screen.areas) == n_areas and not trial.is_open(), "Close closes its window")
     check(bpy.data.collections.get(trial.AFTER) is None and bpy.data.collections.get(trial.BEFORE) is None,
           "...removes the trial objects")
     check(not main.use_preview_range and main.use_audio and trial.RESTORE not in main,
           "...and puts the range and the sound back")
     check(len(sig("LyricLive")) > 50, "the main preview is still there")
 
-    # the user closes one of the views
+    # the user closes the trial window
     open_trial()
     yield from settle()
     win, sides = trial.views()
-    with bpy.context.temp_override(window=win0, area=sides[1]):
-        bpy.ops.screen.area_close()
+    if win is not None:
+        with bpy.context.temp_override(window=win):
+            bpy.ops.wm.window_close()
     yield 0.6
-    check(not trial.is_open() and bpy.data.collections.get(trial.AFTER) is None and not main.use_preview_range,
-          "closing a view by hand cleans up too")
+    check(not trial.is_open() and bpy.data.collections.get(trial.AFTER) is None and not main.use_preview_range
+          and len(wm.windows) == 1, "closing the window by hand cleans up too")
     win, sides = None, []
-    for area in [a for a in view3d(win0)][:-1]:                     # the Before view left over
-        with bpy.context.temp_override(window=win0, area=area):
-            bpy.ops.screen.area_close()
 
     # line details beside the 3D view (spec §6.2)
     from mathutils import Vector

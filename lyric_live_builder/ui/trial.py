@@ -1,9 +1,9 @@
-"""Before / After trial views beside the LyricLive sidebar (spec §6.3, design §12).
+"""Before / After trial views in a window of their own (spec §6.3, design §12).
 
-The 3D view the button was pressed in is split: two views on the left show the picked line (or section start)
-as last generated (Before) and as set now (After); the right part stays the user's 3D view with the sidebar.
-A window shows one scene, so the trial objects live in the main scene, hidden from every other view and from
-renders. Only Confirm / Generate change the main preview."""
+The button opens a new Blender window split in two: the left view shows the picked line (or section start) as last
+generated (Before), the right one as set now (After); the user's own window stays as it was. A window shows one
+scene, so the trial objects live in the main scene, hidden from every other view and from renders. Only Confirm /
+Generate change the main preview."""
 import json
 
 import bpy
@@ -26,12 +26,13 @@ LINE_FIELDS = ("is_3d", "depth", "bevel", "layout", "enter", "hold", "exit", "cu
 SECTION_FIELDS = ("kind", "particle", "particle2", "background", "transition")
 LEAD, TAIL = 1.4, 0.4                  # seconds shown before a line (its gaze guide) and after it has left
 SECTION_SPAN = (-1.5, 6.0)             # around a section start: the transition and the new background
-SPLIT = 0.6                            # share of the 3D view the two trial views take (on the left)
+MARK = "llb_trial"                     # custom property on the trial window's screen (closed again after a load)
 DEBOUNCE = 0.15
 TICK = 0.1
 LENS = 28.0                            # mm: wide, yet the letters stay readable in a narrow view
 
 _areas = []                            # as_pointer() of the Before and After views
+_window = []                           # as_pointer() of their window
 _scene = ""                            # name of the scene they show
 _overlay = None
 _views = {}                            # last view per side, to see which one the user moved
@@ -64,8 +65,8 @@ def views():
     """(window, [Before, After]) while the trial is open, else (None, [])."""
     for win in bpy.context.window_manager.windows:
         found = {a.as_pointer(): a for a in win.screen.areas if a.type == "VIEW_3D"}
-        if _areas and all(p in found for p in _areas):
-            return win, [found[p] for p in _areas]
+        if _areas and all(p in found for p in _areas):     # left to right (a new window lays out a moment later)
+            return win, sorted((found[p] for p in _areas), key=lambda a: a.x)
     return None, []
 
 
@@ -221,22 +222,27 @@ def open_views(context):
         schedule(both=True)
         return
     win = context.window
-    area = context.area if context.area and context.area.type == "VIEW_3D" else \
+    src = context.area if context.area and context.area.type == "VIEW_3D" else \
         max((a for a in win.screen.areas if a.type == "VIEW_3D"), key=lambda a: a.width * a.height)
     if RESTORE not in scene:
         scene[RESTORE] = json.dumps({"use_preview_range": scene.use_preview_range, "start": scene.frame_preview_start,
                                      "end": scene.frame_preview_end, "use_audio": scene.use_audio})
     proj.trial_mute = False
     _scene = scene.name
-    # split: the left part (this area) becomes the trial, the right part (a copy) stays the user's view
+    # a new window with this 3D view alone, split in two: left Before, right After
+    wm = context.window_manager
+    known = {w.as_pointer() for w in wm.windows}
+    with context.temp_override(window=win, area=src):
+        bpy.ops.wm.window_new()
+    win = next(w for w in wm.windows if w.as_pointer() not in known)
+    win.screen[MARK] = True
+    area = next(a for a in win.screen.areas if a.type == "VIEW_3D")
     region = next(r for r in area.regions if r.type == "WINDOW")
     with context.temp_override(window=win, area=area, region=region):
-        bpy.ops.screen.area_split(direction="VERTICAL", factor=SPLIT)
-    known = {a.as_pointer() for a in win.screen.areas}
-    with context.temp_override(window=win, area=area, region=region):
         bpy.ops.screen.area_split(direction="VERTICAL", factor=0.5)
-    pair = sorted([area, next(a for a in win.screen.areas if a.as_pointer() not in known)], key=lambda a: a.x)
-    _areas[:] = [a.as_pointer() for a in pair]                  # left to right: Before, After
+    pair = [a for a in win.screen.areas if a.type == "VIEW_3D"]
+    _areas[:] = [a.as_pointer() for a in pair]                  # views() puts them left to right: Before, After
+    _window[:] = [win.as_pointer()]
     for a in pair:
         space = a.spaces.active
         with context.temp_override(window=win, area=a):
@@ -248,16 +254,16 @@ def open_views(context):
 
 
 def close_views(context=None):
-    """Remove the two views and the trial objects; put the range and the sound back."""
-    win, sides = views()
-    if win is not None:
+    """Close the trial window and remove the trial objects; put the range and the sound back."""
+    win = next((w for w in bpy.context.window_manager.windows if _window and w.as_pointer() == _window[0]), None)
+    if win is not None:                        # also when the user closed one of its views
         if win.screen.is_animation_playing:
             with bpy.context.temp_override(window=win):
                 bpy.ops.screen.animation_cancel(restore_frame=False)
-        for area in sides:
-            with bpy.context.temp_override(window=win, area=area):
-                bpy.ops.screen.area_close()
+        with bpy.context.temp_override(window=win):
+            bpy.ops.wm.window_close()
     _areas.clear()
+    _window.clear()
     stop()
     scene = bpy.data.scenes.get(_scene)
     if scene is not None:
@@ -282,12 +288,22 @@ def cleanup(scene):
 
 @persistent
 def _after_load(_file=None, _arg=None):
-    """A file saved with the trial open: its views are gone, so put things back."""
+    """A file saved with the trial open: its views are gone, so put things back (and close its window)."""
     _areas.clear()
+    _window.clear()
     stop()
     for scene in bpy.data.scenes:
         if RESTORE in scene or bpy.data.collections.get(AFTER):
             cleanup(scene)
+    if not bpy.app.timers.is_registered(_close_left_windows):
+        bpy.app.timers.register(_close_left_windows, first_interval=0.1)
+
+
+def _close_left_windows():
+    for win in [w for w in bpy.context.window_manager.windows if w.screen.get(MARK)]:
+        with bpy.context.temp_override(window=win):
+            bpy.ops.wm.window_close()
+    return None
 
 
 @persistent
@@ -398,7 +414,7 @@ class LLB_OT_trial_open(bpy.types.Operator):
     bl_idname = "llb.trial_open"
     bl_label = "Try Out (Before / After)"
     bl_description = ("Show the picked line or section as last generated and as set now, side by side "
-                      "beside the sidebar, playing in a loop")
+                      "in a new window, playing in a loop")
 
     @classmethod
     def poll(cls, context):
@@ -412,7 +428,7 @@ class LLB_OT_trial_open(bpy.types.Operator):
 class LLB_OT_trial_close(bpy.types.Operator):
     bl_idname = "llb.trial_close"
     bl_label = "Close the Trial"
-    bl_description = "Remove the Before / After views and put the timeline range and the sound back"
+    bl_description = "Close the Before / After window and put the timeline range and the sound back"
 
     def execute(self, context):
         close_views(context)
