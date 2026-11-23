@@ -132,7 +132,7 @@ to change the text size and replace stage objects, particles and backgrounds (in
 
 ### 使い方
 
-画面つきの説明は [かんたん操作ガイド](docs/07_quick_start.md)（約 50 秒の動画：[movies/quick_start.mp4](movies/quick_start.mp4)）と [詳細操作ガイド](docs/08_user_guide.md) にあります。
+画面つきの説明は [かんたん操作ガイド](docs/07_quick_start.md)（約 66 秒の動画：[movies/quick_start.mp4](movies/quick_start.mp4)）と [詳細操作ガイド](docs/08_user_guide.md) にあります。
 
 1. 「外部エディタで編集」で歌詞を書く（メモ帳などが開き、保存すると自動で取り込みます。Blender のテキストエディタは日本語を直接入力できません。「クリップボードから貼り付け」「ファイルから読み込む」も使えます。`A/B` で区切り（区切りごとのカットにもなる）、`*語*` で強調、`行!` で強いアクセント、`[サビ]` でセクション。記号を歌詞の文字として出すときは、前に `\` を付けて `\!` `\/` `\*` `\|` `\#` `\[` `\]`、`\` そのものは `\\`）
 2. フォントを指定する（最低限「本文」）
